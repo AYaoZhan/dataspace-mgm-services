@@ -5,7 +5,7 @@
 # on a Windows machine, so that the phones and laptops of all teams can use the same addresses.
 # No admin rights, no git needed. Run in PowerShell:
 #   irm https://raw.githubusercontent.com/tx-arena-events/portal-backend/main/ebw/host-windows.ps1 | iex
-# Stop with Ctrl+C. Keep the window open during the event.
+# Stop with Ctrl+C. Keep the window open during the event. A second run keeps keys and data; the addresses change.
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -24,13 +24,20 @@ if (Test-NetConnection region1.v2.argotunnel.com -Port 7844 -InformationLevel Qu
   return
 }
 
-Write-Host "== 2/5 Code of portal-backend (download as ZIP)"
-$Zip = Join-Path $Root "portal-backend.zip"
-Invoke-WebRequest "https://github.com/tx-arena-events/portal-backend/archive/refs/heads/main.zip" -OutFile $Zip
-if (Test-Path (Join-Path $Root "portal-backend-main")) { Remove-Item -Recurse -Force (Join-Path $Root "portal-backend-main") }
-Expand-Archive $Zip -DestinationPath $Root -Force
+Write-Host "== 2/5 Code of portal-backend (download as ZIP on the first run only)"
+# Keys and data of the services live in .keys\ and data\ inside this folder. Replacing the folder would create
+# new keys, and every phone would have to fetch its credentials again. So a second run keeps it.
+# To force a fresh download: $env:EBW_FRESH = "1" before the command.
 $Ebw = Join-Path $Root "portal-backend-main\ebw"
-Ok "code in $Ebw"
+if ($env:EBW_FRESH -eq "1" -and (Test-Path (Join-Path $Root "portal-backend-main"))) { Remove-Item -Recurse -Force (Join-Path $Root "portal-backend-main") }
+if (-not (Test-Path $Ebw)) {
+  $Zip = Join-Path $Root "portal-backend.zip"
+  Invoke-WebRequest "https://github.com/tx-arena-events/portal-backend/archive/refs/heads/main.zip" -OutFile $Zip
+  Expand-Archive $Zip -DestinationPath $Root -Force
+  Ok "code downloaded to $Ebw"
+} else {
+  Ok "code already in $Ebw (keys and data kept)"
+}
 
 Write-Host "== 3/5 uv and Python 3.12"
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
