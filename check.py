@@ -270,10 +270,24 @@ def check_keycloak(have: dict[str, bool]) -> bool:
     else:
         report("OK", "Docker images", ", ".join(compose_images()))
 
-    status, _ = http_status(KEYCLOAK_URL, timeout=5)
-    if status == 200:
+    # A GET is not enough: other programs on 8080 (Open WebUI, Tomcat, ...) also answer 200 with HTML.
+    body = None
+    try:
+        with urllib.request.urlopen(KEYCLOAK_URL, timeout=5) as r:
+            body = r.read().decode("utf-8", errors="replace")
+    except OSError:
+        pass
+    try:
+        issuer = json.loads(body).get("issuer", "") if body else ""
+    except (ValueError, AttributeError):
+        issuer = ""
+    if issuer.endswith("/realms/CX-Central"):
         report("OK", "Keycloak answers", "http://localhost:8080/auth")
         return True
+    if body is not None:
+        report("FAIL", "Port 8080", "another program answers there, not the Keycloak of the scaffold",
+               "Stop the program on port 8080 (Keycloak needs it), then: docker compose up -d")
+        return False
     if port_free(8080):
         report("WARN", "Keycloak", "not running",
                "Start Keycloak: docker compose up -d (ready after about a minute), then run this check again")
