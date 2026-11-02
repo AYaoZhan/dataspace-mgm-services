@@ -24,6 +24,8 @@ uv run python demo.py         # starts the CSP stand-in, OSP A and OSP B, runs s
 ```
 
 `demo.py` prints one line per check and a summary; exit code 0 means everything is green.
+Before the day, `uv run python check.py` checks the whole setup (tools, repositories, network,
+Docker images, Keycloak, ports, membership in `tx-arena-events`, `demo.py`) and lists what is still to do.
 Only some scenarios: `uv run python demo.py --scenarios 1,2,3`.
 
 Keep the three processes running for your own calls (UI, curl, Swagger at `/docs`):
