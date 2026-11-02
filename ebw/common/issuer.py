@@ -62,6 +62,7 @@ class Issuer:
         add("/.well-known/oauth-authorization-server", self.authorization_server_metadata, methods=["GET"])
         add("/.well-known/jwt-vc-issuer", self.jwt_vc_issuer_metadata, methods=["GET"])
         add("/oid4vci/offers/{offer_id}", self.get_offer, methods=["GET"])
+        add("/oid4vci/offers/{offer_id}/status", self.offer_status, methods=["GET"])
         add("/oid4vci/token", self.token, methods=["POST"])
         add("/oid4vci/nonce", self.nonce, methods=["POST"])
         add("/oid4vci/credential", self.credential, methods=["POST"])
@@ -84,6 +85,8 @@ class Issuer:
             "claims": claims_by_config,
             "label": label,
             "expires": time.time() + LIFETIME,
+            "redeemed": False,
+            "issued": [],
         }
         offer_uri = f"{self.base_url}/oid4vci/offers/{offer_id}"
         return offer_id, f"{OFFER_SCHEME}?credential_offer_uri={quote(offer_uri, safe='')}"
@@ -93,6 +96,16 @@ class Issuer:
         if not entry or entry["expires"] < time.time():
             return JSONResponse({"error": "unknown or expired offer"}, status_code=404)
         return JSONResponse(entry["offer"], headers=NO_STORE)
+
+    def offer_status(self, offer_id: str) -> dict:
+        """State of an offer for its page. An unknown offer counts as expired: offers do not survive a restart."""
+        entry = self.offers.get(offer_id)
+        if not entry:
+            return {"status": "EXPIRED", "expires_in": 0, "offered": [], "issued": []}
+        expires_in = max(int(entry["expires"] - time.time()), 0)
+        status = "PICKED_UP" if entry["redeemed"] else "OPEN" if expires_in else "EXPIRED"
+        names = lambda ids: [self.definitions[cid]["name"] for cid in ids]  # noqa: E731
+        return {"status": status, "expires_in": expires_in, "offered": names(entry["claims"]), "issued": names(entry["issued"])}
 
     # Metadata
 
@@ -150,6 +163,7 @@ class Issuer:
         offer_id, expiry = self.codes.pop(form.get("pre-authorized_code", ""), (None, 0))
         if expiry < time.time():
             return error(400, "invalid_grant", "unknown, used or expired pre-authorized_code")
+        self.offers[offer_id]["redeemed"] = True
         access_token = random_token(32)
         self.tokens[access_token] = (offer_id, time.time() + LIFETIME)
         return JSONResponse(
@@ -212,4 +226,6 @@ class Issuer:
             if self.on_issued:
                 self.on_issued(cid, claims, status, entry["label"])
             issued.append({"credential": credential})
+            if cid not in entry["issued"]:
+                entry["issued"].append(cid)
         return JSONResponse({"credentials": issued}, headers=NO_STORE)

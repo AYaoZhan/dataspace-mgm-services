@@ -22,6 +22,7 @@ import httpx
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from common import holder, sdjwt
+from common.issuer import Issuer
 from common.jose import load_or_create_key, public_jwk
 from common.oidc_client import OidcClient, OidcError
 
@@ -353,6 +354,28 @@ def run() -> None:
     check("14 complete without cookie: 404", stranger_browser.get(f"{URL['connector']}/transactions/{tx_id}/complete").status_code == 404)
     neutral = stranger_browser.get(f"{URL['connector']}/transactions/{tx_id}").text
     check("14 Page without cookie shows no data", "Step done" in neutral and "wallet-link" not in neutral)
+
+    # State of an offer, as its page shows it
+    created = httpx.post(f"{URL['test_tools']}/api/offers", json={"credentials": {"pid": {}, "mandate": {}}, "label": "State"}).json()
+    status_url = f"{URL['test_tools']}/oid4vci/offers/{created['offer_id']}/status"
+    state = httpx.get(status_url).json()
+    check("Offer open: time left, nothing issued", state["status"] == "OPEN" and 0 < state["expires_in"] <= 600 and state["issued"] == [], json.dumps(state))
+    Wallet().receive(created["link"])
+    state = httpx.get(status_url).json()
+    check("Offer picked up: all credentials named",
+          state["status"] == "PICKED_UP" and sorted(state["issued"]) == ["Test PID", "Test mandate (register)"], json.dumps(state))  # fmt: skip
+    try:
+        Wallet().receive(created["link"])
+        check("Offer picked up: a second wallet gets nothing", False, "no error")
+    except holder.WalletError as exc:
+        check("Offer picked up: a second wallet gets nothing", "400" in str(exc), str(exc))
+    unknown = httpx.get(f"{URL['test_tools']}/oid4vci/offers/unknown/status").json()
+    check("Unknown offer counts as expired", unknown["status"] == "EXPIRED", json.dumps(unknown))
+    issuer = Issuer("http://issuer.test", ec.generate_private_key(ec.SECP256R1()), {}, {"pid": {"vct": "x", "name": "x", "labels": {}}}, "Test")
+    offer_id, _ = issuer.create_offer({"pid": {}})
+    issuer.offers[offer_id]["expires"] = time.time() - 1
+    check("Offer after its time: expired", issuer.offer_status(offer_id)["status"] == "EXPIRED")
+    check("Test tools page tracks both offers", httpx.get(URL["test_tools"] + "/").text.count("data-offer=") == 2)
 
     # 15 Audit log without personal data
     audit = (TMP / "audit.log").read_text()

@@ -16,7 +16,7 @@ from common.issuer import Issuer
 from common.jose import random_token, signing_jwk, x5c
 from common.oidc_client import OidcClient, OidcError
 from common.statuslist import StatusList
-from common.web import CookieSession, page, qr, read_form
+from common.web import OFFER_SCRIPT, CookieSession, offer_box, page, qr, read_form
 
 ROLE = {"legal_representative": "Administrator"}
 MANDATE_DEFINITION = {
@@ -406,16 +406,20 @@ def show_mandate(mandate_id: str, request: Request):
         return message("Not found", "Unknown power of attorney or no permission.")
     if mandate["state"] != "OFFERED":
         return RedirectResponse("/", status_code=303)
-    _, link = issuer.create_offer({"mandate": mandate_claims(mandate)}, mandate_id)
+    offer_id, link = issuer.create_offer({"mandate": mandate_claims(mandate)}, mandate_id)
     offer_links[mandate_id] = link
     body = (
         f"<div class=\"box\"><p>Power of attorney for <b>{escape(mandate['given_name'])} {escape(mandate['family_name'])}</b> "
         f"({escape(mandate['role'])}, valid until {escape(mandate['valid_until'])}). "
         "The person scans the QR code with their EUDI Wallet.</p>"
-        + qr(link)
-        + f'<p><a class="button" href="{escape(link)}">Open in wallet</a> '
-        '<a class="button secondary" href="/">Done</a></p>'
-        '<p class="muted">The offer is valid for 10 minutes; reloading creates a new one.</p></div>'
+        + offer_box(
+            offer_id,
+            qr(link) + f'<p><a class="button" href="{escape(link)}">Open in wallet</a></p>',
+            f'<a class="button secondary" href="/mandates/{mandate_id}">New QR code</a>',
+            once=True,
+        )
+        + '<p><a class="button secondary" href="/">Done</a></p></div>'
+        + OFFER_SCRIPT
     )
     return bw_page("Hand over the power of attorney", body, request)
 

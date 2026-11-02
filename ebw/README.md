@@ -52,7 +52,7 @@ Requests use no `credential_sets` and only claims of the top level. The EBW-Conn
 
 ## Demo
 
-1. **Test tools:** Open them. Scan the QR code "EUDI Wallet of the person" with the wallet app: test PID and mandate of Erika Mustermann, legal representative of Beispiel Maschinenbau GmbH.
+1. **Test tools:** Open them. Scan the QR code "EUDI Wallet of the person" with the wallet app: test PID and mandate of Erika Mustermann, legal representative of Beispiel Maschinenbau GmbH. Below every QR code the page shows whether it is still open, picked up or expired; an offer works once and for 10 minutes, and **New QR code** creates a new one.
 2. **Set up the Business Wallet:** In the test tools, copy the LPID link and paste it into the Business Wallet under "Fetch the company credential (LPID)".
 3. **Sign in at the Business Wallet:** "Sign in with EUDI Wallet", then scan with the wallet app on the page of the EBW-Connector. Erika is an administrator (mandate from the register, `trust_list`).
 4. **Register the company:** In the OSP 2.0 demo portal, "Register company".

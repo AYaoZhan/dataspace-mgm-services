@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from common.issuer import Issuer
 from common.jose import sign_jws, signing_jwk, x5c
 from common.statuslist import StatusList
-from common.web import page, qr, read_form
+from common.web import OFFER_SCRIPT, offer_box, page, qr, read_form
 from test_tools import config, osp
 from test_tools.data import DEFINITIONS, TYPES, claims_with
 
@@ -64,8 +64,8 @@ function copyText(id) { navigator.clipboard.writeText(document.getElementById(id
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    _, person_link = issuer.create_offer({"pid": claims_with("pid", None), "mandate": claims_with("mandate", None)}, "Erika Mustermann")
-    _, company_link = issuer.create_offer({"lpid": claims_with("lpid", None)}, "Beispiel Maschinenbau GmbH")
+    person_offer, person_link = issuer.create_offer({"pid": claims_with("pid", None), "mandate": claims_with("mandate", None)}, "Erika Mustermann")
+    company_offer, company_link = issuer.create_offer({"lpid": claims_with("lpid", None)}, "Beispiel Maschinenbau GmbH")
     rows = "".join(
         f"<tr><td>{entry['index']}</td><td>{escape(entry['type'])}</td><td>{escape(entry['label'])}</td>"
         f"<td>{escape(entry['issued_at'])}</td><td>"
@@ -87,9 +87,12 @@ def index():
         '<div class="box"><h2>EUDI Wallet of the person</h2>'
         "<p>Test PID and mandate from the register: Erika Mustermann, legal representative "
         "of Beispiel Maschinenbau GmbH. Scan with the wallet.</p>"
-        + qr(person_link)
-        + f'<p><a class="button" href="{escape(person_link)}">Open in wallet</a></p></div>'
-        '<div class="box"><h2>Test PID for another person</h2>'
+        + offer_box(
+            person_offer,
+            qr(person_link) + f'<p><a class="button" href="{escape(person_link)}">Open in wallet</a></p>',
+            '<a class="button secondary" href="/">New QR code</a>',
+        )
+        + '</div><div class="box"><h2>Test PID for another person</h2>'
         "<p>For example for an employee who gets a power of attorney from the Business Wallet. "
         "Name and date of birth must match the power of attorney.</p>"
         '<form method="post" action="/pid">'
@@ -100,15 +103,20 @@ def index():
         '<div class="box"><h2>Business Wallet</h2>'
         "<p>LPID of Beispiel Maschinenbau GmbH. Paste the link in the Business Wallet under "
         "“Fetch the company credential (LPID)”.</p>"
-        f'<pre id="lpid-link">{escape(company_link)}</pre>'
-        "<p><button class=\"secondary\" onclick=\"copyText('lpid-link')\">Copy link</button></p></div>"
-        '<div class="box"><h2>Core services</h2><p>Signed trust list: '
+        + offer_box(
+            company_offer,
+            f'<pre id="lpid-link">{escape(company_link)}</pre>'
+            "<p><button class=\"secondary\" onclick=\"copyText('lpid-link')\">Copy link</button></p>",
+            '<a class="button secondary" href="/">New link</a>',
+        )
+        + '</div><div class="box"><h2>Core services</h2><p>Signed trust list: '
         '<a href="/trust-list.json">view</a> · <a href="/trust-list">as JWS</a></p></div>'
         '<div class="box"><h2>OSP 2.0 demo portal</h2><p>Sign-in and onboarding through the EBW-Connector: '
         '<a href="/osp">Open the portal</a></p></div>'
         '<div class="box"><h2>Issued credentials</h2>'
         f"<table><tr><th>No.</th><th>Type</th><th>For</th><th>Time</th><th>Status</th></tr>{rows}</table></div>"
-        f'<p class="muted">The offers are valid for 10 minutes; reloading creates new ones.</p>{COPY}'
+        + COPY
+        + OFFER_SCRIPT
     )
     return HTMLResponse(page("Test tools", body, brand="EBW test tools"))
 
@@ -119,12 +127,18 @@ async def pid_offer(request: Request):
     person = {k: form.get(k, "").strip() for k in ("given_name", "family_name", "birthdate")}
     if not all(person.values()):
         return RedirectResponse("/", status_code=303)
-    _, link = issuer.create_offer({"pid": claims_with("pid", person)}, f"{person['given_name']} {person['family_name']}")
+    offer_id, link = issuer.create_offer({"pid": claims_with("pid", person)}, f"{person['given_name']} {person['family_name']}")
+    renew = (
+        '<form method="post" action="/pid">'
+        + "".join(f'<input type="hidden" name="{k}" value="{escape(v)}">' for k, v in person.items())
+        + '<button class="secondary">New QR code</button></form>'
+    )
     body = (
         f"<p>Test PID for <b>{escape(person['given_name'])} {escape(person['family_name'])}</b>, "
         f"born {escape(person['birthdate'])}. Scan with the EUDI Wallet of this person.</p>"
-        + qr(link)
-        + f'<p><a class="button" href="{escape(link)}">Open in wallet</a> <a class="button secondary" href="/">Back</a></p>'
+        + offer_box(offer_id, qr(link) + f'<p><a class="button" href="{escape(link)}">Open in wallet</a></p>', renew)
+        + '<p><a class="button secondary" href="/">Back</a></p>'
+        + OFFER_SCRIPT
     )
     return HTMLResponse(page("Test PID", body, brand="EBW test tools"))
 

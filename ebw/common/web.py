@@ -97,6 +97,56 @@ def qr(uri: str) -> str:
     return f'<p><img src="{data_uri}" alt="QR code"></p>'
 
 
+OFFER_SCRIPT = """<script>
+document.querySelectorAll("[data-offer]").forEach((box) => {
+  const state = box.querySelector(".offer-state");
+  let seconds = 0, open = true;
+  function close(text, css, renew) {
+    open = false;
+    box.querySelector(".offer-content").hidden = true;
+    box.querySelector(".offer-renew").hidden = !renew;
+    state.className = "offer-state " + css;
+    state.textContent = text;
+  }
+  function show() {
+    const rest = String(seconds % 60).padStart(2, "0");
+    state.textContent = `Waiting for the wallet, valid for ${Math.floor(seconds / 60)}:${rest}.`;
+  }
+  async function poll() {
+    let now;
+    try {
+      const response = await fetch(`/oid4vci/offers/${box.dataset.offer}/status`);
+      if (!response.ok) return;
+      now = await response.json();
+    } catch (e) { return; }
+    if (now.status === "OPEN") {
+      seconds = now.expires_in;
+      show();
+    } else if (now.status === "EXPIRED") {
+      clearInterval(polling);
+      close("Expired. This offer no longer works.", "fail", true);
+    } else {
+      if (now.issued.length === now.offered.length || now.expires_in === 0) clearInterval(polling);
+      const names = now.issued.join(", ");
+      close(names ? `Picked up: ${names}.` : "Picked up by a wallet, fetching the credentials …", "ok", !box.hasAttribute("data-once"));
+    }
+  }
+  const polling = setInterval(poll, 2000);
+  setInterval(() => { if (open && seconds > 0) { seconds -= 1; show(); } }, 1000);
+  poll();
+});
+</script>"""
+
+
+def offer_box(offer_id: str, content: str, renew: str, once: bool = False) -> str:
+    """Offer with its live state; `content` goes away once the offer no longer works, then `renew` appears.
+    `once`: nothing to renew after a pick-up. The page adds OFFER_SCRIPT after its offers."""
+    return (
+        f'<div data-offer="{escape(offer_id)}"{" data-once" if once else ""}><div class="offer-content">{content}</div>'
+        f'<p class="offer-state muted"></p><div class="offer-renew" hidden>{renew}</div></div>'
+    )
+
+
 def claims_table(claims: dict) -> str:
     rows = "".join(
         f"<tr><th>{escape(str(k))}</th><td>{escape(v if isinstance(v, str) else json.dumps(v, ensure_ascii=False))}</td></tr>"
