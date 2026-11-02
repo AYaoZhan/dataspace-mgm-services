@@ -132,18 +132,18 @@ def tools_offer(credentials: dict, label: str = "Test") -> str:
     return response.json()["link"]
 
 
-def present_in_business_wallet(browser: Browser, page: str, stop_at: str) -> httpx.Response:
+def present_in_business_wallet(browser: Browser, page: str, stop_at: str, address: str = "/present") -> httpx.Response:
     """Company step: open the Business Wallet with the request and approve."""
     match = re.search(r'id="request-link">([^<]+)<', page)
     assert match, "no request link on the page"
     params = holder.query_params(html.unescape(match.group(1)))
-    response = browser.go(f"{URL['business_wallet']}/present?{urlencode(params)}")
+    response = browser.go(f"{URL['business_wallet']}{address}?{urlencode(params)}")
     action = re.search(r'action="(/present/[^/]+/approve)"', response.text)
     assert action, f"no approve form: {response.text[:300]}"
     return browser.go(URL["business_wallet"] + action.group(1), stop_at=stop_at, method="POST")
 
 
-def oidc_flow(client: OidcClient, browser: Browser, scope: str, wallet: Wallet, company: bool = False, nonce=None, decline=False):
+def oidc_flow(client: OidcClient, browser: Browser, scope: str, wallet: Wallet, company: bool = False, nonce=None, decline=False, address="/present"):
     """Runs a transaction; returns (claims, tokens) or raises OidcError."""
     url, flow = client.start(scope)
     response = browser.go(url, stop_at=client.redirect_uri)
@@ -152,7 +152,7 @@ def oidc_flow(client: OidcClient, browser: Browser, scope: str, wallet: Wallet, 
         wallet.answer(response.text, nonce=nonce, decline=decline)
         response = browser.go(page_url, stop_at=client.redirect_uri)
         if response.status_code == 200 and company:
-            response = present_in_business_wallet(browser, response.text, client.redirect_uri)
+            response = present_in_business_wallet(browser, response.text, client.redirect_uri, address)
     return client.finish(holder.query_params(response.headers.get("location", "")), flow)
 
 
@@ -236,6 +236,8 @@ def run() -> None:
             and [e["wallet"] for e in payload["evidence"]] == ["EUDI_WALLET", "EUDI_WALLET", "BUSINESS_WALLET"]
         )
     check("5 Onboarding: verification attestation valid and confirmed", attestation_ok, json.dumps(tokens)[:300])
+    claims, tokens = oidc_flow(osp, admin, onboarding, erika, company=True, address="/")
+    check("5 Onboarding: wallet address without /present", "ebw_attestation" in tokens, json.dumps(claims)[:300])
 
     # 6 Employee with a power of attorney from the Business Wallet
     response = admin.go(

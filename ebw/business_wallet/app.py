@@ -124,6 +124,8 @@ def reset_form() -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    if "request_uri" in request.query_params:  # wallet address entered without /present
+        return RedirectResponse(f"/present?{request.url.query}", status_code=303)
     lpid = store.lpid()
     if lpid is None:
         body = (
