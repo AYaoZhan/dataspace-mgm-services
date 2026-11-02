@@ -174,8 +174,14 @@ def check_tools() -> dict[str, bool]:
 
 def check_repos(have: dict[str, bool], offline: bool) -> None:
     section("Repositories")
+    spec = ROOT / "spec"
+    if not (spec / "FRAMEWORK.md").exists():
+        report("FAIL", "Spec in spec/", "missing",
+               f"Clone the spec: git clone https://github.com/{ORG}/portal-backend-spec.git spec")
+    else:
+        report("OK", "Spec in spec/", "present")
     if not have.get("git"):
-        report("FAIL", "Repositories", "skipped, git is missing")
+        report("FAIL", "portal-backend", "not checked, git is missing")
         return
     code, url = run(["git", "remote", "get-url", "origin"])
     if code == 0 and f"{ORG}/portal-backend" in url:
@@ -183,13 +189,6 @@ def check_repos(have: dict[str, bool], offline: bool) -> None:
     else:
         report("WARN", "portal-backend", f"origin is {url or 'not set'}",
                f"Clone the scaffold: git clone https://github.com/{ORG}/portal-backend.git")
-
-    spec = ROOT / "spec"
-    if not (spec / "FRAMEWORK.md").exists():
-        report("FAIL", "Spec in spec/", "missing",
-               f"Clone the spec: git clone https://github.com/{ORG}/portal-backend-spec.git spec")
-    else:
-        report("OK", "Spec in spec/", "present")
 
     if offline:
         return
