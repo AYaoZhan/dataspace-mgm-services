@@ -48,6 +48,7 @@ there is no sign-in through the browser and no Admin API, so C2-M2 and C2-M3 can
 | `modules/<module>/` | one folder per module of the spec (`interface.py`, `router.py`, see [Module structure](#module-structure-and-calls-between-modules)); `c12_m1` is Process Orchestration (provided), all others are stand-ins |
 | `scaffold/` | the installation app (`create_app`) and the module registry |
 | `iam/` | the test Portal IAM: Keycloak with the realm of C2-M5, test persons and a stand-in for the EBW-Connector (see [iam/README.md](iam/README.md)) |
+| `ebw/` | for tests with a real wallet app on a phone: EBW-Connector (C5-M1), Business Wallet, test issuer and OSP 2.0 demo portal; runs on its own (see [ebw/README.md](ebw/README.md)) |
 | `tools/` | test tools: access to the Keycloak test installation (`keycloak_login`, `keycloak_admin`, `iam_backend`), in-memory IAM of the scaffold's own tests (`test_iam`), shared CSP stand-in (`csp_standin`, own process), EBW-Connector double for attestations (`ebw_signer`), provider system double (`provider_double`), keys |
 | `config/osp-a`, `config/osp-b` | per installation: settings (`installation.json`, FRAMEWORK 4.8), configuration variables of the modules (`module-config.json`, e.g. `ATTESTATION_CLIENT_IDS`, `ISSUER_MODE`; the process environment wins), clients at the EBW-Connector (`ebw-clients.json`, C5-M1 6.8) |
 | `testdata/` | one test data package for all modules, IDs as in FRAMEWORK 7a (see [Test data](#test-data-framework-7a)) |
@@ -158,6 +159,14 @@ against it, and the stand-ins of C2-M2, C2-M3 and C11-M1 use it through `tools/i
 and C2-M3 call its Admin API as their specs describe. Every start of an installation and `/scaffold/reset`
 restore the start state of its realm. `TEST_TOOLS=false` leaves all test tools out and never touches the realm.
 Without `IAM_URL`, an installation uses the in-memory IAM of `tools/test_iam.py`; `pytest` runs on it.
+
+## Real wallets (C5-M1)
+
+`ebw/` holds the EBW-Connector (C5-M1), a Business Wallet in the browser, a test issuer and a small OSP 2.0
+demo portal, for trying sign-in and onboarding with a real wallet app on a phone. It runs on its own, with its
+own virtual environment, and needs nothing else from this repository: see [ebw/README.md](ebw/README.md).
+The scaffold does not use it: the modules and `demo.py` work with the stand-in `TEST-EBW` of `iam/` and
+with `tools/ebw_signer.py`.
 
 ## Credentials at the hackathon (OP-53)
 

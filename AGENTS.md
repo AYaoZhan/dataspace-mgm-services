@@ -18,7 +18,7 @@ variable names, own test data and silent errors. The rules below prevent this.
 
 1. Work only in your team's folder `modules/<id>/` (for example `modules/c3_m1/`). Outside it, you
    may only add your module tests as `tests/test_<id>_*.py` (for example `tests/test_c3_m1_steps.py`).
-2. Never change another team's module, `portal_common/`, `scaffold/`, `tools/`, `iam/`, `testdata/`,
+2. Never change another team's module, `portal_common/`, `scaffold/`, `tools/`, `iam/`, `ebw/`, `testdata/`,
    `config/` or `spec/`. If something there is wrong or missing, open an issue and work with the
    current state.
 3. The spec in `spec/` is the contract. Read `spec/FRAMEWORK.md`, then the `README.md`,
