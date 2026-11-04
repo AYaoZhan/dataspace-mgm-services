@@ -72,6 +72,7 @@ def main() -> None:
             "TRUST_LIST_SIGNER_FILE": str(ROOT / "test_tools" / ".keys" / "trust-list-signer.json"),
             "STATUS_LIST_CACHE_SECONDS": "5",
             "RESPONSE_MODE": "direct_post" if args.direct_post else "direct_post.jwt",
+            "PYTHONUTF8": "1",  # files and logs in UTF-8; Windows would use its code page and fail on names like Łukasz
         }
         for name, port in SERVICES.items():
             # wallets on phones fetch the status list from the URI in the credential, so it must be the public one

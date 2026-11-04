@@ -38,7 +38,7 @@ This starts the three services locally. Keys and data are created on the first s
 .venv/bin/python -m tools.start --tunnel
 ```
 
-The script shows the three addresses, the wallet address of the Business Wallet and the OSP 2.0 demo portal. Every start with `--tunnel` brings new addresses; keys and data stay, and credentials in the wallet stay valid. Stop with Ctrl+C. cloudflared needs outgoing connections to Cloudflare; if a network blocks them, use another one, for example a phone hotspot.
+The script shows the three addresses, the wallet address of the Business Wallet and the OSP 2.0 demo portal. Every start with `--tunnel` brings new addresses. Keys and data stay, but credentials issued before no longer work, because their status list is at the old address. After a restart, fetch the credentials in the wallet again, let an administrator fetch the company credential in the Business Wallet again, and issue powers of attorney again. Stop with Ctrl+C. cloudflared needs outgoing connections to Cloudflare; if a network blocks them, use another one, for example a phone hotspot.
 
 One running copy is enough for a group. Every copy has its own keys and trust list, so credentials from one copy are not valid at another.
 

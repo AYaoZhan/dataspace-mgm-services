@@ -55,6 +55,7 @@ def start_services() -> list[subprocess.Popen]:
         "STATUS_LIST_CACHE_SECONDS": "0",
         "AUDIT_LOG_FILE": str(TMP / "audit.log"),
         "CLIENTS_FILE": str(TMP / "no-clients.json"),
+        "PYTHONUTF8": "1",  # as in tools.start
     }
     processes = []
     for name in ("test_tools", "connector", "business_wallet"):

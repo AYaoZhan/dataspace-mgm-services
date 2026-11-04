@@ -5,7 +5,8 @@
 # on a Windows machine, so that the phones and laptops of all teams can use the same addresses.
 # No admin rights, no git needed. Run in PowerShell:
 #   irm https://raw.githubusercontent.com/tx-arena-events/portal-backend/main/ebw/host-windows.ps1 | iex
-# Stop with Ctrl+C. Keep the window open during the event. A second run keeps keys and data; the addresses change.
+# Stop with Ctrl+C. Keep the window open during the event. A second run keeps keys and data, but the addresses change,
+# so credentials issued before no longer work and must be fetched and issued again.
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -25,8 +26,8 @@ if (Test-NetConnection region1.v2.argotunnel.com -Port 7844 -InformationLevel Qu
 }
 
 Write-Host "== 2/5 Code of portal-backend (download as ZIP on the first run only)"
-# Keys and data of the services live in .keys\ and data\ inside this folder. Replacing the folder would create
-# new keys, and every phone would have to fetch its credentials again. So a second run keeps it.
+# Keys and data of the services live in .keys\ and data\ inside this folder; a second run keeps the folder.
+# Credentials issued before must be fetched again anyway: their status list is at the tunnel address of the previous run.
 # To force a fresh download: $env:EBW_FRESH = "1" before the command.
 $Ebw = Join-Path $Root "portal-backend-main\ebw"
 if ($env:EBW_FRESH -eq "1" -and (Test-Path (Join-Path $Root "portal-backend-main"))) { Remove-Item -Recurse -Force (Join-Path $Root "portal-backend-main") }
