@@ -2685,7 +2685,6 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
      "rotate_subscription_credentials"
     ]
    },
@@ -2713,9 +2712,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2742,9 +2739,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2771,9 +2766,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2800,9 +2793,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2829,9 +2820,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2858,9 +2847,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2887,9 +2874,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2916,9 +2901,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2946,8 +2929,7 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "read_wallet_holder_access"
     ]
    },
    {
@@ -2974,9 +2956,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -3003,9 +2983,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -3032,9 +3010,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -5842,9 +5818,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -5883,9 +5857,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -5977,7 +5949,6 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
      "rotate_subscription_credentials"
     ]
    }
@@ -6009,9 +5980,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6042,9 +6011,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6075,9 +6042,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6108,9 +6073,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6141,9 +6104,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6174,9 +6135,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6208,8 +6167,7 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "read_wallet_holder_access"
     ]
    }
   },
@@ -6240,9 +6198,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6273,9 +6229,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6306,9 +6260,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6382,6 +6334,26 @@
      "Applicant",
      "OSP Reviewer",
      "OSP Admin"
+    ]
+   }
+  },
+  {
+   "id": "5a1c0033-0000-4000-8000-000000000033",
+   "username": "ebw.5e562d7b-be83-5a98-b019-e2214cb50d21",
+   "firstName": "Ute",
+   "lastName": "Zweit",
+   "enabled": true,
+   "federatedIdentities": [
+    {
+     "identityProvider": "ebw-connector",
+     "userId": "5e562d7b-be83-5a98-b019-e2214cb50d21",
+     "userName": "ute"
+    }
+   ],
+   "clientRoles": {
+    "portal-core": [
+     "Applicant",
+     "OSP Reviewer"
     ]
    }
   }

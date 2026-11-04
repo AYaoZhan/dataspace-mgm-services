@@ -2715,7 +2715,6 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
      "rotate_subscription_credentials"
     ]
    },
@@ -2743,9 +2742,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2772,9 +2769,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2801,9 +2796,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2830,9 +2823,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2859,9 +2850,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2888,9 +2877,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2917,9 +2904,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2946,9 +2931,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -2976,8 +2959,7 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "read_wallet_holder_access"
     ]
    },
    {
@@ -3004,9 +2986,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -3033,9 +3013,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -3062,9 +3040,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    },
    {
@@ -5939,9 +5915,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -5980,9 +5954,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6074,7 +6046,6 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
      "rotate_subscription_credentials"
     ]
    }
@@ -6106,9 +6077,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6139,9 +6108,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6172,9 +6139,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6205,9 +6170,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6238,9 +6201,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6271,9 +6232,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6305,8 +6264,7 @@
      "query_c8_m1",
      "query_c10_m1",
      "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "read_wallet_holder_access"
     ]
    }
   },
@@ -6337,9 +6295,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6370,9 +6326,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },
@@ -6403,9 +6357,7 @@
      "query_c6_m1",
      "query_c8_m1",
      "query_c10_m1",
-     "query_c12_m1",
-     "read_wallet_holder_access",
-     "rotate_subscription_credentials"
+     "query_c12_m1"
     ]
    }
   },

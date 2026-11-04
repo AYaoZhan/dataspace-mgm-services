@@ -255,6 +255,22 @@
      "temporary": false
     }
    ]
+  },
+  {
+   "id": "5e562d7b-be83-5a98-b019-e2214cb50d21",
+   "username": "ute",
+   "firstName": "Ute",
+   "lastName": "Zweit",
+   "email": "ute@stand-in.example.org",
+   "emailVerified": true,
+   "enabled": true,
+   "credentials": [
+    {
+     "type": "password",
+     "value": "test-only-password",
+     "temporary": false
+    }
+   ]
   }
  ]
 }
