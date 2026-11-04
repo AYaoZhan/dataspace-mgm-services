@@ -115,7 +115,9 @@ def test_service_token_has_step_and_query_permissions_of_the_spec():
     _iam_app()
     claims = tokens.verify(tokens.service_token("c12-m1"))
     assert claims["azp"] == "svc-c12-m1"
-    assert spec.service_permissions() <= tokens.permissions(claims)
+    only_for_one = {"read_wallet_holder_access", "rotate_subscription_credentials"}   # C2-M5 6.2
+    assert spec.service_permissions() - only_for_one <= tokens.permissions(claims)
+    assert not only_for_one & tokens.permissions(claims)
     assert tokens.service_token("c12-m1") == tokens.service_token("c12-m1")  # cached
 
 

@@ -40,6 +40,10 @@ CSP_CLIENTS = {"sa-csp": "report_csp_notification", "sa-csp-issuer": "report_cre
                "sa-csp-wallet": "report_credential_status"}
 
 
+# permissions that C2-M5 6.2 grants to one service account only (as in iam/test/build-test-realm.py)
+ONLY_FOR = {"read_wallet_holder_access": "svc-c4-m1", "rotate_subscription_credentials": "svc-c10-m1"}
+
+
 # ---------------------------------------------------------------- spec parsing (C2-M5 6.2 - 6.4)
 def _section(text: str, start: str, end: str) -> str:
     return text[text.index(start):text.index(end)]
@@ -92,9 +96,11 @@ class IAM:
         secret = os.environ.get("SERVICE_CLIENT_SECRET", tokens.DEFAULT_SERVICE_SECRET)
         every = spec.service_permissions()
         for mid in spec.modules():
-            # MINIMAL: every svc-<module> gets every step and query permission (like svc-test-internal);
+            # MINIMAL: every svc-<module> gets every step and query permission (like svc-test-internal),
+            # except the ones C2-M5 6.2 grants to one account only;
             # upgrade: exactly the permissions named in section 11 of the calling module.
-            self.clients[f"svc-{mid}"] = {"secret": secret, "permissions": set(every)}
+            self.clients[f"svc-{mid}"] = {"secret": secret, "permissions": {
+                p for p in every if ONLY_FOR.get(p, f"svc-{mid}") == f"svc-{mid}"}}
         for cid, perm in CSP_CLIENTS.items():
             self.clients[cid] = {"jwksUrl": os.environ.get("CSP_JWKS_URL"), "permissions": {perm}}
         self.clients["sa-credential-issuer"] = {"secret": os.environ.get("CREDENTIAL_ISSUER_CALLBACK_SECRET",

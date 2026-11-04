@@ -11,7 +11,8 @@
         { "key": "hans", "id": "5a1c0003-0000-4000-8000-000000000003", "portalRoles": [] },
         { "key": "lieschen", "id": "5a1c0004-0000-4000-8000-000000000004", "portalRoles": [] },
         { "key": "otto", "id": "5a1c0012-0000-4000-8000-000000000012", "portalRoles": ["OSP Admin"] },
-        { "key": "rolf", "id": "bbede0f3-fbc4-433b-b7ca-1982e8724912", "portalRoles": ["OSP Reviewer"] }
+        { "key": "rolf", "id": "bbede0f3-fbc4-433b-b7ca-1982e8724912", "portalRoles": ["OSP Reviewer"] },
+        { "key": "renate", "id": "ed9d901d-cdc3-4a86-8ab4-0b477318506c", "portalRoles": ["OSP Reviewer"] }
       ],
       "technicalUser": true,
       "appTest": true

@@ -76,15 +76,20 @@ def account(person, stand_ins):
     return user
 
 
+ONLY_FOR = {"read_wallet_holder_access": "svc-c4-m1", "rotate_subscription_credentials": "svc-c10-m1"}  # C2-M5 6.2
+
+
 def service_accounts(realm, secret):
     """`svc-<module>` of every folder in modules/ and `svc-test-internal` get every step and query permission
-    (C2-M5 14.2), as `tokens.service_token` expects. `svc-c2-m2` and `svc-c2-m3` keep their rights on the Admin API."""
+    (C2-M5 14.2), as `tokens.service_token` expects; the permissions in ONLY_FOR only the account named there
+    and `svc-test-internal`. `svc-c2-m2` and `svc-c2-m3` keep their rights on the Admin API."""
     names = [r["name"] for r in realm["roles"]["client"]["portal-core"]
              if r["name"].startswith(("execute_steps_", "query_")) or r["name"] in ("read_wallet_holder_access", "rotate_subscription_credentials")]
     ids = [f"svc-{folder.name.replace('_', '-')}" for folder in sorted((ROOT / "modules").iterdir()) if (folder / "__init__.py").exists()]
     clients = {c["clientId"]: c for c in realm["clients"]}
     users = {u["username"]: u for u in realm["users"]}
     for client_id in [*ids, "svc-test-internal"]:
+        granted = [n for n in names if client_id in (ONLY_FOR.get(n, client_id), "svc-test-internal")]
         if client_id not in clients:
             realm["clients"].append({
                 "clientId": client_id, "name": f"HTTP between modules (test): {client_id}", "enabled": True, "publicClient": False,
@@ -93,11 +98,11 @@ def service_accounts(realm, secret):
                 "attributes": {"client_credentials.use_refresh_token": "false"},
                 "defaultClientScopes": ["basic", "roles", "portal-core-audience"], "optionalClientScopes": [],
             })
-            realm["users"].append({"username": f"service-account-{client_id}", "enabled": True, "serviceAccountClientId": client_id, "clientRoles": {"portal-core": names}})
+            realm["users"].append({"username": f"service-account-{client_id}", "enabled": True, "serviceAccountClientId": client_id, "clientRoles": {"portal-core": granted}})
         else:
             clients[client_id]["defaultClientScopes"].append("portal-core-audience")
-            users[f"service-account-{client_id}"]["clientRoles"]["portal-core"] = names
-        realm["clientScopeMappings"]["portal-core"].append({"client": client_id, "roles": names})
+            users[f"service-account-{client_id}"]["clientRoles"]["portal-core"] = granted
+        realm["clientScopeMappings"]["portal-core"].append({"client": client_id, "roles": granted})
 
 
 def technical_user(realm, secret):
