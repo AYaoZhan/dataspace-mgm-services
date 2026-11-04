@@ -4,7 +4,10 @@
 # Host the EBW stack (EBW-Connector, Business Wallet, OSP 2.0 demo portal) with Cloudflare quick tunnels
 # on a Windows machine, so that the phones and laptops of all teams can use the same addresses.
 # No admin rights, no git needed. Run in PowerShell:
-#   irm https://raw.githubusercontent.com/tx-arena-events/portal-backend/main/ebw/host-windows.ps1 | iex
+#   irm https://raw.githubusercontent.com/eclipse-tractusx/dataspace-mgm-service/main/ebw/host-windows.ps1 | iex
+# Before the scaffold is merged upstream, take script and code from the fork:
+#   $env:EBW_REPO = "tx-arena-events/dataspace-mgm-service"; $env:EBW_BRANCH = "feature/hackathon-scaffold"
+#   irm https://raw.githubusercontent.com/tx-arena-events/dataspace-mgm-service/feature/hackathon-scaffold/ebw/host-windows.ps1 | iex
 # Stop with Ctrl+C. Keep the window open during the event. A second run keeps keys and data, but the addresses change,
 # so credentials issued before no longer work and must be fetched and issued again.
 
@@ -25,15 +28,18 @@ if (Test-NetConnection region1.v2.argotunnel.com -Port 7844 -InformationLevel Qu
   return
 }
 
-Write-Host "== 2/5 Code of portal-backend (download as ZIP on the first run only)"
+$Repo = if ($env:EBW_REPO) { $env:EBW_REPO } else { "eclipse-tractusx/dataspace-mgm-service" }
+$Branch = if ($env:EBW_BRANCH) { $env:EBW_BRANCH } else { "main" }
+$Code = ($Repo.Split("/")[1]) + "-" + ($Branch -replace "/", "-")   # folder name inside the GitHub ZIP
+Write-Host "== 2/5 Code of $Repo ($Branch, download as ZIP on the first run only)"
 # Keys and data of the services live in .keys\ and data\ inside this folder; a second run keeps the folder.
 # Credentials issued before must be fetched again anyway: their status list is at the tunnel address of the previous run.
 # To force a fresh download: $env:EBW_FRESH = "1" before the command.
-$Ebw = Join-Path $Root "portal-backend-main\ebw"
-if ($env:EBW_FRESH -eq "1" -and (Test-Path (Join-Path $Root "portal-backend-main"))) { Remove-Item -Recurse -Force (Join-Path $Root "portal-backend-main") }
+$Ebw = Join-Path $Root "$Code\ebw"
+if ($env:EBW_FRESH -eq "1" -and (Test-Path (Join-Path $Root $Code))) { Remove-Item -Recurse -Force (Join-Path $Root $Code) }
 if (-not (Test-Path $Ebw)) {
-  $Zip = Join-Path $Root "portal-backend.zip"
-  Invoke-WebRequest "https://github.com/tx-arena-events/portal-backend/archive/refs/heads/main.zip" -OutFile $Zip
+  $Zip = Join-Path $Root "$Code.zip"
+  Invoke-WebRequest "https://github.com/$Repo/archive/refs/heads/$Branch.zip" -OutFile $Zip
   Expand-Archive $Zip -DestinationPath $Root -Force
   Ok "code downloaded to $Ebw"
 } else {

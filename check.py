@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ORG = "tx-arena-events"
+REPO = "dataspace-mgm-service"   # fork of eclipse-tractusx/dataspace-mgm-service
 KEYCLOAK_URL = "http://localhost:8080/auth/realms/CX-Central/.well-known/openid-configuration"
 DEMO_PORTS = {8000: "OSP A", 8001: "OSP B", 8100: "CSP stand-in"}
 AGENT_APIS = {
@@ -181,18 +182,24 @@ def check_repos(have: dict[str, bool], offline: bool) -> None:
     else:
         report("OK", "Spec in spec/", "present")
     if not have.get("git"):
-        report("FAIL", "portal-backend", "not checked, git is missing")
+        report("FAIL", REPO, "not checked, git is missing")
         return
     code, url = run(["git", "remote", "get-url", "origin"])
-    if code == 0 and f"{ORG}/portal-backend" in url:
-        report("OK", "portal-backend", url)
+    if code == 0 and f"{ORG}/{REPO}" in url:
+        report("OK", REPO, url)
+    elif code == 0 and f"/{REPO}" in url:
+        report("WARN", REPO, f"origin is {url}, you cannot push there",
+               f"Work in the fork of the hackathon: git clone https://github.com/{ORG}/{REPO}.git")
+    elif code == 0 and "/portal-backend" in url:
+        report("WARN", REPO, f"origin is the old repository {url}",
+               f"The scaffold moved to Eclipse Tractus-X. Clone it again: git clone https://github.com/{ORG}/{REPO}.git")
     else:
-        report("WARN", "portal-backend", f"origin is {url or 'not set'}",
-               f"Clone the scaffold: git clone https://github.com/{ORG}/portal-backend.git")
+        report("WARN", REPO, f"origin is {url or 'not set'}",
+               f"Clone the scaffold: git clone https://github.com/{ORG}/{REPO}.git")
 
     if offline:
         return
-    for name, path, pull in (("portal-backend", ROOT, "git pull --ff-only"),
+    for name, path, pull in ((REPO, ROOT, "git pull --ff-only"),
                              ("spec", spec, "git -C spec pull --ff-only")):
         if not (path / ".git").exists():
             continue

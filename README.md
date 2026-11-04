@@ -3,9 +3,11 @@ Copyright (c) 2026 Contributors to the Eclipse Foundation
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Hackathon scaffold for the portal backend (OSP 2.0)
+# Eclipse Tractus-X Data Space Management Service (OSP 2.0)
 
-A running installation of the portal backend as a modular monolith (Python 3.12, FastAPI), built
+The backend of the new portal, which replaces the Tractus-X portal: companies join a data space and
+manage their membership. This is the hackathon scaffold: a running installation as a modular
+monolith (Python 3.12, FastAPI), built
 from the module specs in [portal-backend-spec](https://github.com/tx-arena-events/portal-backend-spec).
 Every module of the spec is already mounted, as a stand-in. A team replaces one folder under
 `modules/` with its implementation; the rest of the installation keeps working, and `demo.py`
@@ -41,6 +43,24 @@ addresses). One installation alone, with the built-in CSP stand-in of C3-M2 (no 
 `IAM_URL=http://localhost:8080/auth SETTINGS_FILE=config/osp-a/installation.json uv run uvicorn --factory scaffold.app:create_app --port 8000`.
 Without Docker, `uv run python demo.py --small-iam` runs on the in-memory IAM of the scaffold's own tests;
 there is no sign-in through the browser and no Admin API, so C2-M2 and C2-M3 cannot be built against it.
+
+## Contributing at the hackathon
+
+Every commit is a contribution to Eclipse Tractus-X. Before the day:
+
+1. GitHub account with two-factor authentication.
+2. [Eclipse Foundation account](https://accounts.eclipse.org/user/register), sign the
+   [Eclipse Contributor Agreement (ECA)](https://www.eclipse.org/legal/eca/) and link your GitHub account.
+   The email address of the ECA must be the one in the `Author` field of your commits (`git config user.email`).
+3. Accept the invitation to `tx-arena-events`; your team works on its branch `team/<n>` in the fork
+   [tx-arena-events/dataspace-mgm-service](https://github.com/tx-arena-events/dataspace-mgm-service).
+
+On the day: commit and push to `team/<n>`. In each merge window the team opens a pull request from
+`team/<n>` to `main` of [eclipse-tractusx/dataspace-mgm-service](https://github.com/eclipse-tractusx/dataspace-mgm-service);
+the ECA check runs on it and a Tractus-X committer merges. `main` of the fork stays equal to upstream.
+From the command line:
+`gh pr create --repo eclipse-tractusx/dataspace-mgm-service --base main --head tx-arena-events:team/<n>`.
+The user interface lives in [dataspace-mgm-ui](https://github.com/eclipse-tractusx/dataspace-mgm-ui).
 
 ## What is inside
 

@@ -5,7 +5,8 @@ For coding agents (Claude Code, Codex, GitHub Copilot) and the people who use th
 
 ## What this repository is
 
-The portal backend of the Tractus-X hackathon as one Python application (Python 3.12, FastAPI).
+The Eclipse Tractus-X Data Space Management Service, the backend of the new portal, at the hackathon
+as one Python application (Python 3.12, FastAPI).
 Every module of the spec has a folder `modules/<id>/` and runs as a stand-in at first. Each team
 replaces the stand-in of its module with its implementation. `demo.py` runs the flows across all
 modules and shows whether they work together.
@@ -89,7 +90,8 @@ Operations you have not implemented yet are added from the spec (steps answer `D
 2. All tests pass: `uv run pytest -q`.
 3. `uv run python demo.py` ends with exit code 0.
 4. Open questions are in `modules/<id>/OPEN-QUESTIONS.md`.
-5. A pull request to `main`.
+5. A pull request from the team branch `team/<n>` of the fork `tx-arena-events/dataspace-mgm-service` to `main` of
+   `eclipse-tractusx/dataspace-mgm-service`. A Tractus-X committer merges it.
 
 ## Commits
 
