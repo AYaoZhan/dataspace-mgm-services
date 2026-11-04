@@ -32,6 +32,17 @@ def _clean_state():
     http._local.clear()
 
 
+def team_modules_needing_keycloak() -> list[str]:
+    """C2-M2 and C2-M3 of a team call the Admin API of the Portal IAM; the in-memory test IAM has none."""
+    from scaffold import registry
+    return [e.id for e in registry.load() if e.id in ("c2-m2", "c2-m3") and e.kind == "team"]
+
+
+needs_admin_api = pytest.mark.skipif(
+    bool(team_modules_needing_keycloak()),
+    reason="C2-M2/C2-M3 of a team need Keycloak: docker compose up -d, then uv run python demo.py")
+
+
 def bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 

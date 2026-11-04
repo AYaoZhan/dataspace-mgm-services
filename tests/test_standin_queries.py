@@ -11,6 +11,7 @@ import pytest
 
 from portal_common import events, spec, standin
 from scaffold import registry
+from conftest import needs_admin_api
 from test_demo_scenarios import installation
 
 CALL = re.compile(r"`(GET|POST|PUT|PATCH|DELETE) (?:/api/(c\d+-m\d+))?(/internal/[^`?\s]*)")
@@ -112,6 +113,7 @@ def _params(ids: dict) -> dict[tuple[str, str], dict | None]:
     }
 
 
+@needs_admin_api
 def test_standin_queries_answer_with_the_field_names_of_the_spec(tmp_path, monkeypatch):
     with installation(tmp_path, monkeypatch) as t:
         assert t.ok, "scenarios 1-3 failed; see test_demo_scenarios"
@@ -131,4 +133,5 @@ def test_standin_queries_answer_with_the_field_names_of_the_spec(tmp_path, monke
             errors += [f"{target} {function} {e}" for e in field_errors(ms, schema, answer)]
             checked += 1
     assert not errors, "\n".join(errors)
-    assert checked >= 10
+    # The more teams replace their stand-in, the fewer queries are left to check here.
+    assert checked == sum(1 for q in QUERIES if params[q] is not None and kit_owned(q[0]))

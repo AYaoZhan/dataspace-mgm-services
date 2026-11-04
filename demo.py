@@ -244,7 +244,11 @@ def scenario_3(t: Target) -> None:
     base, pia = t.osp_a, t.token(t.osp_a, "pia")
     if not t.check("precondition: customer company of scenario 1 is active", bool(t.ctx.get("maschinenbau.bpn"))):
         return
-    r = t.call("POST", f"{base}/api/c8-m1/offers", pia, json={"offerType": "APP", "name": "Demo App", "instanceKind": "MULTI"})
+    # Complete for submit (C8-M1 6.2): descriptions, a privacy policy, planned roles and a CONTRACT document.
+    # The spec names no values for privacy policies yet; COMPANY_DATA is the value of the current portal.
+    r = t.call("POST", f"{base}/api/c8-m1/offers", pia, json={
+        "offerType": "APP", "name": "Demo App", "instanceKind": "MULTI", "privacyPolicies": ["COMPANY_DATA"],
+        "descriptions": [{"lang": "en", "short": "Demo app of the hackathon", "long": "Shows offer, approval and subscription."}]})
     if not t.check("C8-M1: provider (OSP company, APP_PROVIDER) creates an app offer", r.status_code == 201, r.text[:200]):
         return
     oid = r.json()["offerId"]
@@ -252,6 +256,8 @@ def scenario_3(t: Target) -> None:
            json=[{"name": n, "descriptions": [{"lang": "en", "text": n}]} for n in ("Viewer", "Editor")])
     t.call("PUT", f"{base}/api/c8-m1/offers/{oid}/technical-user-profile", pia,
            json={"name": "connector-sync", "roles": [{"name": "Dataspace Discovery"}]})
+    t.call("POST", f"{base}/api/c8-m1/offers/{oid}/documents", pia, data={"documentType": "CONTRACT"},
+           files={"file": ("contract.pdf", b"%PDF-1.4 demo contract", "application/pdf")})
     r = t.call("POST", f"{base}/api/c8-m1/offers/{oid}/submit", pia)
     t.check("C8-M1: submit -> IN_REVIEW", r.status_code == 200 and r.json()["status"] == "IN_REVIEW", r.text[:200])
     r = t.call("POST", f"{base}/api/c8-m1/osp/offers/{oid}/approve", t.token(base, "otto"))
@@ -400,6 +406,7 @@ def start_processes(with_b: bool, csp_issuer: bool = False, small_iam: bool = Fa
         envs.append(("osp-b", ports["OSP_B"], "scaffold.app:create_app", True,
                      {**common, "SETTINGS_FILE": str(ROOT / "config/osp-b/installation.json"), "BASE_URL": b,
                       "OSP_SIGNING_KEY_FILE": str(rt / "osp-b-key.json"), "CSP_WALLET_URL": f"{csp}/wallet/v1",
+                      "DID_RESOLVER_URL": csp,   # the shared CSP stand-in resolves the DIDs of its wallets
                       **iam_env(REALM_B),
                       **({"CSP_ISSUER_URL": f"{csp}/issuer/v1"} if csp_issuer else {})}))
     procs = []

@@ -9,7 +9,7 @@ import json
 from fastapi.testclient import TestClient
 
 import demo
-from conftest import BASE
+from conftest import BASE, needs_admin_api
 from portal_common import csp as csp_client
 from portal_common import http as phttp
 from scaffold import app as scaffold_app
@@ -44,6 +44,7 @@ def installation(tmp_path, monkeypatch):
             scaffold_app.reset_all(app.state.entries)   # no state (e.g. provider calls) for later tests
 
 
+@needs_admin_api
 def test_scenarios_1_to_3_with_stand_ins(tmp_path, monkeypatch):
     with installation(tmp_path, monkeypatch) as t:
         pass

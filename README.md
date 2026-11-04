@@ -30,6 +30,13 @@ Before the day, `uv run python check.py` checks the whole setup (tools, reposito
 Docker images, Keycloak, ports, membership in `tx-arena-events`, `demo.py`) and lists what is still to do.
 Only some scenarios: `uv run python demo.py --scenarios 1,2,3`.
 
+After every `git pull`, recreate Keycloak so that it imports the current realm:
+`docker compose up -d --force-recreate`. An older realm stops the installations at start
+("Keycloak runs an older realm than …").
+Teams of **C2-M2 and C2-M3 need Docker with Keycloak**: both modules call its Admin API, which the
+in-memory IAM of the tests does not have. With one of them in the repository, the in-process
+scenario tests are skipped; `demo.py` against Keycloak is the check.
+
 Keep the three processes running for your own calls (UI, curl, Swagger at `/docs`):
 
 ```bash

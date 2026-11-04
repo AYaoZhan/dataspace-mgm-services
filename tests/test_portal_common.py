@@ -273,7 +273,10 @@ def test_drain_without_thread():
 
 
 # ---------------------------------------------------------------- spec-driven stand-in
-def test_fallback_router_mounts_every_spec_operation():
+def test_fallback_router_mounts_every_spec_operation(monkeypatch):
+    # the stand-in of C3-M2, also when a team has replaced the module folder
+    monkeypatch.setattr(standin, "interface_function",
+                        lambda module, name: standin._standin_function(standin._interface_operations(module)[name]))
     app = _iam_app()
     implemented = APIRouter(prefix="/api/c3-m2")
 

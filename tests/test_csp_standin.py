@@ -125,3 +125,25 @@ def test_callback_only_under_the_installation_address(world):
     c.put("/issuer/v1/holders/BPNL00000000OSPA", json={"did": "did:web:wallet.example.org:BPNL00000000OSPA"}, headers=a)
     world["app"].state.csp.callback(OSP_A, "sa-csp-issuer", "http://evil.test/x", {"bpn": "x"})
     assert world["app"].state.csp.callbacks[-1]["status"].startswith("refused")
+
+
+def test_wallet_did_document_resolves_and_accounts_follow_c4_m2_11_3(world):
+    c, a = world["client"], h(world, OSP_A)
+    w = c.post("/wallet/v1/wallets", json={"bpn": "BPNL00000000OSPA"}, headers=a).json()
+    r = c.get(f"/1.0/identifiers/{w['did']}")
+    assert r.status_code == 200 and not r.json()["didResolutionMetadata"].get("error")
+    doc = r.json()["didDocument"]
+    assert doc["id"] == w["did"]
+    assert doc["verificationMethod"][0]["publicKeyJwk"]["kty"] == "EC"
+    assert {"x", "y", "crv"} <= set(doc["verificationMethod"][0]["publicKeyJwk"])
+    assert [s["serviceEndpoint"] for s in doc["service"] if s["type"] == "CredentialService"] == [w["credentialServiceUrl"]]
+    r = c.get("/1.0/identifiers/did:web:csp-wallet.example.org:BPNL0000000UNKNOWN")
+    assert r.status_code == 404 and r.json()["didResolutionMetadata"]["error"] == "notFound"
+
+    acc = c.post("/wallet/v1/wallets/BPNL00000000OSPA/accounts", json={"externalId": "tu-1", "name": "sync"}, headers=a)
+    assert acc.status_code == 201 and {"tokenUrl", "clientId", "clientSecret"} <= set(acc.json())
+    assert c.post("/wallet/v1/wallets/BPNL00000000OSPA/accounts", json={"externalId": "tu-1"}, headers=a).status_code == 409
+    assert c.post("/wallet/v1/wallets/BPNL00000000OSPA/accounts", json={"externalId": "tu-2"},
+                  headers=h(world, OSP_B)).status_code == 403
+    assert c.delete("/wallet/v1/wallets/BPNL00000000OSPA/accounts/tu-1", headers=a).status_code == 204
+    assert c.delete("/wallet/v1/wallets/BPNL00000000OSPA/accounts/tu-1", headers=a).status_code == 204

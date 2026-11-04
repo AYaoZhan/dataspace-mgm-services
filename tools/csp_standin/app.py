@@ -11,6 +11,7 @@ APIs (proposals of the spec; one data set behind all of them):
   `/v1/discovery/{bpn}`, `/v1/trust-list` (not in the spec).
 - `/issuer/v1/holders/...`: issuer of the CSP (C4-M1 11.5).
 - `/wallet/v1/wallets/...`: dataspace wallet of the CSP (C4-M2 11.3).
+- `/1.0/identifiers/{did}`: DID resolution of the wallet DIDs, as a Universal Resolver (C4-M2 11.4, `DID_RESOLVER_URL`).
 - `/identity/v1/participants/{participantContextId}/credentials/request`: identity API of the
   CSP wallet (C4-M1 11.4/11.5 step 3). Path and body are provisional: the spec refers to the
   identity interface of the IdentityHub without naming it.
@@ -166,12 +167,39 @@ class Csp:
             return problem(403, "not-home-osp")
         if bpn in self.wallets:
             return problem(409, "wallet-exists")
-        w = {"bpn": bpn, "participantContextId": str(uuid.uuid4()), "did": f"did:web:csp-wallet.example.org:{bpn}",
+        did = f"did:web:csp-wallet.example.org:{bpn}"
+        w = {"bpn": bpn, "participantContextId": str(uuid.uuid4()), "did": did,
              "credentialServiceUrl": f"https://csp-wallet.example.org/api/credentials/v1/participants/{bpn}",
              "identityApiUrl": f"{self.public_url}/identity/v1", "apiKey": secrets.token_urlsafe(24), "accounts": {},
              "credentials": []}
+        _, pub = ec_jwk(f"{did}#key-1")
+        w["didDocument"] = {"@context": ["https://www.w3.org/ns/did/v1"], "id": did,
+                            "verificationMethod": [{"id": f"{did}#key-1", "type": "JsonWebKey2020", "controller": did,
+                                                    "publicKeyJwk": pub}],
+                            "service": [{"id": f"{did}#credential-service", "type": "CredentialService",
+                                         "serviceEndpoint": w["credentialServiceUrl"]}]}
         self.wallets[bpn] = w
         return 201, {k: w[k] for k in ("participantContextId", "did", "credentialServiceUrl", "identityApiUrl", "apiKey")}
+
+    def create_account(self, caller: str, bpn: str, body: dict):
+        if err := self.core.home_check(caller, bpn):
+            return problem(403, "not-home-osp")
+        if (w := self.wallets.get(bpn)) is None:
+            return problem(404, "not-found", detail=f"no wallet for {bpn}")
+        external_id = body.get("externalId")
+        if not external_id:
+            return problem(400, "validation", detail="externalId is required")
+        if external_id in w["accounts"]:
+            return problem(409, "account-exists")
+        w["accounts"][external_id] = {"name": body.get("name"), "clientId": f"sts-{bpn}-{external_id}"}
+        return 201, {"tokenUrl": "https://csp-wallet.example.org/api/sts/token",
+                     "clientId": w["accounts"][external_id]["clientId"], "clientSecret": secrets.token_urlsafe(24)}
+
+    def resolve(self, did: str):
+        w = next((w for w in self.wallets.values() if w["did"] == did), None)
+        if w is None:
+            return 404, {"didDocument": None, "didResolutionMetadata": {"error": "notFound"}, "didDocumentMetadata": {}}
+        return 200, {"didDocument": w["didDocument"], "didResolutionMetadata": {}, "didDocumentMetadata": {}}
 
     def request_credentials(self, pcid: str, api_key: str | None, body: dict):
         w = next((w for w in self.wallets.values() if w["participantContextId"] == pcid), None)
@@ -266,6 +294,20 @@ def create_app() -> FastAPI:
         who(authorization)
         csp.wallets.pop(bpn, None)
         return Response(status_code=204)
+
+    @app.post("/wallet/v1/wallets/{bpn}/accounts")
+    def create_account(bpn: str, body: dict = Body(...), authorization: str | None = Header(None)):
+        return _reply(csp.create_account(who(authorization), bpn, body))
+
+    @app.delete("/wallet/v1/wallets/{bpn}/accounts/{external_id}")
+    def delete_account(bpn: str, external_id: str, authorization: str | None = Header(None)):
+        who(authorization)
+        csp.wallets.get(bpn, {}).get("accounts", {}).pop(external_id, None)   # 404 counts as deleted (C4-M2 11.3)
+        return Response(status_code=204)
+
+    @app.get("/1.0/identifiers/{did}")
+    def resolve(did: str):
+        return _reply(csp.resolve(did))
 
     @app.post("/identity/v1/participants/{pcid}/credentials/request")
     def request_credentials(pcid: str, body: dict = Body(...), x_api_key: str | None = Header(None)):

@@ -88,6 +88,9 @@ def reset_realm() -> None:
             call("DELETE", f"/clients/{client['id']}")
     core = call("GET", "/clients", params={"clientId": PORTAL_CORE}).json()[0]["id"]
     for uid, person in people.items():
+        if http.request("GET", f"{base}/users/{uid}", headers=headers, timeout=60).status_code == 404:
+            raise RuntimeError(f"Keycloak runs an older realm than {realm_file().name} (no account {person['username']}). "
+                               "Recreate it: docker compose up -d --force-recreate")
         rep = call("GET", f"/users/{uid}").json()
         rep["attributes"] = person.get("attributes", {})
         call("PUT", f"/users/{uid}", json=rep)
