@@ -151,7 +151,9 @@ class Issuer:
         return {"issuer": self.base_url, "jwks": {"keys": [signing_jwk(self.key)]}}
 
     def status_list_token(self):
-        token = self.status_list.token(self.key, {"kid": signing_jwk(self.key)["kid"]})
+        # same header as the credentials: wallets such as Paradym (Credo) require the status list to be signed
+        # with the x5c chain of the credential issuer
+        token = self.status_list.token(self.key, self.header)
         return Response(token, media_type="application/statuslist+jwt", headers={"Cache-Control": "max-age=30"})
 
     # Flow

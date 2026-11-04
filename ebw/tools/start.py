@@ -74,7 +74,8 @@ def main() -> None:
             "RESPONSE_MODE": "direct_post" if args.direct_post else "direct_post.jwt",
         }
         for name, port in SERVICES.items():
-            env = {**os.environ, **common_env, "PUBLIC_URL": public[name], "STATUS_BASE_URL": local(name)}
+            # wallets on phones fetch the status list from the URI in the credential, so it must be the public one
+            env = {**os.environ, **common_env, "PUBLIC_URL": public[name], "STATUS_BASE_URL": public[name]}
             log = open(LOGS / f"{name}.log", "a")
             processes.append(
                 subprocess.Popen(

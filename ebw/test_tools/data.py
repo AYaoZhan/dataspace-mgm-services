@@ -15,9 +15,11 @@ DEFINITIONS = {
             "given_name": "Given name",
             "family_name": "Family name",
             "birthdate": "Date of birth",
+            "place_of_birth": "Place of birth",
             "nationalities": "Nationalities",
             "issuing_country": "Issuing country",
             "issuing_authority": "Issuing authority",
+            "date_of_expiry": "Expiry date",
         },
     },
     "mandate": {
@@ -45,7 +47,15 @@ DEFINITIONS = {
 }
 
 CLAIMS = {
-    "pid": {**PERSON, "nationalities": ["DE"], "issuing_country": "DE", "issuing_authority": "DE"},
+    # place_of_birth and date_of_expiry are mandatory in the PID rulebook; wallets such as Paradym rely on them
+    "pid": {
+        **PERSON,
+        "place_of_birth": {"locality": "Stuttgart", "country": "DE"},
+        "nationalities": ["DE"],
+        "issuing_country": "DE",
+        "issuing_authority": "DE",
+        "date_of_expiry": "2031-12-31",
+    },
     "mandate": {
         "representative": PERSON,
         "represented": {"identifier": COMPANY["ebwoid"], "legal_name": COMPANY["legal_name"]},
