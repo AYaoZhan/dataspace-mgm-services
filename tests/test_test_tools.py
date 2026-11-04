@@ -92,11 +92,13 @@ def test_test_data_package_is_consistent():
     iam = test_iam.iam()
     framework_7a = {"erika": "5a1c0001-0000-4000-8000-000000000001", "max": "5a1c0002-0000-4000-8000-000000000002",
                     "hans": "5a1c0003-0000-4000-8000-000000000003", "lieschen": "5a1c0004-0000-4000-8000-000000000004",
-                    "otto": "5a1c0012-0000-4000-8000-000000000012", "rolf": "bbede0f3-fbc4-433b-b7ca-1982e8724912"}
+                    "otto": "5a1c0012-0000-4000-8000-000000000012", "rolf": "bbede0f3-fbc4-433b-b7ca-1982e8724912",
+                    "renate": "ed9d901d-cdc3-4a86-8ab4-0b477318506c"}
     for key, sub in framework_7a.items():   # start state of a hackathon installation: nobody bound
         assert iam.find(key) == sub and iam.person(sub)["companyId"] is None, key
     assert "OSP Admin" in iam.person(framework_7a["otto"])["portalRoles"]
     assert "OSP Reviewer" in iam.person(framework_7a["rolf"])["portalRoles"]
+    assert "OSP Reviewer" in iam.person(framework_7a["renate"])["portalRoles"]   # second reviewer (C1-M3 6.4)
     assert testdata.test_company_id("EBWOID-DE-0000000001") == "c0000001-0000-4000-8000-000000000001"
     assert derive_bpn("EBWOID-DE-0000000001") == "BPNLIUK2REMLK3F4"   # FRAMEWORK 7a, C3-M2 11.3
     logistik = testdata.applicant_companies()["logistik"]

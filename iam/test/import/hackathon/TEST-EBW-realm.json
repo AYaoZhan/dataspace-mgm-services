@@ -193,6 +193,22 @@
    ]
   },
   {
+   "id": "84738f0c-d49a-51f3-a0e8-cd8c385430b7",
+   "username": "renate",
+   "firstName": "Renate",
+   "lastName": "Prüfer",
+   "email": "renate@stand-in.example.org",
+   "emailVerified": true,
+   "enabled": true,
+   "credentials": [
+    {
+     "type": "password",
+     "value": "test-only-password",
+     "temporary": false
+    }
+   ]
+  },
+  {
    "id": "b74e46d3-17f0-57f5-9758-9bf89f0ded14",
    "username": "pia",
    "firstName": "Pia",

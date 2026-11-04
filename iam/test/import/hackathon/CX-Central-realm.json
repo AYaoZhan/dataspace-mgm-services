@@ -6462,6 +6462,26 @@
    }
   },
   {
+   "id": "ed9d901d-cdc3-4a86-8ab4-0b477318506c",
+   "username": "ebw.84738f0c-d49a-51f3-a0e8-cd8c385430b7",
+   "firstName": "Renate",
+   "lastName": "Prüfer",
+   "enabled": true,
+   "federatedIdentities": [
+    {
+     "identityProvider": "ebw-connector",
+     "userId": "84738f0c-d49a-51f3-a0e8-cd8c385430b7",
+     "userName": "renate"
+    }
+   ],
+   "clientRoles": {
+    "portal-core": [
+     "Applicant",
+     "OSP Reviewer"
+    ]
+   }
+  },
+  {
    "id": "5a1c0021-0000-4000-8000-000000000021",
    "username": "ebw.b74e46d3-17f0-57f5-9758-9bf89f0ded14",
    "firstName": "Pia",

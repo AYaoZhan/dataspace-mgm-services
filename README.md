@@ -140,7 +140,7 @@ the files under `testdata/` follow it, and entries that 7a does not define say
 "scaffold-only, not in FRAMEWORK 7a" in `_comment`.
 
 - **Start state:** C3-M1 holds only the company of the OSP. Erika, Max, Hans and Lieschen have accounts
-  without a company, Otto (`OSP Admin`) and Rolf (`OSP Reviewer`) are OSP staff without a company
+  without a company, Otto (`OSP Admin`), Rolf and Renate (`OSP Reviewer`) are OSP staff without a company
   (`testdata/persons-osp-a.json`). Scenario 1 binds Erika as `Company Admin`.
 - **Companies:** Beispiel Maschinenbau GmbH (with Business Wallet) gets `c0000001-0000-4000-8000-000000000001`
   and the BPN `BPNLIUK2REMLK3F4` in scenario 1; Beispiel Logistik GmbH (`c0000002-…`, without Business

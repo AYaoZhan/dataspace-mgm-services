@@ -6596,6 +6596,26 @@
      "OSP Reviewer"
     ]
    }
+  },
+  {
+   "id": "ed9d901d-cdc3-4a86-8ab4-0b477318506c",
+   "username": "ebw.84738f0c-d49a-51f3-a0e8-cd8c385430b7",
+   "firstName": "Renate",
+   "lastName": "Prüfer",
+   "enabled": true,
+   "federatedIdentities": [
+    {
+     "identityProvider": "ebw-connector",
+     "userId": "84738f0c-d49a-51f3-a0e8-cd8c385430b7",
+     "userName": "renate"
+    }
+   ],
+   "clientRoles": {
+    "portal-core": [
+     "Applicant",
+     "OSP Reviewer"
+    ]
+   }
   }
  ]
 }
