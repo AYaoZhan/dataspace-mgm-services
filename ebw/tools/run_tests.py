@@ -375,7 +375,7 @@ def run() -> None:
     offer_id, _ = issuer.create_offer({"pid": {}})
     issuer.offers[offer_id]["expires"] = time.time() - 1
     check("Offer after its time: expired", issuer.offer_status(offer_id)["status"] == "EXPIRED")
-    check("Test tools page tracks both offers", httpx.get(URL["test_tools"] + "/").text.count("data-offer=") == 2)
+    check("Test tools page tracks all offers", httpx.get(URL["test_tools"] + "/").text.count("data-offer=") == 4)
 
     # 15 Audit log without personal data
     audit = (TMP / "audit.log").read_text()
