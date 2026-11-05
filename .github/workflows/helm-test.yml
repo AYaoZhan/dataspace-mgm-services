@@ -1,0 +1,138 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# Lint and test the product Helm chart (TRG 5.09, TRG 5.11).
+# - lint: chart-testing lint on every pull request that changes the chart
+# - test: installs the chart into a kind cluster, runs `helm test` and, if a previous chart version
+#   is given, the upgrade from that version. The backend image is built from the sources of the run.
+name: "Lint and Test Charts"
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "charts/**"
+      - "Dockerfile"
+      - ".github/workflows/helm-test.yml"
+  workflow_dispatch:
+    inputs:
+      node_image:
+        description: "kindest/node image for the kind cluster (Kubernetes version)"
+        default: "kindest/node:v1.33.1"
+        required: false
+        type: string
+      upgrade_from:
+        description: "Released chart version to upgrade from (empty: no upgrade test)"
+        default: ""
+        required: false
+        type: string
+      helm_version:
+        description: "Helm version to test with"
+        default: "latest"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ github.event.inputs.helm_version || 'latest' }}
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          check-latest: true
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510 # v2.9.0
+
+      - name: Run chart-testing (lint)
+        run: ct lint --target-branch ${{ github.event.repository.default_branch }} --charts charts/dataspace-mgm --validate-maintainers=false
+
+      - name: Check for the application sources
+        id: sources
+        run: |
+          if [ -f pyproject.toml ] && [ -f uv.lock ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Backend sources not found, skipping the installation test."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create kind cluster
+        if: steps.sources.outputs.present == 'true'
+        uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          node_image: ${{ github.event.inputs.node_image || 'kindest/node:v1.33.1' }}
+
+      - name: Build the backend image and load it into kind
+        if: steps.sources.outputs.present == 'true'
+        run: |
+          docker build -t kind-registry.local/dataspace-mgm-service:testing .
+          kind load docker-image kind-registry.local/dataspace-mgm-service:testing --name chart-testing
+
+      - name: Use the released UI image if it is published
+        if: steps.sources.outputs.present == 'true'
+        id: ui
+        run: |
+          if docker manifest inspect tractusx/dataspace-mgm-ui:latest > /dev/null 2>&1; then
+            echo "args=--set frontend.image.tag=latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=--set frontend.enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install the chart and run helm test
+        if: steps.sources.outputs.present == 'true'
+        run: |
+          helm install dataspace-mgm charts/dataspace-mgm \
+            --namespace dataspace-mgm --create-namespace --wait --timeout 5m \
+            --set backend.image.repository=kind-registry.local/dataspace-mgm-service \
+            --set backend.image.tag=testing \
+            --set backend.image.pullPolicy=Never \
+            ${{ steps.ui.outputs.args }}
+          helm test dataspace-mgm --namespace dataspace-mgm --logs
+          helm uninstall dataspace-mgm --namespace dataspace-mgm --wait
+
+      # TRG 5.11: upgrade from a released version to the version of this run
+      - name: Upgrade from the released chart version
+        if: steps.sources.outputs.present == 'true' && github.event.inputs.upgrade_from != ''
+        run: |
+          helm repo add tractusx-dev https://eclipse-tractusx.github.io/charts/dev
+          helm repo update
+          helm install dataspace-mgm tractusx-dev/dataspace-mgm --version ${{ github.event.inputs.upgrade_from }} \
+            --namespace dataspace-mgm-upgrade --create-namespace --wait --timeout 5m ${{ steps.ui.outputs.args }}
+          helm upgrade dataspace-mgm charts/dataspace-mgm \
+            --namespace dataspace-mgm-upgrade --wait --timeout 5m \
+            --set backend.image.repository=kind-registry.local/dataspace-mgm-service \
+            --set backend.image.tag=testing \
+            --set backend.image.pullPolicy=Never \
+            ${{ steps.ui.outputs.args }}
+          helm test dataspace-mgm --namespace dataspace-mgm-upgrade --logs

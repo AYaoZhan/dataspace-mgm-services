@@ -1,0 +1,164 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+{{- if .Values.backend.enabled }}
+{{- $secretName := include "dataspace-mgm.backend.secretName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dataspace-mgm.backend.fullname" . }}
+  labels:
+    {{- include "dataspace-mgm.labels" . | nindent 4 }}
+    {{- include "dataspace-mgm.selectorLabels" (dict "ctx" . "component" "backend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dataspace-mgm.selectorLabels" (dict "ctx" . "component" "backend") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/installation: {{ toJson .Values.backend.installation | sha256sum }}
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "dataspace-mgm.labels" . | nindent 8 }}
+        {{- include "dataspace-mgm.selectorLabels" (dict "ctx" . "component" "backend") | nindent 8 }}
+        {{- with .Values.backend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dataspace-mgm.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      containers:
+        - name: backend
+          image: {{ include "dataspace-mgm.image" (dict "image" .Values.backend.image "ctx" $) | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: BASE_URL
+              value: {{ include "dataspace-mgm.backend.baseUrl" . | quote }}
+            - name: TEST_TOOLS
+              value: {{ .Values.backend.testTools | toString | quote }}
+            {{- with .Values.backend.iam.url }}
+            - name: IAM_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: IAM_REALM
+              value: {{ .Values.backend.iam.realm | quote }}
+            {{- with .Values.backend.iam.issuer }}
+            - name: IAM_ISSUER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.backend.csp.url }}
+            - name: CSP_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.backend.installation.enabled }}
+            - name: SETTINGS_FILE
+              value: /app/config/installation/installation.json
+            {{- end }}
+            {{- if .Values.backend.signingKey.existingSecret }}
+            - name: OSP_SIGNING_KEY_FILE
+              value: {{ printf "/app/secrets/%s" .Values.backend.signingKey.key | quote }}
+            {{- end }}
+            {{- if $secretName }}
+            - name: SERVICE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: SERVICE_CLIENT_SECRET
+            {{- end }}
+            {{- range $name, $value := .Values.backend.env }}
+            - name: {{ $name }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+            {{- with .Values.backend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.backend.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backend.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.backend.installation.enabled }}
+            - name: installation
+              mountPath: /app/config/installation
+              readOnly: true
+            {{- end }}
+            {{- if .Values.backend.signingKey.existingSecret }}
+            - name: signing-key
+              mountPath: /app/secrets
+              readOnly: true
+            {{- end }}
+            {{- with .Values.backend.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.backend.installation.enabled }}
+        - name: installation
+          configMap:
+            name: {{ include "dataspace-mgm.backend.fullname" . }}-installation
+        {{- end }}
+        {{- if .Values.backend.signingKey.existingSecret }}
+        - name: signing-key
+          secret:
+            secretName: {{ .Values.backend.signingKey.existingSecret }}
+            items:
+              - key: {{ .Values.backend.signingKey.key }}
+                path: {{ .Values.backend.signingKey.key }}
+        {{- end }}
+        {{- with .Values.backend.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,277 @@
+#################################################################################
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License, Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0.
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+
+# Default values for the dataspace-mgm product chart.
+# With these defaults, `helm install` starts a self-contained demo installation (OSP A of the
+# hackathon scenario, in-memory Portal IAM and stand-ins). For an operated installation, set
+# `backend.testTools=false`, the Portal IAM, the CSP and the installation settings.
+
+# -- Overrides the chart name
+nameOverride: ""
+# -- Overrides the full name of the release
+fullnameOverride: ""
+# -- Image pull secrets for private registries, e.g. `[{name: my-registry-secret}]`
+imagePullSecrets: []
+# -- Additional labels for all resources
+commonLabels: {}
+
+serviceAccount:
+  # -- Whether a service account is created
+  create: true
+  # -- Name of the service account; generated from the full name if empty
+  name: ""
+  # -- Annotations for the service account
+  annotations: {}
+  # -- Whether the token of the service account is mounted into the pods (the components do not call the Kubernetes API)
+  automountServiceAccountToken: false
+
+backend:
+  # -- Whether the Dataspace Management Service (backend) is installed
+  enabled: true
+  # -- Number of replicas. The service keeps its state in memory for now: keep 1 replica
+  replicaCount: 1
+  image:
+    # -- Image repository on DockerHub
+    repository: tractusx/dataspace-mgm-service
+    # -- Image tag; defaults to the `appVersion` of the chart
+    tag: ""
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+  # -- Public base address of the installation (`BASE_URL`), used for callbacks and links.
+  # Defaults to the first ingress host, or to the in-cluster service address
+  baseUrl: ""
+  # -- Starts the test tools of the installation (`TEST_TOOLS`): in-memory Portal IAM, EBW-Connector double,
+  # provider double. Only for demos and tests; set to `false` for an operated installation
+  testTools: true
+  iam:
+    # -- Address of the Portal IAM (Keycloak, C2-M5), e.g. `https://iam.example.org/auth` (`IAM_URL`).
+    # Empty uses the in-memory test IAM (only with `testTools=true`)
+    url: ""
+    # -- Realm of the installation in the Portal IAM (`IAM_REALM`)
+    realm: "CX-Central"
+    # -- Expected token issuer (`IAM_ISSUER`); defaults to `<url>/realms/<realm>`
+    issuer: ""
+  csp:
+    # -- Address of the core services of the CSP (`CSP_URL`, C3-M2). Empty uses the built-in CSP stand-in
+    url: ""
+  installation:
+    # -- Whether the installation settings (FRAMEWORK 4.8) are provided by this chart. If `false`,
+    # the settings built into the image are used (OSP A of the hackathon scenario)
+    enabled: false
+    # -- Installation settings, rendered as `installation.json` and passed with `SETTINGS_FILE`.
+    # Relative paths are resolved against the mount directory `/app/config/installation`
+    settings:
+      ospId: "22222222-2222-4222-8222-222222222222"
+      ospName: "OSP A"
+      ospCompanyId: "11111111-1111-4111-8111-111111111111"
+      dataspace:
+        memberOf: "Catena-X"
+        name: "Catena-X"
+      masterDataFile: "/app/config/master-data.json"
+  secret:
+    # -- Name of an existing secret with the key `SERVICE_CLIENT_SECRET` (client secret of the service accounts
+    # `svc-<module>` in the Portal IAM). If empty and `serviceClientSecret` is set, the chart creates the secret
+    existingSecret: ""
+    # -- Client secret of the service accounts in the Portal IAM; prefer `existingSecret` in operated installations
+    serviceClientSecret: ""
+  signingKey:
+    # -- Name of an existing secret with the signing key of the OSP (JWK, ES256) for the calls to the CSP
+    # (`OSP_SIGNING_KEY_FILE`, C3-M2). Mounted read-only at `/app/secrets`
+    existingSecret: ""
+    # -- Key of the signing key in the secret
+    key: "osp-signing-key.json"
+  # -- Further configuration variables of the modules as plain environment variables
+  # (section 4 of each module spec), e.g. `ISSUER_MODE: CSP`, `MODULE_URLS: ...`
+  env: {}
+  # -- Further environment variables in Kubernetes notation, e.g. from secrets
+  extraEnv: []
+  # -- Further volumes for the backend pod
+  extraVolumes: []
+  # -- Further volume mounts for the backend container
+  extraVolumeMounts: []
+  service:
+    # -- Service type
+    type: ClusterIP
+    # -- Service port
+    port: 8000
+  ingress:
+    # -- Whether an ingress is created for the backend API
+    enabled: false
+    # -- Ingress class name
+    className: "nginx"
+    # -- Ingress annotations, e.g. for cert-manager
+    annotations: {}
+    # -- Hosts and paths
+    hosts:
+      - host: api.dataspace-mgm.example.org
+        paths:
+          - path: /
+            pathType: Prefix
+    # -- TLS configuration, e.g. `[{secretName: api-tls, hosts: [api.dataspace-mgm.example.org]}]`
+    tls: []
+  # -- Annotations for the backend pods
+  podAnnotations: {}
+  # -- Labels for the backend pods
+  podLabels: {}
+  # -- Security context of the backend pods
+  podSecurityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Security context of the backend container (TRG 4.03, TRG 4.07)
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests and limits of the backend (TRG 5.04: memory request = limit, CPU limit > request)
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 750m
+      memory: 512Mi
+  # -- Liveness probe of the backend
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Readiness probe of the backend
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # -- Node selector of the backend pods
+  nodeSelector: {}
+  # -- Tolerations of the backend pods
+  tolerations: []
+  # -- Affinity of the backend pods
+  affinity: {}
+
+frontend:
+  # -- Whether the Dataspace Management UI is installed
+  enabled: true
+  # -- Number of replicas
+  replicaCount: 1
+  image:
+    # -- Image repository on DockerHub
+    repository: tractusx/dataspace-mgm-ui
+    # -- Image tag; defaults to the `appVersion` of the chart
+    tag: ""
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+  # -- Runtime configuration of the UI, served as `/config.json` (no rebuild per environment)
+  config:
+    # -- Address of the backend API. Defaults to the first backend ingress host, or to `http://localhost:8000` (port-forward)
+    apiBaseUrl: ""
+    # -- Environment name shown by the UI: `local`, `dev`, `int` or `prod`
+    environment: "prod"
+  service:
+    # -- Service type
+    type: ClusterIP
+    # -- Service port
+    port: 8080
+  ingress:
+    # -- Whether an ingress is created for the UI
+    enabled: false
+    # -- Ingress class name
+    className: "nginx"
+    # -- Ingress annotations, e.g. for cert-manager
+    annotations: {}
+    # -- Hosts and paths
+    hosts:
+      - host: portal.dataspace-mgm.example.org
+        paths:
+          - path: /
+            pathType: Prefix
+    # -- TLS configuration
+    tls: []
+  # -- Annotations for the frontend pods
+  podAnnotations: {}
+  # -- Labels for the frontend pods
+  podLabels: {}
+  # -- Security context of the frontend pods (nginx-unprivileged runs as user 101)
+  podSecurityContext:
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  # -- Security context of the frontend container (TRG 4.03, TRG 4.07)
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests and limits of the frontend (TRG 5.04)
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
+  # -- Liveness probe of the frontend
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 20
+  # -- Readiness probe of the frontend
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 3
+    periodSeconds: 10
+  # -- Further environment variables of the frontend container
+  extraEnv: []
+  # -- Node selector of the frontend pods
+  nodeSelector: {}
+  # -- Tolerations of the frontend pods
+  tolerations: []
+  # -- Affinity of the frontend pods
+  affinity: {}
+
+tests:
+  # -- Image used by `helm test` (TRG 5.09)
+  image:
+    repository: curlimages/curl
+    tag: "8.11.1"
+    pullPolicy: IfNotPresent
