@@ -17,6 +17,7 @@ Further entry points:
 - [Chart README](../charts/dataspace-mgm/README.md): all values of the Helm chart
 - [CHANGELOG.md](../CHANGELOG.md): changes per release
 - [Hackathon scaffold](developers/hackathon-scaffold.md): developer guide of the scaffold (modules, call convention, test data, demo)
+- [Hackathon II roadmap](hackathon/index.html): agenda, teams, fork model and roadmap of the Tractus-X Hackathon II on 6 November 2026 (interactive page)
 - [AGENTS.md](../AGENTS.md): rules for coding agents and the people who use them
 
 ## NOTICE
