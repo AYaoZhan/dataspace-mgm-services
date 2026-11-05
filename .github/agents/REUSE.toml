@@ -1,0 +1,8 @@
+version = 1
+
+[[annotations]]
+# Dataspace Captain avatar: AI-generated image, curated by the contributor.
+path = ["dataspace-captain.png", "dataspace-captain-large.jpg", "dataspace-captain-profile.png"]
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 Catena-X Automotive Network e.V.", "2026 Contributors to the Eclipse Foundation"]
+SPDX-License-Identifier = "CC-BY-4.0"
