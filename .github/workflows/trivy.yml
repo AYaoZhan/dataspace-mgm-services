@@ -58,6 +58,8 @@ jobs:
           format: "sarif"
           output: "trivy-results-repository.sarif"
           severity: "CRITICAL,HIGH"
+          # apply the severity filter to the SARIF report and the exit code as well
+          limit-severities-for-sarif: true
           exit-code: "1"
           hide-progress: true
 
@@ -98,6 +100,8 @@ jobs:
           format: "sarif"
           output: "trivy-results-image.sarif"
           severity: "CRITICAL,HIGH"
+          # apply the severity filter to the SARIF report and the exit code as well
+          limit-severities-for-sarif: true
           vuln-type: "os,library"
           exit-code: "1"
           hide-progress: true
