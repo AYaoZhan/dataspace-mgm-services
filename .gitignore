@@ -1,6 +1,39 @@
-spec/
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
+
+# Python
 .venv/
 __pycache__/
-*.pyc
-runtime/
+*.py[cod]
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Clone of tx-arena-events/portal-backend-spec (read-only, not committed)
+spec/
+
+# Local runtime data (keys, logs, trust list of demo runs)
+runtime/
+.env
+.env.*
+!.env.example
+
+# Helm
+charts/*/charts/
+charts/*/Chart.lock
+*.tgz
+
+# Eclipse Dash license tool
+org.eclipse.dash.licenses*.jar
+PACKAGE
+
+# IDEs and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store

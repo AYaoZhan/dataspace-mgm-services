@@ -36,10 +36,26 @@ more.
 
 * https://projects.eclipse.org/projects/automotive.tractusx/developer
 
+Getting started:
+
+* https://eclipse-tractusx.github.io/docs/developer
+
 The project maintains the following source code repositories
 
 * https://github.com/eclipse-tractusx/dataspace-mgm-service
 * https://github.com/eclipse-tractusx/dataspace-mgm-ui
+
+## How to contribute to the Dataspace Management
+
+1. Sign the [Eclipse Contributor Agreement](#eclipse-contributor-agreement) with the email address you use for your commits.
+2. Open an issue, or comment on an existing one, before you start bigger changes, so that the committers can give early feedback.
+3. Fork the repository, create a branch from `main` and open a pull request against `main`.
+4. Use [conventional commits](https://www.conventionalcommits.org) for the PR title (`feat:`, `fix:`, `docs:`, `chore:` ...): the titles are used for the release notes.
+5. Add the [copyright and license header](https://eclipse-tractusx.github.io/docs/release/trg-7/trg-7-02) to every new file, and keep the documentation and the `CHANGELOG.md` up to date.
+6. New third-party dependencies must be approved by the [Eclipse Dash License Tool](https://github.com/eclipse-dash/dash-licenses); the `DEPENDENCIES` file is checked on every pull request.
+7. Pull requests with more than 1000 lines of relevant code need an approved [IP review](https://eclipse-tractusx.github.io/docs/release/trg-7/trg-7-03) before they can be merged.
+
+At least one committer has to approve a pull request before it is merged.
 
 ## Eclipse Development Process
 

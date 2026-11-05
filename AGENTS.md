@@ -1,7 +1,8 @@
 # Instructions for coding agents
 
 For coding agents (Claude Code, Codex, GitHub Copilot) and the people who use them.
-`CLAUDE.md` and `.github/copilot-instructions.md` are links to this file.
+`CLAUDE.md` is a link to this file. `.github/copilot-instructions.md` (the Dataspace Captain) defers to the
+rules of this file.
 
 ## What this repository is
 

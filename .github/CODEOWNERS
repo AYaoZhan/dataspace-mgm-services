@@ -1,0 +1,6 @@
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+# SPDX-License-Identifier: Apache-2.0
+
+# Identify the committers responsible for the repository as standard reviewers
+
+* @matbmoser
