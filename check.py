@@ -27,8 +27,11 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-ORG = "tx-arena-events"
-REPO = "dataspace-mgm-service"   # fork of eclipse-tractusx/dataspace-mgm-service
+ORG = "tx-arena-events"           # specs only (portal-backend-spec, read-only)
+UPSTREAM = "eclipse-tractusx/dataspace-mgm-services"
+REPO = "dataspace-mgm-services"   # each team works in its own fork of UPSTREAM
+FORK_TODO = (f"One team member forks the repository and adds the teammates as collaborators: gh repo fork {UPSTREAM} "
+             f"--clone; the others clone that fork. Work on the branch team/<n>")
 KEYCLOAK_URL = "http://localhost:8080/auth/realms/CX-Central/.well-known/openid-configuration"
 DEMO_PORTS = {8000: "OSP A", 8001: "OSP B", 8100: "CSP stand-in"}
 AGENT_APIS = {
@@ -185,17 +188,20 @@ def check_repos(have: dict[str, bool], offline: bool) -> None:
         report("FAIL", REPO, "not checked, git is missing")
         return
     code, url = run(["git", "remote", "get-url", "origin"])
-    if code == 0 and f"{ORG}/{REPO}" in url:
-        report("OK", REPO, url)
-    elif code == 0 and f"/{REPO}" in url:
-        report("WARN", REPO, f"origin is {url}, you cannot push there",
-               f"Work in the fork of the hackathon: git clone https://github.com/{ORG}/{REPO}.git")
+    m = re.search(r"[/:]([^/:]+)/(dataspace-mgm-services?)(?:\.git)?/?$", url) if code == 0 else None
+    owner = m.group(1).lower() if m else ""
+    if owner == UPSTREAM.split("/")[0]:
+        report("WARN", REPO, f"origin is {url}, you cannot push there", f"Fork it first. {FORK_TODO}")
+    elif owner == ORG:
+        report("WARN", REPO, f"origin is the old hackathon fork {url}",
+               f"Teams now work in their own fork of {UPSTREAM}. {FORK_TODO}")
+    elif owner:
+        report("OK", REPO, f"fork {url}")
     elif code == 0 and "/portal-backend" in url:
         report("WARN", REPO, f"origin is the old repository {url}",
-               f"The scaffold moved to Eclipse Tractus-X. Clone it again: git clone https://github.com/{ORG}/{REPO}.git")
+               f"The scaffold moved to Eclipse Tractus-X. {FORK_TODO}")
     else:
-        report("WARN", REPO, f"origin is {url or 'not set'}",
-               f"Clone the scaffold: git clone https://github.com/{ORG}/{REPO}.git")
+        report("WARN", REPO, f"origin is {url or 'not set'}", FORK_TODO)
 
     if offline:
         return
@@ -333,28 +339,6 @@ def check_demo(ready: bool, have: dict[str, bool]) -> None:
             print(f"         {line.strip()}")
 
 
-def check_github_org() -> None:
-    section("GitHub organisation")
-    if run(["gh", "auth", "status"], timeout=15)[0] != 0:
-        report("WARN", f"Membership in {ORG}", "not checked (GitHub CLI gh is not installed or not signed in)")
-        todos.append(f"Accept the invitation to the GitHub organisation {ORG} "
-                     f"(https://github.com/orgs/{ORG}/invitation, it comes after you sent your GitHub handle)")
-        return
-    code, out = run(["gh", "api", f"user/memberships/orgs/{ORG}"], timeout=15)
-    try:
-        state = json.loads(out).get("state") if code == 0 else None
-    except ValueError:
-        state = None
-    if state == "active":
-        report("OK", f"Membership in {ORG}", "active")
-    elif state == "pending":
-        report("WARN", f"Membership in {ORG}", "invitation not accepted yet",
-               f"Accept the invitation: https://github.com/orgs/{ORG}/invitation")
-    else:
-        report("WARN", f"Membership in {ORG}", "no invitation for the signed-in gh account",
-               "Send your GitHub handle to the organisers, then accept the invitation")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--no-demo", action="store_true", help="do not run demo.py")
@@ -372,8 +356,6 @@ def main() -> int:
     env_ok = check_python_env(have) if not args.offline else have.get("uv", False)
     kc_ok = check_keycloak(have)
     check_ports()
-    if not args.offline:
-        check_github_org()
     if not args.no_demo:
         no_fail_so_far = not any(s == "FAIL" for s, _, _ in results)
         check_demo(env_ok and kc_ok and no_fail_so_far, have)

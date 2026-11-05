@@ -43,8 +43,9 @@ $G --run                            # also: uv run pytest -q, then uv run python
 $G --strict                         # exit 1 on a blocker or high finding
 ```
 
-The fork workflow: teams push to `team/<n>` of `tx-arena-events/dataspace-mgm-service` and open the PR to
-`main` of `eclipse-tractusx/dataspace-mgm-service`. Fetch the target first (`git fetch origin` or `git fetch upstream`).
+The fork workflow: each team pushes to `team/<n>` of its own fork (`<fork-owner>/dataspace-mgm-services`) and opens
+one PR to `main` of `eclipse-tractusx/dataspace-mgm-services` in the merge window at 14:45. Fetch the target first
+(`git fetch origin` or `git fetch upstream`).
 
 ## What it checks
 

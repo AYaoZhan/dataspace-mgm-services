@@ -4,10 +4,10 @@
 # Host the EBW stack (EBW-Connector, Business Wallet, OSP 2.0 demo portal) with Cloudflare quick tunnels
 # on a Windows machine, so that the phones and laptops of all teams can use the same addresses.
 # No admin rights, no git needed. Run in PowerShell:
-#   irm https://raw.githubusercontent.com/eclipse-tractusx/dataspace-mgm-service/main/ebw/host-windows.ps1 | iex
-# Before the scaffold is merged upstream, take script and code from the fork:
-#   $env:EBW_REPO = "tx-arena-events/dataspace-mgm-service"; $env:EBW_BRANCH = "feature/hackathon-scaffold"
-#   irm https://raw.githubusercontent.com/tx-arena-events/dataspace-mgm-service/feature/hackathon-scaffold/ebw/host-windows.ps1 | iex
+#   irm https://raw.githubusercontent.com/eclipse-tractusx/dataspace-mgm-services/main/ebw/host-windows.ps1 | iex
+# To take script and code from a team fork instead:
+#   $env:EBW_REPO = "<fork-owner>/dataspace-mgm-services"; $env:EBW_BRANCH = "team/<n>"
+#   irm https://raw.githubusercontent.com/<fork-owner>/dataspace-mgm-services/team/<n>/ebw/host-windows.ps1 | iex
 # Stop with Ctrl+C. Keep the window open during the event. A second run keeps keys and data, but the addresses change,
 # so credentials issued before no longer work and must be fetched and issued again.
 

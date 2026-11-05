@@ -91,8 +91,8 @@ Operations you have not implemented yet are added from the spec (steps answer `D
 2. All tests pass: `uv run pytest -q`.
 3. `uv run python demo.py` ends with exit code 0.
 4. Open questions are in `modules/<id>/OPEN-QUESTIONS.md`.
-5. A pull request from the team branch `team/<n>` of the fork `tx-arena-events/dataspace-mgm-service` to `main` of
-   `eclipse-tractusx/dataspace-mgm-service`. A Tractus-X committer merges it.
+5. A pull request from the team branch `team/<n>` of the team's fork (`<fork-owner>/dataspace-mgm-services`) to `main`
+   of `eclipse-tractusx/dataspace-mgm-services`, opened in the merge window at 14:45. A Tractus-X committer merges it.
 
 ## Commits
 
