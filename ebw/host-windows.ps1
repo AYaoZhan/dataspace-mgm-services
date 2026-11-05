@@ -28,7 +28,7 @@ if (Test-NetConnection region1.v2.argotunnel.com -Port 7844 -InformationLevel Qu
   return
 }
 
-$Repo = if ($env:EBW_REPO) { $env:EBW_REPO } else { "eclipse-tractusx/dataspace-mgm-service" }
+$Repo = if ($env:EBW_REPO) { $env:EBW_REPO } else { "eclipse-tractusx/dataspace-mgm-services" }
 $Branch = if ($env:EBW_BRANCH) { $env:EBW_BRANCH } else { "main" }
 $Code = ($Repo.Split("/")[1]) + "-" + ($Branch -replace "/", "-")   # folder name inside the GitHub ZIP
 Write-Host "== 2/5 Code of $Repo ($Branch, download as ZIP on the first run only)"
