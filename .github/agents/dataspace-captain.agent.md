@@ -151,9 +151,9 @@ it is not, I read it on GitHub. I never assume that the other side matches.
 
 | Repository | What it is |
 |---|---|
-| [`eclipse-tractusx/dataspace-mgm-service`](https://github.com/eclipse-tractusx/dataspace-mgm-service) | leading repository: backend, product chart `charts/dataspace-mgm`, product-wide docs (`docs/architecture`) |
+| [`eclipse-tractusx/dataspace-mgm-services`](https://github.com/eclipse-tractusx/dataspace-mgm-services) | leading repository: backend, product chart `charts/dataspace-mgm`, product-wide docs (`docs/architecture`) |
 | [`eclipse-tractusx/dataspace-mgm-ui`](https://github.com/eclipse-tractusx/dataspace-mgm-ui) | user interface of the new portal |
-| [`tx-arena-events/dataspace-mgm-service`](https://github.com/tx-arena-events/dataspace-mgm-service), [`…/dataspace-mgm-ui`](https://github.com/tx-arena-events/dataspace-mgm-ui) | hackathon forks: `team/1` … `team/8`, and `feature/hackathon-scaffold`, the initial contribution |
+| `<fork-owner>/dataspace-mgm-services`, `<fork-owner>/dataspace-mgm-ui` | hackathon team forks: one fork per team and repository in a team member's account, teammates as collaborators, branch `team/<n>`, one pull request to `main` in the merge window at 14:45 (the old forks in `tx-arena-events` are no longer used) |
 | [`tx-arena-events/portal-backend-spec`](https://github.com/tx-arena-events/portal-backend-spec) | the backend spec: `FRAMEWORK.md`, one folder per module (`README.md`, `openapi.yaml`, `open-points.md`), `C12-M1-ProcessOrchestration/flows.yaml` |
 | [`tx-arena-events/portal-frontend-spec`](https://github.com/tx-arena-events/portal-frontend-spec) | the frontend architecture: `HACKATHON-FRONTEND.md`, `architecture/01…14` |
 | `tx-arena-events/portal-backend`, `portal-frontend` | the origin code bases the scaffold came from |

@@ -27,7 +27,7 @@ uv run python demo.py         # starts the CSP stand-in, OSP A and OSP B, runs s
 
 `demo.py` prints one line per check and a summary; exit code 0 means everything is green.
 Before the day, `uv run python check.py` checks the whole setup (tools, repositories, network,
-Docker images, Keycloak, ports, membership in `tx-arena-events`, `demo.py`) and lists what is still to do.
+Docker images, Keycloak, ports, `demo.py`) and lists what is still to do.
 Only some scenarios: `uv run python demo.py --scenarios 1,2,3`.
 
 After every `git pull`, recreate Keycloak so that it imports the current realm:
@@ -59,14 +59,24 @@ Every commit is a contribution to Eclipse Tractus-X. Before the day:
 2. [Eclipse Foundation account](https://accounts.eclipse.org/user/register), sign the
    [Eclipse Contributor Agreement (ECA)](https://www.eclipse.org/legal/eca/) and link your GitHub account.
    The email address of the ECA must be the one in the `Author` field of your commits (`git config user.email`).
-3. Accept the invitation to `tx-arena-events`; your team works on its branch `team/<n>` in the fork
-   [tx-arena-events/dataspace-mgm-service](https://github.com/tx-arena-events/dataspace-mgm-service).
+3. One fork per team: one team member forks
+   [eclipse-tractusx/dataspace-mgm-services](https://github.com/eclipse-tractusx/dataspace-mgm-services) into their
+   GitHub account and adds the teammates as collaborators (write access); the others clone that fork. The team works
+   on its branch `team/<n>` in this fork. The UI team does the same with
+   [dataspace-mgm-ui](https://github.com/eclipse-tractusx/dataspace-mgm-ui).
 
-On the day: commit and push to `team/<n>`. In each merge window the team opens a pull request from
-`team/<n>` to `main` of [eclipse-tractusx/dataspace-mgm-service](https://github.com/eclipse-tractusx/dataspace-mgm-service);
-the ECA check runs on it and a Tractus-X committer merges. `main` of the fork stays equal to upstream.
-From the command line:
-`gh pr create --repo eclipse-tractusx/dataspace-mgm-service --base main --head tx-arena-events:team/<n>`.
+```bash
+gh repo fork eclipse-tractusx/dataspace-mgm-services --default-branch-only --clone   # one team member; the others: git clone <fork URL>
+git checkout -b team/<n>
+git push -u origin team/<n>
+```
+
+On the day: commit and push to `team/<n>` of the team fork. In the merge window at 14:45 (the only one; code freeze
+after it) the team opens one pull request from `<fork-owner>:team/<n>` to `main` of
+[eclipse-tractusx/dataspace-mgm-services](https://github.com/eclipse-tractusx/dataspace-mgm-services);
+the ECA check runs on every commit author and a Tractus-X committer merges. No ECA, no merge. `main` of the fork stays
+equal to upstream. From the command line:
+`gh pr create --repo eclipse-tractusx/dataspace-mgm-services --base main --head <fork-owner>:team/<n>`.
 The user interface lives in [dataspace-mgm-ui](https://github.com/eclipse-tractusx/dataspace-mgm-ui).
 
 ## What is inside

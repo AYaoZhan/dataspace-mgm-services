@@ -49,8 +49,8 @@ Scripts run from anywhere inside the repository and read the specs that `portal-
 
 ## How the scripts were tested
 
-Against the hackathon scaffold (`tx-arena-events/dataspace-mgm-service`, branch `feature/hackathon-scaffold` @
-`f7a6b84`) and the specs `portal-backend-spec` @ `515b709` and `portal-frontend-spec` @ `e45a06b`:
+Against the hackathon scaffold (then in the former fork `tx-arena-events/dataspace-mgm-service`, branch
+`feature/hackathon-scaffold` @ `f7a6b84`) and the specs `portal-backend-spec` @ `515b709` and `portal-frontend-spec` @ `e45a06b`:
 
 - `spec-src.py`: 18 modules, 45 steps and 75 events read from the spec; `route` resolves literal segments before
   parameters (`GET /api/c3-m1/companies/{companyId}` → `getCompany`, `view_company`, scope `company`).
