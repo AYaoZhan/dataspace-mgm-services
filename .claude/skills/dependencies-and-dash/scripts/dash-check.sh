@@ -109,13 +109,13 @@ if [ ! -s "$JAR" ]; then
   mkdir -p "$CACHE"
   curl -sSL --fail --output "$JAR" "https://repo.eclipse.org/service/rest/v1/search/assets/download?repository=dash-maven2-releases&maven.groupId=org.eclipse.dash&maven.artifactId=org.eclipse.dash.licenses&maven.baseVersion=${DASH_VERSION}&maven.extension=jar"
 fi
-java -jar "$JAR" -project automotive.tractusx -summary "$WORK/DEPENDENCIES.generated" "$INPUT" || true
+java -jar "$JAR" -project automotive.tractusx -timeout 300 -summary "$WORK/DEPENDENCIES.generated" "$INPUT" || true
 sort -o "$WORK/DEPENDENCIES.generated" "$WORK/DEPENDENCIES.generated"
 
 RC=0
 if grep -E ', (restricted|rejected),' "$WORK/DEPENDENCIES.generated"; then
   echo "Restricted or rejected packages above: request an IP review (TRG 7.04), e.g. by running the workflow"
-  echo "'Eclipse Dash IP Check' with request_review (needs the secret ECLIPSE_DASH_TOKEN)."
+  echo "'Update DEPENDENCIES' (needs the secret DASH_GITLAB_API_TOKEN)."
   RC=1
 fi
 if diff -u <(sort DEPENDENCIES 2>/dev/null) "$WORK/DEPENDENCIES.generated"; then

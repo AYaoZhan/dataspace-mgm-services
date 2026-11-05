@@ -1,4 +1,5 @@
 #################################################################################
+# Copyright (c) 2026 Catena-X Automotive Network e.V.
 # Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
 # See the NOTICE file(s) distributed with this work for additional
@@ -17,106 +18,111 @@
 # SPDX-License-Identifier: Apache-2.0
 #################################################################################
 
-# Third-party license check with the Eclipse Dash License Tool (TRG 7.01, TRG 7.04).
-# Generates the DEPENDENCIES file from uv.lock (runtime dependencies) and fails if a dependency
-# is `restricted` or `rejected`, or if the committed DEPENDENCIES file is out of date.
-# With the secret ECLIPSE_DASH_TOKEN, a manual run can request IP reviews for unknown packages.
+# Adapted from eclipse-tractusx/tractusx-testlab's `dependencies.yml` (TRG 7.01, TRG 7.04).
+# The runtime dependencies are resolved from uv.lock, checked against the Eclipse Dash
+# License Tool and compared with the committed DEPENDENCIES file, so a change to the lock
+# file that is not reflected in DEPENDENCIES fails CI.
+#
+# Requesting IP reviews and keeping DEPENDENCIES current is the job of
+# `dependencies-update.yml`; this workflow only checks.
+
 name: "Eclipse Dash IP Check"
 
 on:
   push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+    branches: [main]
     paths:
-      - "pyproject.toml"
-      - "uv.lock"
-      - "DEPENDENCIES"
-      - ".github/workflows/dependencies.yml"
+      - uv.lock
+      - pyproject.toml
+      - DEPENDENCIES
+      - .github/workflows/dependencies.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - uv.lock
+      - pyproject.toml
+      - DEPENDENCIES
+      - .github/workflows/dependencies.yml
   workflow_dispatch:
-    inputs:
-      request_review:
-        description: "Request IP reviews for unknown packages (needs the secret ECLIPSE_DASH_TOKEN)"
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
 
 env:
+  DEP_FILE: DEPENDENCIES
   DASH_VERSION: "1.1.0"
 
 jobs:
   check-dependencies:
+    name: Dash license check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check for the lock file
-        id: sources
-        run: |
-          if [ -f uv.lock ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "uv.lock not found, nothing to check."
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up uv
-        if: steps.sources.outputs.present == 'true'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-
-      - name: Set up Java
-        if: steps.sources.outputs.present == 'true'
+      - name: Set up JDK 21
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "21"
 
-      - name: List the runtime dependencies
-        if: steps.sources.outputs.present == 'true'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      # Runtime dependencies only (no dev group, not the project itself), exactly as
+      # locked, so the resolver step is reproducible and never builds a package.
+      - name: List packages
         run: |
+          if [ ! -f uv.lock ]; then
+            echo "The project must have a uv.lock file"
+            exit 1
+          fi
           uv export --frozen --no-dev --no-hashes --no-emit-project --format requirements-txt \
             | grep -E '^[A-Za-z0-9_.-]+==' \
             | sed -E 's/[[:space:]]*;.*$//' \
             | awk -F'==' '{ name=tolower($1); gsub(/[_.]/, "-", name); print "pypi/pypi/-/" name "/" $2 }' \
             | sort -u > PACKAGE
+          echo "Packages resolved from uv.lock on this runner:"
           cat PACKAGE
 
-      - name: Run the Eclipse Dash License Tool
-        if: steps.sources.outputs.present == 'true'
-        env:
-          ECLIPSE_DASH_TOKEN: ${{ secrets.ECLIPSE_DASH_TOKEN }}
+      - name: Generate dependencies file
         run: |
-          curl -sSL --output dash.jar "https://repo.eclipse.org/service/rest/v1/search/assets/download?repository=dash-maven2-releases&maven.groupId=org.eclipse.dash&maven.artifactId=org.eclipse.dash.licenses&maven.baseVersion=${DASH_VERSION}&maven.extension=jar"
-          ARGS=(-project automotive.tractusx -summary DEPENDENCIES.generated)
-          if [ "${{ inputs.request_review }}" = "true" ] && [ -n "${ECLIPSE_DASH_TOKEN}" ]; then
-            ARGS+=(-review -token "${ECLIPSE_DASH_TOKEN}")
+          curl --proto '=https' --tlsv1.2 -sSL --fail --output ./dash.jar "https://repo.eclipse.org/service/rest/v1/search/assets/download?repository=dash-maven2-releases&maven.groupId=org.eclipse.dash&maven.artifactId=org.eclipse.dash.licenses&maven.baseVersion=${DASH_VERSION}&maven.extension=jar"
+          # Dash exits non-zero when any entry is restricted, which the next
+          # steps report far more readably, so its exit status is ignored here.
+          # An empty summary means the license lookup itself failed (the
+          # ClearlyDefined query has been seen to time out silently), and that
+          # must not be mistaken for "the file drifted".
+          java -jar ./dash.jar PACKAGE -project automotive.tractusx -timeout 300 -summary "$DEP_FILE" || true
+          if [ ! -s "$DEP_FILE" ]; then
+            echo "Dash wrote no summary; the license lookup failed. Re-run the job."
+            exit 1
           fi
-          java -jar dash.jar "${ARGS[@]}" PACKAGE || true
-          sort -o DEPENDENCIES.generated DEPENDENCIES.generated
+          sort -o "$DEP_FILE" "$DEP_FILE"
 
-      - name: Upload the generated DEPENDENCIES file
-        if: steps.sources.outputs.present == 'true'
+      - name: Check if dependencies were changed
+        run: |
+          if git diff --exit-code "$DEP_FILE"; then
+            echo "$DEP_FILE is up to date"
+          else
+            echo "$DEP_FILE is out of date. Replace it with the following content:"
+            cat "$DEP_FILE"
+            exit 1
+          fi
+
+      - name: Check for restricted or rejected dependencies
+        run: |
+          restricted=$(grep -E ', (restricted|rejected),' "$DEP_FILE" || true)
+          if [[ -n "$restricted" ]]; then
+            echo "The following dependencies are restricted or rejected and need an IP review:"
+            echo "$restricted"
+            exit 1
+          fi
+
+      - name: Upload dependencies file
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: DEPENDENCIES
-          path: DEPENDENCIES.generated
-
-      - name: Check for restricted or rejected dependencies
-        if: steps.sources.outputs.present == 'true'
-        run: |
-          if grep -E ', (restricted|rejected),' DEPENDENCIES.generated; then
-            echo "::error::Some dependencies are restricted or rejected, see above. Request an IP review (TRG 7.04)."
-            exit 1
-          fi
-
-      - name: Check that DEPENDENCIES is up to date
-        if: steps.sources.outputs.present == 'true'
-        run: |
-          if ! diff -u <(sort DEPENDENCIES 2>/dev/null) DEPENDENCIES.generated; then
-            echo "::error::DEPENDENCIES is out of date. Replace it with the artifact 'DEPENDENCIES' of this run."
-            exit 1
-          fi
+          path: ${{ env.DEP_FILE }}
+          if-no-files-found: ignore

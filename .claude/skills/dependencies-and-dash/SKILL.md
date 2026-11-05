@@ -53,9 +53,10 @@ The Dash version comes from `DASH_VERSION` in the workflow (default 1.1.0); the 
 ## When a package is restricted
 
 1. `restricted` means "not yet reviewed", not "forbidden". Prefer a version that is already approved, if one is.
-2. Otherwise a committer runs the workflow `Eclipse Dash IP Check` with `request_review` (it needs the secret
-   `ECLIPSE_DASH_TOKEN`), or runs Dash with `-review -token …`. The review appears at
-   https://gitlab.eclipse.org/eclipsefdn/emo-team/iplab/-/issues.
+2. Otherwise the workflow `Update DEPENDENCIES` (`.github/workflows/dependencies-update.yml`, after every lock file
+   change on main, daily, or run manually) requests the review with the secret `DASH_GITLAB_API_TOKEN` and opens or
+   updates the pull request `chore/update-dependencies`; or a committer runs Dash with `-review -token …`. The review
+   appears at https://gitlab.eclipse.org/eclipsefdn/emo-team/iplab/-/issues.
 3. `rejected` means: remove the package.
 4. Development tools (pytest, Vite, ESLint) are not in the runtime list of the service; the UI lock file lists all.
 
