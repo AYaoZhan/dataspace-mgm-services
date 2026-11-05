@@ -66,7 +66,7 @@ Every commit is a contribution to Eclipse Tractus-X. Before the day:
    [dataspace-mgm-ui](https://github.com/eclipse-tractusx/dataspace-mgm-ui).
 
 ```bash
-gh repo fork eclipse-tractusx/dataspace-mgm-services --clone   # one team member; the others: git clone <fork URL>
+gh repo fork eclipse-tractusx/dataspace-mgm-services --default-branch-only --clone   # one team member; the others: git clone <fork URL>
 git checkout -b team/<n>
 git push -u origin team/<n>
 ```

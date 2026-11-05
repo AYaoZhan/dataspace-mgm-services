@@ -31,7 +31,7 @@ ORG = "tx-arena-events"           # specs only (portal-backend-spec, read-only)
 UPSTREAM = "eclipse-tractusx/dataspace-mgm-services"
 REPO = "dataspace-mgm-services"   # each team works in its own fork of UPSTREAM
 FORK_TODO = (f"One team member forks the repository and adds the teammates as collaborators: gh repo fork {UPSTREAM} "
-             f"--clone; the others clone that fork. Work on the branch team/<n>")
+             f"--default-branch-only --clone; the others clone that fork. Work on the branch team/<n>")
 KEYCLOAK_URL = "http://localhost:8080/auth/realms/CX-Central/.well-known/openid-configuration"
 DEMO_PORTS = {8000: "OSP A", 8001: "OSP B", 8100: "CSP stand-in"}
 AGENT_APIS = {
