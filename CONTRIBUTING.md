@@ -51,11 +51,51 @@ The project maintains the following source code repositories
 2. Open an issue, or comment on an existing one, before you start bigger changes, so that the committers can give early feedback.
 3. Fork the repository, create a branch from `main` and open a pull request against `main`.
 4. Use [conventional commits](https://www.conventionalcommits.org) for the PR title (`feat:`, `fix:`, `docs:`, `chore:` ...): the titles are used for the release notes.
-5. Add the [copyright and license header](https://eclipse-tractusx.github.io/docs/release/trg-7/trg-7-02) to every new file, and keep the documentation and the `CHANGELOG.md` up to date.
+5. Add the copyright and license header ([License headers](#license-headers), TRG 7.02) to every new file, and keep the documentation and the `CHANGELOG.md` up to date.
 6. New third-party dependencies must be approved by the [Eclipse Dash License Tool](https://github.com/eclipse-dash/dash-licenses); the `DEPENDENCIES` file is checked on every pull request.
 7. Pull requests with more than 1000 lines of relevant code need an approved [IP review](https://eclipse-tractusx.github.io/docs/release/trg-7/trg-7-03) before they can be merged.
 
 At least one committer has to approve a pull request before it is merged.
+
+## License headers
+
+Every new file starts with the copyright and license header of
+[TRG 7.02](https://eclipse-tractusx.github.io/docs/release/trg-7/trg-7-02). Code with `#` comments (Python, shell, YAML, TOML, Dockerfile):
+
+```text
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
+```
+
+- **Written with AI help:** keep the paragraph "AI Disclosure", the license `Apache-2.0 AND CC0-1.0` and the
+  line `Assisted-By: <tool> (<model>)`, for example `Assisted-By: Claude Code (claude-opus-5-5)`.
+- **Written without AI help:** leave out the paragraph "AI Disclosure" and the line `Assisted-By`, and write
+  `SPDX-License-Identifier: Apache-2.0`.
+- Other comment styles carry the same text: Helm templates inside `{{/* ... */}}`, Markdown inside
+  `<!-- ... -->`.
+- Documentation (`docs/`) keeps its NOTICE section at the end (`CC-BY-4.0`).
 
 ## Eclipse Development Process
 
