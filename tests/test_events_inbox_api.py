@@ -164,3 +164,55 @@ def test_the_inbox_is_in_the_openapi_document_with_both_content_modes(client):
     op = doc["paths"][INBOX]["post"]
     assert set(op["requestBody"]["content"]) == {"application/cloudevents+json", "application/json"}
     assert op["tags"] == ["Event Inbox"] and "Event Inbox" in {t["name"] for t in doc["tags"]}
+
+
+# ---------------------------------------------------------------- security review (6 Nov 2026)
+def _client_token(client_id: str, **client) -> str:
+    from tools import test_iam
+    iam = test_iam.iam()
+    iam.clients.setdefault(client_id, {"secret": "test-only", "permissions": set(), **client})
+    return iam.client_token(client_id)
+
+
+def test_a_module_cannot_publish_the_events_of_another_module(client):
+    """Consumers match on `type` alone: svc-c1-m2 must not approve its own application (C1-M3's event)."""
+    approved = submitted(type="ApplicationApproved", data={"applicationId": APPLICATION, "companyId": COMPANY,
+                                                          "kind": "ONBOARDING", "existingCompany": False})
+    p = _problem(client.post(INBOX, headers=svc("c1-m2") | STRUCTURED, content=json.dumps(approved)), 403, "forbidden")
+    assert "ApplicationApproved is not an event of c1-m2" in p["detail"]
+    unknown = submitted(type="SomethingInvented")
+    _problem(client.post(INBOX, headers=svc("c1-m2") | STRUCTURED, content=json.dumps(unknown)), 403, "forbidden")
+    assert events.RELAY.log == []
+
+
+@pytest.mark.parametrize("client_id", ["svc-test-internal", "svc-c99-m1", "svc-c1-m2-evil", "portal-ui"])
+def test_other_service_accounts_are_forbidden_not_an_error(client, client_id):
+    r = client.post(INBOX, headers=bearer(_client_token(client_id)) | STRUCTURED, content=json.dumps(submitted()))
+    _problem(r, 403, "forbidden")   # no 500 for an account without a module of the spec
+
+
+def test_technical_user_tokens_are_refused(client):
+    tok = _client_token("svc-c1-m2-tu", technicalRoles={"x"}, companyId=COMPANY, bpn=None)   # aud is not portal-core
+    _problem(client.post(INBOX, headers=bearer(tok) | STRUCTURED, content=json.dumps(submitted())), 401, "unauthorized")
+
+
+def test_secrets_are_refused_also_in_nested_data(client):
+    ev = submitted(data={"applicationId": APPLICATION, "access": [{"clientSecret": "s"}]})
+    p = _problem(client.post(INBOX, headers=svc("c1-m2") | STRUCTURED, content=json.dumps(ev)), 400, "validation")
+    assert "access[0].clientSecret" in p["detail"]
+
+
+def test_bodies_larger_than_the_limit_are_refused(client, monkeypatch):
+    monkeypatch.setenv("EVENT_INBOX_MAX_BYTES", "2048")
+    big = submitted(data={"applicationId": APPLICATION, "note": "x" * 4096})
+    _problem(client.post(INBOX, headers=svc("c1-m2") | STRUCTURED, content=json.dumps(big)), 413, "payload-too-large")
+
+    def chunks():   # without Content-Length (chunked)
+        yield json.dumps(big).encode()
+    _problem(client.post(INBOX, headers=svc("c1-m2") | STRUCTURED, content=chunks()), 413, "payload-too-large")
+    assert events.RELAY.log == []
+
+
+def test_non_ascii_digits_in_source_are_refused(client):
+    ev = submitted(source="urn:c١-m٢")   # Arabic-Indic digits match \d, not [0-9]
+    _problem(client.post(INBOX, headers=svc("c1-m2") | STRUCTURED, content=json.dumps(ev)), 400, "validation")

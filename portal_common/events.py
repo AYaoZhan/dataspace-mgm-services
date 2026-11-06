@@ -60,12 +60,27 @@ FORBIDDEN_KEYS = ("secret", "password", "apikey", "token")
 SPECVERSION = "1.0"
 DATACONTENTTYPE = "application/json"
 ATTRIBUTES = ("specversion", "id", "source", "type", "time", "datacontenttype", "data")
-_MODULE_ID = re.compile(r"c\d+-m\d+")
+_MODULE_ID = re.compile(r"c[0-9]+-m[0-9]+")
 _TYPE = re.compile(r"[A-Z][A-Za-z0-9]*")
-_SOURCE = re.compile(r"urn:(c\d+-m\d+)")
+_SOURCE = re.compile(r"urn:(c[0-9]+-m[0-9]+)")
 _UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 RECEIVED_MAX = 10_000   # (source, id) pairs the inbox remembers to deliver a repeated event only once
 _warned: set[tuple[str, str]] = set()
+
+
+def _secret_keys(value: object, path: str = "") -> list[str]:
+    """Keys that look like secrets, also in nested objects and lists (FRAMEWORK 4.6)."""
+    if isinstance(value, dict):
+        out = []
+        for k, v in value.items():
+            here = f"{path}.{k}" if path else str(k)
+            if any(f in str(k).lower() for f in FORBIDDEN_KEYS):
+                out.append(here)
+            out += _secret_keys(v, here)
+        return out
+    if isinstance(value, list):
+        return [x for i, v in enumerate(value) for x in _secret_keys(v, f"{path}[{i}]")]
+    return []
 
 
 def source_of(module: str) -> str:
@@ -84,7 +99,7 @@ def cloudevent(module: str, type: str, data: dict | None = None, *, id: str | No
         data = {}
     if not isinstance(data, dict):
         raise ValueError(f"data of {type} must be a JSON object")
-    bad = [k for k in data if any(f in k.lower() for f in FORBIDDEN_KEYS)]
+    bad = _secret_keys(data)
     if bad:
         raise ValueError(f"events never carry secrets (FRAMEWORK 4.6): {bad}")
     return {"specversion": SPECVERSION, "id": id or str(uuid.uuid4()), "source": source_of(module),
@@ -128,7 +143,7 @@ def _caller_module() -> str | None:
     g = sys._getframe(2).f_globals   # 0: this function, 1: Relay.publish, 2: its caller
     if isinstance(g.get("MODULE"), str) and _MODULE_ID.fullmatch(g["MODULE"]):
         return g["MODULE"]
-    m = re.match(r"modules\.(c\d+)_(m\d+)(\.|$)", g.get("__name__", ""))
+    m = re.match(r"modules\.(c[0-9]+)_(m[0-9]+)(\.|$)", g.get("__name__", ""))
     return f"{m.group(1)}-{m.group(2)}" if m else None
 
 

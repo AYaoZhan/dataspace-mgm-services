@@ -32,21 +32,25 @@ HTTP protocol binding:
   `ce-type`, `ce-time`), `data` as the body with `Content-Type: application/json`.
 
 The token is that of the service account of the publishing module (`svc-<module>`, FRAMEWORK 4.2),
-and `source` must be `urn:<module>` of that account: a module only publishes its own events. 202: the
+`source` must be `urn:<module>` of that account, and `type` must be an event of that module in the
+spec (FRAMEWORK 6, section 10 of its README): a module only publishes its own events. 202: the
 event goes to the event bus unchanged (same `id` and `time`) and is delivered like an event published
 in the process; the same `source` and `id` a second time is answered with 202 and delivered once.
 Errors as Problem Details `urn:events:problem:<name>`: `validation` 400, `unauthorized` 401,
-`forbidden` 403, `unsupported-media-type` 415 (any other content type, also batched content mode).
+`forbidden` 403, `payload-too-large` 413 (more than `EVENT_INBOX_MAX_BYTES`, default 64 KiB),
+`unsupported-media-type` 415 (any other content type, also batched content mode).
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Header, Request, Response
 
-from portal_common import events, problems, tokens
+from portal_common import events, problems, spec, tokens
 from portal_common.problems import Problem
 
 AREA = "events"                       # Problem Details `urn:events:problem:<name>`
@@ -55,6 +59,8 @@ STRUCTURED = "application/cloudevents+json"
 BATCHED = "application/cloudevents-batch+json"
 BINARY = events.DATACONTENTTYPE       # binary content mode: `data` as application/json
 SERVICE_ACCOUNT_PREFIX = "svc-"
+MAX_BYTES_DEFAULT = 64 * 1024        # events carry only IDs and business values (FRAMEWORK 6)
+_SERVICE_ACCOUNT = re.compile(r"svc-(c[0-9]+-m[0-9]+)")
 log = logging.getLogger("portal.events.inbox")
 
 router = APIRouter(prefix="/events", tags=[TAG], route_class=problems.route_class(AREA))
@@ -94,6 +100,7 @@ _RESPONSES = {
     400: {"description": "validation: an attribute is missing or wrong (FRAMEWORK 6)", "content": _PROBLEM},
     401: {"description": "unauthorized: token missing or invalid", "content": _PROBLEM},
     403: {"description": "forbidden: not the service account of the module named in `source`", "content": _PROBLEM},
+    413: {"description": "payload-too-large: body larger than EVENT_INBOX_MAX_BYTES", "content": _PROBLEM},
     415: {"description": "unsupported-media-type: neither structured nor binary content mode", "content": _PROBLEM},
 }
 
@@ -103,12 +110,34 @@ def _media_type(request: Request) -> str:
 
 
 def _publisher(authorization: str | None) -> str:
-    """Module of the service account that calls (`svc-<module>`, `azp` of the token)."""
+    """Module of the service account that calls (`svc-<module>`, `azp` of the token), a module of the spec."""
     claims = tokens.claims_from(authorization, AREA)
     client = claims.get("azp") or claims.get("client_id") or ""
-    if not client.startswith(SERVICE_ACCOUNT_PREFIX):
+    m = _SERVICE_ACCOUNT.fullmatch(client) if isinstance(client, str) else None
+    if not m or m.group(1) not in spec.modules():
         raise Problem(AREA, 403, "forbidden", detail="only the service account of a module (svc-<module>) delivers events")
-    return client.removeprefix(SERVICE_ACCOUNT_PREFIX)
+    return m.group(1)
+
+
+def _max_bytes() -> int:
+    try:
+        return max(1, int(os.environ.get("EVENT_INBOX_MAX_BYTES") or MAX_BYTES_DEFAULT))
+    except ValueError:
+        return MAX_BYTES_DEFAULT
+
+
+async def _body(request: Request) -> bytes:
+    """The body, at most `EVENT_INBOX_MAX_BYTES` (also without or with a wrong Content-Length)."""
+    limit = _max_bytes()
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise Problem(AREA, 413, "payload-too-large", detail=f"at most {limit} bytes")
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > limit:
+            raise Problem(AREA, 413, "payload-too-large", detail=f"at most {limit} bytes")
+    return bytes(body)
 
 
 def _from_binary(request: Request, data: object) -> dict:
@@ -129,7 +158,7 @@ async def receive_event(request: Request, authorization: str | None = Header(def
         raise Problem(AREA, 415, "unsupported-media-type",
                       detail=f"Content-Type {media_type or 'missing'}: use {STRUCTURED} or {BINARY}{hint}")
     try:
-        body = json.loads(await request.body() or b"null")
+        body = json.loads(await _body(request) or b"null")
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
         raise Problem(AREA, 400, "validation", detail=f"body is not JSON: {e}") from None
     try:
@@ -140,6 +169,9 @@ async def receive_event(request: Request, authorization: str | None = Header(def
     if event["source"] != events.source_of(module):
         raise Problem(AREA, 403, "forbidden",
                       detail=f"svc-{module} only delivers events with source {events.source_of(module)}")
+    if event["type"] not in spec.event_types(module):   # consumers match on `type` alone (C12-M1 6.5)
+        raise Problem(AREA, 403, "forbidden",
+                      detail=f"{event['type']} is not an event of {module} (FRAMEWORK 6, README section 10)")
     _, new = events.receive(event)
     log.info("event inbox: %s %s from %s%s", event["type"], event["id"], event["source"], "" if new else " (again)")
     return Response(status_code=202)
