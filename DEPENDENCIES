@@ -11,9 +11,9 @@ pypi/pypi/-/httpcore/1.0.9, BSD-3-Clause, approved, #20894
 pypi/pypi/-/httpx/0.28.1, BSD-3-Clause, approved, clearlydefined
 pypi/pypi/-/idna/3.20, BSD-3-Clause, approved, #32405
 pypi/pypi/-/opentelemetry-api/1.45.1, Apache-2.0, approved, #32474
-pypi/pypi/-/pycparser/3.12, , restricted, clearlydefined
-pypi/pypi/-/pydantic-core/2.50.1, , restricted, clearlydefined
-pypi/pypi/-/pydantic/2.14.1, , restricted, clearlydefined
+pypi/pypi/-/pycparser/3.12, BSD-3-Clause, restricted, clearlydefined
+pypi/pypi/-/pydantic-core/2.50.1, MIT, restricted, clearlydefined
+pypi/pypi/-/pydantic/2.14.1, MIT, restricted, clearlydefined
 pypi/pypi/-/pyjwt/2.15.1, , restricted, clearlydefined
 pypi/pypi/-/python-multipart/0.0.32, Apache-2.0, approved, #25779
 pypi/pypi/-/pyyaml/6.0.3, MIT, approved, #25755
