@@ -113,11 +113,14 @@ Module APIs never go there; they stay in `modules/<id>/router.py` under `/api/<m
   `Signed-off-by` line.
 - The Eclipse Project Handbook asks contributors to disclose AI assistance. For AI-assisted
   commits, add the trailer `Assisted-by: <tool> (<model>)`, for example
-  `Assisted-by: GitHub Copilot (GPT-4o-2024-08-06)`. For files that are largely AI-generated, the
-  handbook also shows a disclosure in the file header; ask the maintainers before you use it.
+  `Assisted-by: GitHub Copilot (GPT-4o-2024-08-06)`.
 - A person reviews every AI-generated change before it is committed.
-- New `.py` files start with the same two header lines as the existing files
-  (`Copyright (c) 2026 Contributors to the Eclipse Foundation`, `SPDX-License-Identifier: Apache-2.0`).
+- Every new file starts with the license header of `CONTRIBUTING.md` ("License headers", TRG 7.02):
+  the `#` banner with `Copyright (c) 2026 Contributors to the Eclipse Foundation` and the Apache-2.0
+  notice. Written with AI help: keep the paragraph "AI Disclosure", `SPDX-License-Identifier:
+  Apache-2.0 AND CC0-1.0` and `Assisted-By: <tool> (<model>)`, e.g. `Assisted-By: Claude Code
+  (claude-opus-5-5)`. Written without AI help: leave out the AI disclosure and the `Assisted-By` line,
+  and write `SPDX-License-Identifier: Apache-2.0`. Copy the header of an existing file.
 
 ## How to run
 
