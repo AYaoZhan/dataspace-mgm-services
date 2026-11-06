@@ -117,7 +117,7 @@ def _params(ids: dict) -> dict[tuple[str, str], dict | None]:
 def test_standin_queries_answer_with_the_field_names_of_the_spec(tmp_path, monkeypatch):
     with installation(tmp_path, monkeypatch) as t:
         assert t.ok, "scenarios 1-3 failed; see test_demo_scenarios"
-        log = {e["eventType"]: e for e in events.RELAY.log}
+        log = {e["type"]: e["data"] for e in events.RELAY.log}   # CloudEvents (FRAMEWORK 6)
         ids = {"applicationId": log["ApplicationSubmitted"]["applicationId"],
                "companyId": log["CompanyActivated"]["companyId"], "bpn": log["CompanyActivated"]["bpn"],
                "offerId": log["OfferApproved"]["offerId"],

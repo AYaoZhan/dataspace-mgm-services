@@ -11,6 +11,11 @@ snake_case>(input)` and a lookup `<module>.<operationId>` as `<operationId in sn
 replaces both). Lookups follow README 6.8: `query` = `<module>.<operationId>`,
 field paths, object mappings and `join`; a failed lookup is an error of the step, never
 `found: false`. In memory: a restart loses the processes (upgrade: tables of README 5).
+
+Events are CloudEvents (FRAMEWORK 6): the name is `type`, a repeated delivery has the same `id`
+(README 6.7), and the field names of a flow (`trigger.when`, `subject.key`, `correlateBy`, process
+variables, the payload of `completesOn`) are fields of `data`. The events of C12-M1 have the
+`source` `urn:c12-m1`.
 """
 from __future__ import annotations
 
@@ -32,7 +37,6 @@ from portal_common import events, http, neighbours, problems, spec, sse, standin
 
 MODULE = "c12-m1"
 log = logging.getLogger("c12-m1")
-ENVELOPE = {"eventId", "eventType", "occurredAt"}
 OPEN = {"RUNNING", "WAITING", "FAILED"}
 FINAL_STEP = {"DONE", "SKIPPED"}
 LOOKUP_FAILED = "urn:c12-m1:problem:lookup-failed"
@@ -57,8 +61,10 @@ def _iso(t: dt.datetime | None) -> str | None:
     return t.isoformat() if t else None
 
 
-def _payload(event: dict) -> dict:
-    return {k: v for k, v in event.items() if k not in ENVELOPE}
+def _data(event: dict) -> dict:
+    """Content of a CloudEvent (FRAMEWORK 6): the JSON object in `data`."""
+    data = event.get("data")
+    return dict(data) if isinstance(data, dict) else {}
 
 
 def extract(obj, path: str):
@@ -106,8 +112,9 @@ def lookup_operation(query: str) -> spec.Operation:
 
 
 def known_events() -> set[str]:
-    """Event names of the spec: `eventType` constants of the event schemas in every openapi.yaml,
-    plus the names in the event tables (README section 10 of every module, FRAMEWORK section 6)."""
+    """Event names of the spec: `type` constants of the event schemas in every openapi.yaml
+    (FRAMEWORK 6, OP-54; `eventType` in a spec before OP-54), plus the names in the event tables
+    (README section 10 of every module, FRAMEWORK section 6)."""
     out = set()
     texts = [(spec.spec_dir() / "FRAMEWORK.md").read_text(encoding="utf-8")]
     texts += [f.read_text(encoding="utf-8") for f in spec.spec_dir().glob("*/README.md")]
@@ -120,9 +127,11 @@ def known_events() -> set[str]:
     for ms in spec.modules().values():
         for name, sch in (ms.document.get("components", {}).get("schemas") or {}).items():
             if name.startswith("Event"):
-                const = (ms.resolve(sch).get("properties", {}).get("eventType") or {}).get("const")
-                if const:
-                    out.add(const)
+                props = ms.resolve(sch).get("properties", {})
+                for attr in ("type", "eventType"):
+                    const = (props.get(attr) or {}).get("const")
+                    if isinstance(const, str):
+                        out.add(const)
     return out
 
 
@@ -221,23 +230,26 @@ class Engine:
 
     # ---------------------------------------------------------------- events (README 6.5)
     def on_event(self, event: dict) -> None:
+        """A CloudEvent of the relay (FRAMEWORK 6): `type` is the name, the fields are in `data`;
+        an `id` is processed once (README 6.7)."""
         with self.lock:
-            eid, etype = event.get("eventId"), event.get("eventType")
+            eid, etype, data = event.get("id"), event.get("type"), _data(event)
             if eid in self.processed_events:
                 return
-            self.processed_events.add(eid)
+            if eid:
+                self.processed_events.add(eid)
             touched = []
             for fl in self.flows.values():
                 corr = fl["correlateBy"]
-                proc = self._open_process(fl["key"], event.get(corr)) if corr in event else None
+                proc = self._open_process(fl["key"], data.get(corr)) if corr in data else None
                 if proc and etype in self._named_events(fl):
-                    proc["variables"].update(_payload(event))
-                    proc["inbox"].append({"type": etype, "payload": _payload(event), "used": False})
+                    proc["variables"].update(data)
+                    proc["inbox"].append({"type": etype, "payload": dict(data), "used": False})
                     if etype in (fl.get("endOn") or []) and self._decision_open(proc):
                         self._end(proc, etype)   # README 6.5 point 5: only before every waitFor event arrived
                     touched.append(proc)
-                elif etype == fl["trigger"]["event"] and not proc and self._trigger_matches(fl, event):
-                    touched.append(self._start(fl, event))
+                elif etype == fl["trigger"]["event"] and not proc and self._trigger_matches(fl, data):
+                    touched.append(self._start(fl, eid, data))
             for proc in touched:
                 self.advance(proc)
                 self._changed(proc)
@@ -258,22 +270,23 @@ class Engine:
         return names
 
     @staticmethod
-    def _trigger_matches(fl: dict, event: dict) -> bool:
-        return all(event.get(k) == v for k, v in (fl["trigger"].get("when") or {}).items())
+    def _trigger_matches(fl: dict, data: dict) -> bool:
+        """README 6.5 point 1: the fields of `trigger.when` are fields of the event's `data`."""
+        return all(data.get(k) == v for k, v in (fl["trigger"].get("when") or {}).items())
 
     def _open_process(self, flow_key: str, value) -> dict | None:
         return next((p for p in self.processes.values() if p["flowKey"] == flow_key
                      and p["correlationValue"] == value and p["status"] in OPEN), None)
 
-    def _start(self, fl: dict, event: dict) -> dict:
+    def _start(self, fl: dict, event_id: str | None, data: dict) -> dict:
         now = self.clock()
         proc = {
             "id": str(uuid.uuid4()), "flowKey": fl["key"], "flowVersion": self.version,
             "flow": copy.deepcopy(fl),  # README 4: a process keeps the flow version it started with
-            "subjectType": fl["subject"]["type"], "subjectId": event.get(fl["subject"]["key"]),
-            "correlationKey": fl["correlateBy"], "correlationValue": event.get(fl["correlateBy"]),
-            "status": "RUNNING", "variables": _payload(event), "lookups": {}, "inbox": [],
-            "triggerEventId": event.get("eventId"), "endReason": None,
+            "subjectType": fl["subject"]["type"], "subjectId": data.get(fl["subject"]["key"]),
+            "correlationKey": fl["correlateBy"], "correlationValue": data.get(fl["correlateBy"]),
+            "status": "RUNNING", "variables": dict(data), "lookups": {}, "inbox": [],
+            "triggerEventId": event_id, "endReason": None,
             "createdAt": now, "updatedAt": now, "finishedAt": None,
             "steps": [{"stepRunId": str(uuid.uuid4()), "stepKey": st["key"], "call": st["call"], "state": "WAITING",
                        "attempts": 0, "maxAttempts": st.get("maxAttempts", self.max_attempts), "nextAttemptAt": None,
@@ -285,10 +298,11 @@ class Engine:
         return proc
 
     def _publish(self, etype: str, proc: dict, **extra) -> None:
-        ev = {"eventType": etype, "processId": proc["id"]}
+        """Events of C12-M1 (README 10) as CloudEvents with `source` `urn:c12-m1` (FRAMEWORK 6)."""
+        data = {"processId": proc["id"]}
         if etype != "ProcessStepRetriggered":
-            ev |= {"flowKey": proc["flowKey"], "subjectType": proc["subjectType"], "subjectId": proc["subjectId"]}
-        events.publish(ev | extra)
+            data |= {"flowKey": proc["flowKey"], "subjectType": proc["subjectType"], "subjectId": proc["subjectId"]}
+        events.publish(MODULE, etype, data | extra)
 
     def _end(self, proc: dict, reason: str) -> None:
         for sr in proc["steps"]:

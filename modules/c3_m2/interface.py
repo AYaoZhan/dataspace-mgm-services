@@ -59,7 +59,7 @@ def _check(status: int, body: object, ok=(200, 201, 204)) -> None:
 
 def registered(company_id: str, bpn: str) -> None:
     registrations[company_id] = {"bpn": bpn, "status": "REGISTERED"}
-    events.publish({"eventType": "CompanyRegisteredAtCsp", "companyId": company_id, "bpn": bpn})
+    events.publish(MODULE, "CompanyRegisteredAtCsp", {"companyId": company_id, "bpn": bpn})
 
 
 def register_company(input: dict) -> dict:
@@ -80,8 +80,8 @@ def register_company(input: dict) -> dict:
         return standin.step_reply(input, state="RUNNING")
     if status == 409:
         registrations[cid] = {"status": "FAILED", "reason": "REGISTERED_AT_OTHER_OSP"}
-        events.publish({"eventType": "CompanyRegistrationAtCspFailed", "companyId": cid,
-                        "reason": "REGISTERED_AT_OTHER_OSP"})
+        events.publish(MODULE, "CompanyRegistrationAtCspFailed", {"companyId": cid,
+                                                                  "reason": "REGISTERED_AT_OTHER_OSP"})
         raise Problem(MODULE, 409, "registered-at-other-osp", retryable=False)
     _check(status, answer)
 
@@ -92,7 +92,7 @@ def register_did(input: dict) -> dict:
         raise Problem(MODULE, 400, "validation", detail="did", retryable=False)
     bpn = _bpn_of(cid)
     _check(*call_csp("PUT", f"/companies/{bpn}/did", {"did": did}))
-    events.publish({"eventType": "CompanyDidRegistered", "companyId": cid, "bpn": bpn, "did": did})
+    events.publish(MODULE, "CompanyDidRegistered", {"companyId": cid, "bpn": bpn, "did": did})
     return standin.step_reply(input, {"bpn": bpn, "did": did})
 
 
@@ -100,8 +100,8 @@ def _membership(input: dict, member: bool) -> dict:
     cid = input.get("companyId")
     bpn = _bpn_of(cid)
     _check(*call_csp("PUT", f"/companies/{bpn}/membership", {"member": member}))
-    events.publish({"eventType": "MembershipRegistered" if member else "MembershipDeregistered", "companyId": cid,
-                    "bpn": bpn})
+    events.publish(MODULE, "MembershipRegistered" if member else "MembershipDeregistered",
+                   {"companyId": cid, "bpn": bpn})
     return standin.step_reply(input, {"bpn": bpn})
 
 
@@ -117,7 +117,7 @@ def register_connector(input: dict) -> dict:
     cid, con = input.get("companyId"), input.get("connectorId")
     bpn = _bpn_of(cid)
     _check(*call_csp("PUT", f"/companies/{bpn}/connectors/{con}", {"endpointUrl": input.get("endpointUrl")}))
-    events.publish({"eventType": "ConnectorRegisteredAtCsp", "companyId": cid, "bpn": bpn, "connectorId": con})
+    events.publish(MODULE, "ConnectorRegisteredAtCsp", {"companyId": cid, "bpn": bpn, "connectorId": con})
     return standin.step_reply(input, {"bpn": bpn})
 
 
@@ -125,7 +125,7 @@ def deregister_connector(input: dict) -> dict:
     cid, con = input.get("companyId"), input.get("connectorId")
     bpn = _bpn_of(cid)
     _check(*call_csp("DELETE", f"/companies/{bpn}/connectors/{con}"))
-    events.publish({"eventType": "ConnectorDeregisteredAtCsp", "companyId": cid, "bpn": bpn, "connectorId": con})
+    events.publish(MODULE, "ConnectorDeregisteredAtCsp", {"companyId": cid, "bpn": bpn, "connectorId": con})
     return standin.step_reply(input, {"bpn": bpn})
 
 

@@ -63,9 +63,9 @@ def _decide(case_id: str, claims: dict, outcome: str, reason: str | None = None)
     ev = {"applicationId": case["applicationId"], "companyId": case["companyId"], "kind": case["kind"],
           "existingCompany": case["existingCompany"]}
     if outcome == "APPROVED":
-        events.publish({"eventType": "ApplicationApproved", **ev})
+        events.publish(MODULE, "ApplicationApproved", ev)
     else:
-        events.publish({"eventType": "ApplicationDeclined", **ev, "reason": reason or "declined"})
+        events.publish(MODULE, "ApplicationDeclined", {**ev, "reason": reason or "declined"})
     return case
 
 

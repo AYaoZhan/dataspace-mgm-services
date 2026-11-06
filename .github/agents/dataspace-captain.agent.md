@@ -238,7 +238,9 @@ a URL (HTTP with the service token `svc-<module>`) or empty (built-in stand-in),
 `/api/<module id>`; `/steps/...` and `/internal/...` are for Process Orchestration and modules, `/events` paths are SSE.
 JSON is camelCase. Errors are Problem Details with `type` `urn:<module>:problem:<name>`, validation 400 (never 422),
 steps always with `retryable`; a neighbour's 4xx becomes 502 `neighbour-rejected`, 5xx 502 `upstream-error`. Events go
-through an outbox and never carry secrets. Every changing operation writes an audit entry.
+through an outbox and never carry secrets. They are CloudEvents (FRAMEWORK 6, proposal OP-54): name in `type`,
+content in `data`, `source` `urn:<module>`; the service publishes with `events.publish(MODULE, "<Type>", {data})`.
+Every changing operation writes an audit entry.
 
 **Tokens and scopes.** A person's token (Portal IAM): `sub`, `company_id` and `bpn` once bound, permissions under
 `resource_access.portal-core.roles`, `aud` with `portal-core`. Each operation names `x-permission` and

@@ -72,9 +72,9 @@ def csp_notification(body: dict = Body(...), _: dict = standin.perm(MODULE, "POS
             registered(cid, body["bpn"])
         elif cid:
             registrations[cid] = {"status": "FAILED", "reason": body.get("reason")}
-            events.publish({"eventType": "CompanyRegistrationAtCspFailed", "companyId": cid, "reason": body.get("reason")})
+            events.publish(MODULE, "CompanyRegistrationAtCspFailed", {"companyId": cid, "reason": body.get("reason")})
     elif body.get("type") == "CompanyTransferredAway":
         cid = next((c for c, r in registrations.items() if r.get("bpn") == body.get("bpn")), None)
         if cid:
-            events.publish({"eventType": "CompanyTransferredAway", "companyId": cid, "bpn": body["bpn"]})
+            events.publish(MODULE, "CompanyTransferredAway", {"companyId": cid, "bpn": body["bpn"]})
     return {"accepted": True}

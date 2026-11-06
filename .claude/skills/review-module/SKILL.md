@@ -35,7 +35,9 @@ and 7a first. Do not change code during the review. Report what you find.
    time, not at import. Installation settings through `portal_common.settings`. No own names for
    neighbour addresses.
 8. **Events:** event names and fields match FRAMEWORK section 6 and README section 10. Published
-   with `portal_common.events.publish`. Events only when something changed.
+   as CloudEvents with `portal_common.events.publish(MODULE, "<Type>", {data})`, the fields in
+   `data`; no flat `{"eventType": ...}` events (deprecated). `on_event` reads `event["type"]` and
+   `event["data"]`. Events only when something changed.
 9. **Secrets:** no passwords, client secrets, tokens or API keys in logs, events, step results or
    error details (FRAMEWORK 4.6).
 10. **Idempotency (FRAMEWORK 4.4):** each step finds its object by a business key from the input,

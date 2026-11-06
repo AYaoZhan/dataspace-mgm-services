@@ -82,8 +82,8 @@ def approve(offerId: str, _: dict = standin.perm(MODULE, "POST", "/osp/offers/{o
     if o["status"] != "IN_REVIEW":
         raise Problem(MODULE, 409, "invalid-state")
     o["status"] = "ACTIVE"
-    events.publish({"eventType": "OfferApproved", "offerId": offerId, "offerType": o["offerType"],
-                    "providerCompanyId": o["providerCompanyId"]})
+    events.publish(MODULE, "OfferApproved", {"offerId": offerId, "offerType": o["offerType"],
+                                             "providerCompanyId": o["providerCompanyId"]})
     return o
 
 

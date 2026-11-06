@@ -65,8 +65,8 @@ def complete_application(input: dict) -> dict:
     a = _step_application(input)
     if a["status"] != "COMPLETED":
         a["status"] = "COMPLETED"
-        events.publish({"eventType": "ApplicationCompleted", "applicationId": a["id"], "companyId": a["companyId"],
-                        "kind": a["kind"]})
+        events.publish(MODULE, "ApplicationCompleted", {"applicationId": a["id"], "companyId": a["companyId"],
+                                                        "kind": a["kind"]})
     return standin.step_reply(input, {"applicationId": a["id"], "status": a["status"]})
 
 

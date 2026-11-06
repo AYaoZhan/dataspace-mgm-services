@@ -49,7 +49,7 @@ def issuer_callback(credentialKind: str, body: dict = Body(...),
             all_issued(cid)
         else:
             cred["status"] = "FAILED"
-            events.publish({"eventType": "CredentialIssuanceFailed", "companyId": cid, "credentialType": t})
+            events.publish(MODULE, "CredentialIssuanceFailed", {"companyId": cid, "credentialType": t})
     return {"credentialType": t, "status": cred["status"]}
 
 

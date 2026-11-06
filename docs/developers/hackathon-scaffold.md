@@ -85,6 +85,7 @@ The user interface lives in [dataspace-mgm-ui](https://github.com/eclipse-tractu
 |---|---|
 | `portal_common/` | shared building blocks: token validation (`tokens`), `service_token(module)`, Problem Details (`problems`), installation settings (`settings`), queries to neighbours with the error rule (`neighbours`), event relay (`events`), access to the CSP with `private_key_jwt` (`csp`), spec access (`spec`), spec-driven stand-ins (`standin`) |
 | `modules/<module>/` | one folder per module of the spec (`interface.py`, `router.py`, see [Module structure](#module-structure-and-calls-between-modules)); `c12_m1` is Process Orchestration (provided), all others are stand-ins |
+| `controllers/` | APIs of the installation outside the modules, laid out as in the Industry Core Hub backend: one folder per API category and version (`controllers/fastapi/routers/<category>/v1/<name>_api.py`), mounted under `/api/v1`. First: the event inbox `POST /api/v1/events/inbox` (FRAMEWORK 6) |
 | `scaffold/` | the installation app (`create_app`) and the module registry |
 | `iam/` | the test Portal IAM: Keycloak with the realm of C2-M5, test persons and a stand-in for the EBW-Connector (see [iam/README.md](../../iam/README.md)) |
 | `ebw/` | for tests with a real wallet app on a phone: EBW-Connector (C5-M1), Business Wallet, test issuer and OSP 2.0 demo portal; runs on its own (see [ebw/README.md](../../ebw/README.md)) |
@@ -108,9 +109,15 @@ The user interface lives in [dataspace-mgm-ui](https://github.com/eclipse-tractu
 - **Errors of a neighbour:** 4xx -> 502 `neighbour-rejected`, `retryable: false`; 5xx, timeout,
   no connection -> 502 `upstream-error`, `retryable: true`. In the same process, the `Problem`
   raised by the neighbour's interface function counts with its status, as over HTTP.
-- **Events:** `events.publish()` puts the event into the outbox and returns at once; a relay
-  thread delivers it. A failing subscriber does not stop the others. Events with secret fields
-  are refused.
+- **Events** (FRAMEWORK 6, proposal OP-54): every event is a CloudEvent 1.0 with `id`, `source`
+  `urn:<module>`, `type` (the name of the event), `time`, `datacontenttype` and the content in
+  `data`. `events.publish(MODULE, "<Type>", {data})` puts it into the outbox and returns it at
+  once; a relay thread delivers it to every `on_event(event)`, which reads `event["type"]` and
+  `event["data"]`. A failing subscriber does not stop the others. Events with secret fields are
+  refused. `GET /scaffold/events?type=<Type>` lists what was published (`eventType=` is still
+  accepted).
+  A split-out module delivers its events over HTTP to the event inbox `POST /api/v1/events/inbox`
+  (`application/cloudevents+json`, or binary mode with `ce-` headers; its own service token).
 - **Live updates for the UI** (Server-Sent Events, C11-M1 7.6, C12-M1 7.6): `sse.Broker` per
   module with a replay buffer in memory (`SSE_REPLAY_SIZE`), `sse.response(...)` for the
   `text/event-stream` answer: `Last-Event-ID`, heartbeat (`SSE_HEARTBEAT_SECONDS`), end at token
@@ -168,6 +175,13 @@ Binding convention for every module folder `modules/<id>/` (id like `c1_m2`):
 4. Read configuration in `reset()` or at call time, never at import.
 5. `uv run pytest -q && uv run python demo.py` before every merge. `GET /scaffold/modules` shows
    which modules are stand-ins.
+
+**Team forks from before the CloudEvents change:** producers keep working: the flat form
+`events.publish({"eventType": "...", ...})` still publishes, with a `DeprecationWarning` and one
+warning per module and type in the log; change it
+to `events.publish(MODULE, "<Type>", {...})`. Consumers must change: `on_event(event)` reads the
+name from `event["type"]` and the fields from `event["data"]`, no longer `event["eventType"]` and
+top-level fields.
 
 ## Test data (FRAMEWORK 7a)
 

@@ -39,8 +39,8 @@ def create(body: dict = Body(...), claims: dict = standin.perm(MODULE, "POST", "
            "location": body.get("location"), "status": "ACTIVE", "technicalUserId": body.get("technicalUserId"),
            "createdAt": dt.datetime.now(dt.UTC).isoformat()}
     connectors[con["connectorId"]] = con
-    events.publish({"eventType": "ConnectorRegistered", "connectorId": con["connectorId"], "companyId": cid,
-                    "endpoint": con["endpoint"]})
+    events.publish(MODULE, "ConnectorRegistered", {"connectorId": con["connectorId"], "companyId": cid,
+                                                   "endpoint": con["endpoint"]})
     return con
 
 

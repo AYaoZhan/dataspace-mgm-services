@@ -133,8 +133,8 @@ def create_application(body: dict = Body(...), claims: dict = standin.perm(MODUL
          "comparison": [], "documents": [], "consents": [], "createdAt": _now(),
          "_attestation": _attestation_detail(body["attestation"], att)}
     applications[aid] = a
-    events.publish({"eventType": "ApplicationCreated", "applicationId": aid, "companyId": cid, "kind": a["kind"],
-                    "existingCompany": False})
+    events.publish(MODULE, "ApplicationCreated", {"applicationId": aid, "companyId": cid, "kind": a["kind"],
+                                                  "existingCompany": False})
     return public(a)
 
 
@@ -155,8 +155,9 @@ def submit(applicationId: str, body: dict = Body(...),
         raise Problem(MODULE, 400, "consents-incomplete", missing=missing)
     a["consents"] = [{**c, "givenAt": _now()} for c in body["consents"]]
     a["status"], a["submittedAt"] = "SUBMITTED", _now()
-    events.publish({"eventType": "ApplicationSubmitted", "applicationId": a["id"], "companyId": a["companyId"],
-                    "kind": a["kind"], "existingCompany": a["existingCompany"], "applicantSub": a["applicant"]["sub"]})
+    events.publish(MODULE, "ApplicationSubmitted", {"applicationId": a["id"], "companyId": a["companyId"],
+                                                    "kind": a["kind"], "existingCompany": a["existingCompany"],
+                                                    "applicantSub": a["applicant"]["sub"]})
     return public(a)
 
 

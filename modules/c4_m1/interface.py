@@ -50,7 +50,7 @@ def _route(cid: str) -> tuple[str, dict | None]:
 def all_issued(cid: str) -> None:
     creds = credentials.get(cid, {})
     if creds and all(c["status"] == "ISSUED" for c in creds.values()):
-        events.publish({"eventType": "CredentialsIssued", "companyId": cid, "credentialTypes": sorted(creds)})
+        events.publish(MODULE, "CredentialsIssued", {"companyId": cid, "credentialTypes": sorted(creds)})
 
 
 def _csp(method: str, path: str, body: dict) -> None:

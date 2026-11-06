@@ -15,9 +15,11 @@ flowchart TB
         c10["C10 Subscriptions"]
         c11["C11 Notifications"]
         common["portal_common<br/>tokens, problems, settings, events, CSP access"]
+        controllers["controllers<br/>event inbox /api/v1/events/inbox"]
     end
     c12 --> c1 & c2 & c3 & c4 & c6 & c8 & c10 & c11
     c1 & c2 & c3 & c4 & c6 & c8 & c10 & c11 --> common
+    controllers --> common
 ```
 
 ## 5.2 Level 2: modules
@@ -48,6 +50,11 @@ Each module folder contains:
 |---|---|
 | `interface.py` | Public interface: operations, steps for Process Orchestration and queries for other modules |
 | `router.py` | HTTP routes as described in the module's `openapi.yaml` |
+
+APIs of the installation that belong to no module are in `controllers/`: one folder per API category and version,
+as in the Industry Core Hub backend (`controllers/fastapi/routers/<category>/v1/<name>_api.py`), mounted under
+`/api/v1`. The first is the event inbox `POST /api/v1/events/inbox`: split-out modules deliver their events there as
+CloudEvents (structured or binary content mode, token of the service account of the publishing module; FRAMEWORK 6).
 
 The specification of each module (behaviour, data, rules, operations, steps, queries, events, errors, acceptance
 criteria and test data) is kept per module folder in the specification; see [docs/api](../api/README.md).

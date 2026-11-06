@@ -68,8 +68,8 @@ def create_company(input: dict) -> dict:
                           "consentedAt": c.get("givenAt"), "consentedBy": app["applicant"]["sub"]}
                          for c in app.get("consents", [])],
             "createdAt": _now()}
-        events.publish({"eventType": "CompanyCreated", "companyId": cid, "applicationId": input.get("applicationId"),
-                        "coreDataSource": companies[cid]["coreDataSource"]})
+        events.publish(MODULE, "CompanyCreated", {"companyId": cid, "applicationId": input.get("applicationId"),
+                                                  "coreDataSource": companies[cid]["coreDataSource"]})
     return standin.step_reply(input, {"companyId": cid, "status": companies[cid]["status"]})
 
 
@@ -79,7 +79,7 @@ def assign_identifier(input: dict) -> dict:
         raise Problem(MODULE, 400, "validation", detail="bpn", retryable=False)
     if c["bpn"] != input["bpn"]:
         c["bpn"] = input["bpn"]
-        events.publish({"eventType": "CompanyIdentifierAssigned", "companyId": c["id"], "bpn": c["bpn"]})
+        events.publish(MODULE, "CompanyIdentifierAssigned", {"companyId": c["id"], "bpn": c["bpn"]})
     return standin.step_reply(input, {"companyId": c["id"], "bpn": c["bpn"]})
 
 
@@ -94,8 +94,8 @@ def activate_company(input: dict) -> dict:
         if not c["bpn"]:
             raise Problem(MODULE, 409, "invalid-state", detail="no BPN", retryable=False)
         c["status"], c["companyRoles"] = "ACTIVE", sorted(set(c["requestedRoles"]))
-        events.publish({"eventType": "CompanyActivated", "companyId": c["id"], "bpn": c["bpn"],
-                        "companyRoles": c["companyRoles"]})
+        events.publish(MODULE, "CompanyActivated", {"companyId": c["id"], "bpn": c["bpn"],
+                                                    "companyRoles": c["companyRoles"]})
     return standin.step_reply(input, {"companyId": c["id"], "status": c["status"]})
 
 
@@ -103,7 +103,7 @@ def reject_company(input: dict) -> dict:
     c = companies.get(input.get("companyId"))
     if c and c["status"] == "REQUESTED":
         c["status"] = "REJECTED"
-        events.publish({"eventType": "CompanyRejected", "companyId": c["id"]})
+        events.publish(MODULE, "CompanyRejected", {"companyId": c["id"]})
     return standin.step_reply(input)
 
 

@@ -31,8 +31,8 @@ def create_for_subscription(input: dict) -> dict:
                                 "companyId": input.get("customerCompanyId"),
                                 "providerCompanyId": input.get("providerCompanyId"), "offerSubscriptionId": sub_id,
                                 "origin": "SUBSCRIPTION", "status": "ACTIVE"}
-        events.publish({"eventType": "TechnicalUserCreated", "technicalUserId": tid,
-                        "companyId": input.get("customerCompanyId")})
+        events.publish(MODULE, "TechnicalUserCreated", {"technicalUserId": tid,
+                                                        "companyId": input.get("customerCompanyId")})
     tu = technical_users[tid]
     return standin.step_reply(input, {"accounts": [{"technicalUserId": tid, "clientId": tu["clientId"]}]})
 

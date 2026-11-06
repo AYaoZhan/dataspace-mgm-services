@@ -7,6 +7,8 @@
 - `ProcessStepFailed` -> `PROCESS_STEP_FAILED` for every person with the portal role `OSP Admin`;
   `ProcessStepRetriggered` (same step), `ProcessCompleted`, `ProcessEnded` close it (`done`).
 Recipients by portal role are read from the test IAM (the real module asks C2-M2).
+Events are CloudEvents (FRAMEWORK 6): the rules match `type` and read the fields of `data`;
+`sourceEventId` of a notification is the event `id`.
 
 `GET /notifications/events` (README 7.6): Server-Sent Events `notification-created`,
 `notification-done` and `resync` for the own inbox, through `portal_common.sse`.
@@ -40,7 +42,7 @@ def reset() -> None:
 
 def _add(user: str, ntype: str, event: dict, **content) -> None:
     n = {"id": str(uuid.uuid4()), "userId": user, "type": ntype, "topic": TOPICS[ntype], "read": False,
-         "done": False, "createdAt": dt.datetime.now(dt.UTC).isoformat(), "sourceEventId": event["eventId"],
+         "done": False, "createdAt": dt.datetime.now(dt.UTC).isoformat(), "sourceEventId": event["id"],
          "content": content}
     notifications.append(n)
     BROKER.publish("notification-created", {   # README 7.6: no content, only IDs, types and states
@@ -56,20 +58,21 @@ def _close(match) -> None:
 
 
 def on_event(event: dict) -> None:
-    t = event["eventType"]
+    """A CloudEvent of the relay (FRAMEWORK 6): the name is `type`, the fields are in `data`."""
+    t, d = event["type"], event.get("data") or {}
     if t == "ApplicationSubmitted":
-        applicants[event["applicationId"]] = event["applicantSub"]
-        _add(event["applicantSub"], "APPLICATION_SUBMITTED", event, applicationId=event["applicationId"])
-    elif t == "ApplicationCompleted" and event.get("applicationId") in applicants:
-        _add(applicants[event["applicationId"]], "APPLICATION_COMPLETED", event, applicationId=event["applicationId"])
+        applicants[d["applicationId"]] = d["applicantSub"]
+        _add(d["applicantSub"], "APPLICATION_SUBMITTED", event, applicationId=d["applicationId"])
+    elif t == "ApplicationCompleted" and d.get("applicationId") in applicants:
+        _add(applicants[d["applicationId"]], "APPLICATION_COMPLETED", event, applicationId=d["applicationId"])
     elif t == "ProcessStepFailed":
         for uid in iam_backend.backend(MODULE).users_with_portal_role("OSP Admin"):
-            _add(uid, "PROCESS_STEP_FAILED", event, processId=event["processId"], stepKey=event.get("stepKey"))
+            _add(uid, "PROCESS_STEP_FAILED", event, processId=d["processId"], stepKey=d.get("stepKey"))
     elif t == "ProcessStepRetriggered":
         _close(lambda n: n["type"] == "PROCESS_STEP_FAILED" and n["content"] == {
-            "processId": event["processId"], "stepKey": event.get("stepKey")})
+            "processId": d["processId"], "stepKey": d.get("stepKey")})
     elif t in ("ProcessCompleted", "ProcessEnded"):
-        _close(lambda n: n["type"] == "PROCESS_STEP_FAILED" and n["content"]["processId"] == event["processId"])
+        _close(lambda n: n["type"] == "PROCESS_STEP_FAILED" and n["content"]["processId"] == d["processId"])
 
 
 @router.get("/notifications/events")

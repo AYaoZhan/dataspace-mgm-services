@@ -61,7 +61,7 @@ def subscribe(body: dict = Body(...), claims: dict = standin.perm(MODULE, "POST"
          "instanceKind": offer.get("instanceKind"), "customerCompanyId": cid,
          "providerCompanyId": offer["providerCompanyId"], "status": "REQUESTED", "instanceUrl": None}
     subscriptions[s["offerSubscriptionId"]] = s
-    events.publish({"eventType": "SubscriptionRequested", **_event_fields(s)})
+    events.publish(MODULE, "SubscriptionRequested", _event_fields(s))
     return s
 
 
@@ -79,7 +79,7 @@ def start_setup(offerSubscriptionId: str, body: dict = Body(default={}),
     if s["status"] != "REQUESTED":
         raise Problem(MODULE, 409, "invalid-state")
     s["status"], s["instanceUrl"] = "PENDING", body.get("instanceUrl")
-    events.publish({"eventType": "SubscriptionSetupStarted", **_event_fields(s), "instanceUrl": s["instanceUrl"]})
+    events.publish(MODULE, "SubscriptionSetupStarted", {**_event_fields(s), "instanceUrl": s["instanceUrl"]})
     return s
 
 
@@ -102,7 +102,7 @@ def activate(offerSubscriptionId: str,
     if status == "FAILED":
         raise Problem(MODULE, 409, "setup-failed")
     s["status"] = "ACTIVE"
-    events.publish({"eventType": "SubscriptionActivated", **_event_fields(s), "instanceKind": s["instanceKind"]})
+    events.publish(MODULE, "SubscriptionActivated", {**_event_fields(s), "instanceKind": s["instanceKind"]})
     return s
 
 
