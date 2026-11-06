@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """Stand-in of C1-M2 Registration: just enough for the onboarding path (FRAMEWORK 5.2).
 
 Implemented: create an application with a verification attestation (6.4: `ATTESTATION_ISSUER`, JWKS
@@ -133,8 +155,8 @@ def create_application(body: dict = Body(...), claims: dict = standin.perm(MODUL
          "comparison": [], "documents": [], "consents": [], "createdAt": _now(),
          "_attestation": _attestation_detail(body["attestation"], att)}
     applications[aid] = a
-    events.publish({"eventType": "ApplicationCreated", "applicationId": aid, "companyId": cid, "kind": a["kind"],
-                    "existingCompany": False})
+    events.publish(MODULE, "ApplicationCreated", {"applicationId": aid, "companyId": cid, "kind": a["kind"],
+                                                  "existingCompany": False})
     return public(a)
 
 
@@ -155,8 +177,9 @@ def submit(applicationId: str, body: dict = Body(...),
         raise Problem(MODULE, 400, "consents-incomplete", missing=missing)
     a["consents"] = [{**c, "givenAt": _now()} for c in body["consents"]]
     a["status"], a["submittedAt"] = "SUBMITTED", _now()
-    events.publish({"eventType": "ApplicationSubmitted", "applicationId": a["id"], "companyId": a["companyId"],
-                    "kind": a["kind"], "existingCompany": a["existingCompany"], "applicantSub": a["applicant"]["sub"]})
+    events.publish(MODULE, "ApplicationSubmitted", {"applicationId": a["id"], "companyId": a["companyId"],
+                                                    "kind": a["kind"], "existingCompany": a["existingCompany"],
+                                                    "applicantSub": a["applicant"]["sub"]})
     return public(a)
 
 

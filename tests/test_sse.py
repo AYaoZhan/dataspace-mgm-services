@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """Server-Sent Events of C12-M1 (README 7.6 to 7.8) and C11-M1 (README 7.6) over a real HTTP server.
 
 The test client of Starlette buffers a response until it ends, so the streams run on uvicorn
@@ -20,16 +42,20 @@ from conftest import BASE, person_token
 from modules.c11_m1 import router as c11
 from modules.c12_m1 import engine as eng
 from modules.c12_m1 import router as c12
+from portal_common import events
 from portal_common import http as phttp
 from portal_common import problems
 from tools import test_iam
 
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
 COMPANY = "c0000001-0000-4000-8000-000000000001"
+PRODUCER = {"ApplicationSubmitted": "c1-m2", "ApplicationCompleted": "c1-m2", "ApplicationApproved": "c1-m3",
+            "ProcessStepFailed": "c12-m1", "ProcessStepRetriggered": "c12-m1"}   # FRAMEWORK 6
 
 
 def ev(etype, **fields):
-    return {"eventId": str(uuid.uuid4()), "eventType": etype, "occurredAt": "2026-11-06T09:30:00Z", **fields}
+    """A CloudEvent of FRAMEWORK 6 from the module that owns the event; the fields go into `data`."""
+    return events.cloudevent(PRODUCER[etype], etype, fields, time="2026-11-06T09:30:00Z")
 
 
 def submitted():
@@ -207,10 +233,12 @@ def test_stream_needs_a_token_in_the_header(server):
 def test_inbox_stream_created_and_done(server):
     erika = server("/api/c11-m1/notifications/events", "erika")
     otto = server("/api/c11-m1/notifications/events", "otto")
-    c11.on_event(submitted())
+    trigger = submitted()
+    c11.on_event(trigger)
     created = erika.next()
     assert created["event"] == "notification-created" and created["data"]["type"] == "APPLICATION_SUBMITTED"
     assert "content" not in created["data"] and otto.quiet(0.3)
+    assert c11.notifications[0]["sourceEventId"] == trigger["id"]   # the CloudEvent `id` (FRAMEWORK 6)
     pid = str(uuid.uuid4())
     c11.on_event(ev("ProcessStepFailed", processId=pid, flowKey="onboarding", subjectType="APPLICATION",
                     subjectId=APPLICATION, stepKey="register-company", errorType="x", retryable=False))

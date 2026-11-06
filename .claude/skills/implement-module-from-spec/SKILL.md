@@ -64,8 +64,10 @@ these names. You may rewrite the bodies. Remove `STANDIN = True`.
 - Steps are idempotent (FRAMEWORK 4.4): find the object by the business key from the input,
   create only what is missing, return the same result again, and publish events only when
   something changed.
-- Events: `events.publish({"eventType": "...", ...})` with exactly the fields of FRAMEWORK 6 and
-  README section 10. No secrets.
+- Events are CloudEvents (FRAMEWORK 6): `events.publish(MODULE, "<Type>", {...})` with the name
+  and exactly the fields of README section 10 in `data`. No secrets. In `on_event(event)`, read the
+  name from `event["type"]` and the fields from `event["data"]`. The flat form
+  `events.publish({"eventType": ...})` is deprecated.
 - Configuration: read the variables of README section 4 with their exact names from `os.environ`
   in `reset()` or at call time. Installation settings with `settings.get(...)`.
 
@@ -123,7 +125,8 @@ and who could decide it (another module, the spec authors). Do not decide such p
 - [ ] The router only checks token, permission and scope and then calls `interface.py`.
 - [ ] Errors are `Problem` with the type names of the spec; steps always carry `retryable`.
 - [ ] Configuration variables have the names of README section 4.
-- [ ] Events have the names and fields of FRAMEWORK 6 and README section 10.
+- [ ] Events are CloudEvents: the names of README section 10 in `type`, its fields in `data`
+      (FRAMEWORK 6).
 - [ ] No secrets in logs, events or results.
 - [ ] Steps are idempotent.
 - [ ] Imports from other modules come only from their `interface.py`.

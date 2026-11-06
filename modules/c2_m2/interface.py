@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """Public interface of the C2-M2 stand-in: `assign-company-admin` (binds the applicant in the test
 IAM), client template and instance clients of apps, and the queries on instance clients."""
 from __future__ import annotations
@@ -30,8 +52,8 @@ def assign_company_admin(input: dict) -> dict:
     if person["companyId"] != input.get("companyId") or "Company Admin" not in person["portalRoles"]:
         iam.bind(uid, input.get("companyId"), input.get("bpn"))
         iam.add_portal_roles(uid, ["Company Admin"])
-        events.publish({"eventType": "UserAssignedToCompany", "userId": uid, "companyId": input.get("companyId"),
-                        "via": "ONBOARDING", "portalRoles": ["Company Admin"]})
+        events.publish(MODULE, "UserAssignedToCompany", {"userId": uid, "companyId": input.get("companyId"),
+                                                         "via": "ONBOARDING", "portalRoles": ["Company Admin"]})
     return standin.step_reply(input, {"userId": uid})
 
 
@@ -43,7 +65,7 @@ def create_client_template(input: dict) -> dict:
         templates[app_id] = {"appId": app_id, "clientId": f"app-{standin.stable_id('app', app_id)[:8]}",
                              "roles": [r if isinstance(r, dict) else {"name": r} for r in input["roles"]],
                              "appName": input.get("appName")}
-        events.publish({"eventType": "AppClientTemplateCreated", "appId": app_id})
+        events.publish(MODULE, "AppClientTemplateCreated", {"appId": app_id})
     return standin.step_reply(input, {"clientId": templates[app_id]["clientId"]})
 
 
@@ -57,7 +79,7 @@ def create_instance_client(input: dict) -> dict:
               "iamClientId": f"app-{iid[:8]}", "status": "INACTIVE",
               "createdAt": dt.datetime.now(dt.UTC).isoformat()}
         instance_clients[iid] = ic
-        events.publish({"eventType": "AppInstanceClientCreated", "appInstanceClientId": iid, "appId": key[0]})
+        events.publish(MODULE, "AppInstanceClientCreated", {"appInstanceClientId": iid, "appId": key[0]})
     return standin.step_reply(input, {"id": ic["id"], "iamClientId": ic["iamClientId"]})
 
 
@@ -67,7 +89,7 @@ def _set_status(input: dict, status: str, event: str) -> dict:
         raise Problem(MODULE, 404, "not-found", retryable=False)
     if ic["status"] != status:
         ic["status"] = status
-        events.publish({"eventType": event, "appInstanceClientId": ic["id"], "appId": ic["appId"]})
+        events.publish(MODULE, event, {"appInstanceClientId": ic["id"], "appId": ic["appId"]})
     return standin.step_reply(input, {"id": ic["id"], "status": status})
 
 

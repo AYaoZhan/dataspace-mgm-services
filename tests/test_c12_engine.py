@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """C12-M1 Process Orchestration against the acceptance cases of its README (section 13)."""
 import datetime as dt
 import uuid
@@ -65,8 +87,16 @@ def engine(monkeypatch):
     return e
 
 
-def ev(etype, **fields):
-    return {"eventId": str(uuid.uuid4()), "eventType": etype, "occurredAt": "2026-11-06T09:30:00Z", **fields}
+PRODUCER = {   # module that publishes the event (FRAMEWORK 6)
+    "ApplicationSubmitted": "c1-m2", "ApplicationWithdrawn": "c1-m2", "ApplicationApproved": "c1-m3",
+    "ApplicationDeclined": "c1-m3", "CompanyRegistrationAtCspFailed": "c3-m2", "DataspaceWalletCreated": "c4-m2",
+    "OfferApproved": "c8-m1", "SubscriptionSetupStarted": "c10-m1", "SubscriptionDeactivated": "c10-m1",
+}
+
+
+def ev(etype, id=None, **fields):  # noqa: A002
+    """A CloudEvent of FRAMEWORK 6 from the module that owns the event; the fields go into `data`."""
+    return events.cloudevent(PRODUCER[etype], etype, fields, id=id, time="2026-11-06T09:30:00Z")
 
 
 def submitted(kind="ONBOARDING", existing=False, **extra):
@@ -87,7 +117,7 @@ def step(p, key):
 
 
 def published(etype):
-    return [x for x in events.RELAY.log if x["eventType"] == etype]
+    return [x for x in events.RELAY.log if x["type"] == etype]
 
 
 # ---------------------------------------------------------------- start-up check (6.2, case 1)
@@ -134,12 +164,74 @@ def test_onboarding_end_to_end_with_builtin_standins(engine):
     assert published("CompanyRegisteredAtCsp") == []   # the stand-in never publishes events (11.3)
 
 
+def test_events_of_c12_are_cloudevents(engine):
+    trigger = submitted()
+    engine.on_event(trigger)
+    p = proc_of(engine, "onboarding")
+    assert p["triggerEventId"] == trigger["id"] and p["variables"]["applicantSub"] == "ebw.test-erika"
+    started = published("ProcessStarted")[0]   # FRAMEWORK 6: attributes; README 10: content in `data`
+    assert set(started) == set(events.ATTRIBUTES) and started["source"] == "urn:c12-m1"
+    assert started["specversion"] == "1.0" and started["datacontenttype"] == "application/json"
+    assert started["data"] == {"processId": p["id"], "flowKey": "onboarding", "subjectType": "APPLICATION",
+                               "subjectId": APPLICATION}
+
+
 def test_same_event_twice_and_second_event_start_no_second_process(engine):
     e1 = submitted()
     engine.on_event(e1)
     engine.on_event(e1)
     engine.on_event(submitted())
     assert len([p for p in engine.processes.values() if p["flowKey"] == "onboarding"]) == 1
+
+
+def test_same_cloudevent_id_is_processed_once(engine):
+    """README 6.7: a repeated delivery (same `id`) of a trigger starts no second process."""
+    eid, offer = str(uuid.uuid4()), "7c1d9e3a-2b4f-4a6c-8d0e-5f1a2b3c4d5e"
+
+    def approvals():
+        return [p for p in engine.processes.values() if p["flowKey"] == "app-approval"]
+
+    engine.on_event(ev("OfferApproved", id=eid, offerId=offer, offerType="APP"))
+    assert [p["status"] for p in approvals()] == ["COMPLETED"]   # closed: no open process holds the event
+    engine.on_event(ev("OfferApproved", id=eid, offerId=offer, offerType="APP"))   # redelivery: same `id`
+    assert len(approvals()) == 1
+    engine.on_event(ev("OfferApproved", offerId=offer, offerType="APP"))   # a new event: a new process
+    assert len(approvals()) == 2
+
+
+def _spec_with_event_schemas(tmp_path, schemas: dict[str, dict]):
+    """A small spec folder: FRAMEWORK.md without an event table, one openapi.yaml per module."""
+    (tmp_path / "FRAMEWORK.md").write_text("# Framework\n", encoding="utf-8")
+    for mid, sch in schemas.items():
+        folder = tmp_path / mid.upper()
+        folder.mkdir()
+        doc = {"openapi": "3.1.0", "servers": [{"url": f"/api/{mid}"}], "paths": {},
+               "components": {"schemas": sch}}
+        (folder / "openapi.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+
+def test_known_events_reads_type_and_old_event_type_constants(tmp_path, monkeypatch):
+    """FRAMEWORK 6, OP-54: event schemas name the event in `type`; a spec before OP-54 in `eventType`."""
+    base = {"type": "object", "properties": {"type": {"type": "string"}, "eventType": {"type": "string"}}}
+    _spec_with_event_schemas(tmp_path, {
+        "c1-m2": {   # before OP-54: flat event with `eventType`
+            "EventBase": base,
+            "EventApplicationSubmitted": {"allOf": [{"$ref": "#/components/schemas/EventBase"}, {
+                "type": "object", "properties": {"eventType": {"const": "ApplicationSubmitted"},
+                                                 "applicationId": {"type": "string"}}}]}},
+        "c2-m2": {   # OP-54: CloudEvent with `type`, the fields in `data`
+            "EventBase": base,
+            "EventAppClientTemplateCreated": {"allOf": [{"$ref": "#/components/schemas/EventBase"}, {
+                "type": "object", "properties": {"type": {"const": "AppClientTemplateCreated"},
+                                                 "data": {"type": "object"}}}]},
+            "NotAnEvent": {"type": "object", "properties": {"type": {"const": "Unrelated"}}}},
+    })
+    monkeypatch.setenv("SPEC_DIR", str(tmp_path))
+    assert eng.known_events() == {"ApplicationSubmitted", "AppClientTemplateCreated"}
+
+
+def test_known_events_of_the_spec():
+    assert {"ApplicationSubmitted", "ApplicationApproved", "DataspaceWalletCreated"} <= eng.known_events()
 
 
 # ---------------------------------------------------------------- decline, reactivation (5, 6)
@@ -185,7 +277,7 @@ def test_event_published_before_running_answer_still_completes(engine, fake, mon
     monkeypatch.setenv("C4_M2_URL", FAKE)
 
     def early(b):
-        events.publish({"eventType": "DataspaceWalletCreated", "companyId": COMPANY, "did": "did:web:early"})
+        events.publish("c4-m2", "DataspaceWalletCreated", {"companyId": COMPANY, "did": "did:web:early"})
         return 200, {"stepRunId": b["stepRunId"], "state": "RUNNING"}
 
     fake.answers["/api/c4-m2/steps/create-wallet"] = early
@@ -203,7 +295,7 @@ def test_fails_on_event_fails_the_step(engine, fake, monkeypatch):
     engine.on_event(ev("CompanyRegistrationAtCspFailed", companyId=COMPANY, reason="registered-at-other-osp"))
     p = proc_of(engine, "onboarding")
     assert p["status"] == "FAILED" and step(p, "register-company")["state"] == "FAILED"
-    assert published("ProcessStepFailed")[-1]["stepKey"] == "register-company"
+    assert published("ProcessStepFailed")[-1]["data"]["stepKey"] == "register-company"
 
 
 # ---------------------------------------------------------------- retries (9, 10)
@@ -232,7 +324,7 @@ def test_final_error_fails_after_one_attempt(engine, fake, monkeypatch):
     engine.on_event(submitted())
     p = proc_of(engine, "onboarding")
     assert step(p, "create-company")["attempts"] == 1 and p["status"] == "FAILED"
-    f = published("ProcessStepFailed")[-1]
+    f = published("ProcessStepFailed")[-1]["data"]
     assert f["stepKey"] == "create-company" and f["errorType"] == "urn:c3-m1:problem:invalid-state"
 
 

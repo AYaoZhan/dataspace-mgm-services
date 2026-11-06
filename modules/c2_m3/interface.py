@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """Public interface of the C2-M3 stand-in: `create-for-subscription` (technical user in the test IAM,
 roles checked against C2-M5 6.4), the query of a technical user and the rotation of its secret
 for Subscriptions. Secrets only in the answer of the rotation, never in step results or events."""
@@ -31,8 +53,8 @@ def create_for_subscription(input: dict) -> dict:
                                 "companyId": input.get("customerCompanyId"),
                                 "providerCompanyId": input.get("providerCompanyId"), "offerSubscriptionId": sub_id,
                                 "origin": "SUBSCRIPTION", "status": "ACTIVE"}
-        events.publish({"eventType": "TechnicalUserCreated", "technicalUserId": tid,
-                        "companyId": input.get("customerCompanyId")})
+        events.publish(MODULE, "TechnicalUserCreated", {"technicalUserId": tid,
+                                                        "companyId": input.get("customerCompanyId")})
     tu = technical_users[tid]
     return standin.step_reply(input, {"accounts": [{"technicalUserId": tid, "clientId": tu["clientId"]}]})
 

@@ -174,5 +174,39 @@ def readme(folder: str) -> str:
     return (spec_dir() / folder / "README.md").read_text(encoding="utf-8")
 
 
+_EVENT_ROW = re.compile(r"^\| *(C[0-9]+-M[0-9]+) *\|([^|]*)\|", re.M)
+_EVENT_NAME = re.compile(r"`([A-Z][A-Za-z0-9]*)`")
+
+
+@functools.lru_cache(maxsize=None)
+def _event_types(directory: str) -> dict[str, frozenset[str]]:
+    root = Path(directory)
+    owners: dict[str, set[str]] = {}
+    framework = root / "FRAMEWORK.md"
+    text = framework.read_text(encoding="utf-8") if framework.exists() else ""
+    m = re.search(r"^## 6\. Event catalogue\n(.*?)(?=^## )", text, re.S | re.M)
+    for mod, names in _EVENT_ROW.findall(m.group(1) if m else ""):   # | C1-M2 | `ApplicationCreated`, ... |
+        owners.setdefault(mod.lower(), set()).update(_EVENT_NAME.findall(names))
+    for mid, ms in _load(directory).items():
+        readme_file = root / ms.folder / "README.md"
+        body = readme_file.read_text(encoding="utf-8") if readme_file.exists() else ""
+        sec = re.search(r"^## 10\. Events\n(.*?)(?=^## )", body, re.S | re.M)
+        for row in re.findall(r"^\|([^|]*)\|", sec.group(1) if sec else "", re.M):   # first column of section 10
+            owners.setdefault(mid, set()).update(_EVENT_NAME.findall(row))
+        for name, sch in (ms.document.get("components", {}).get("schemas") or {}).items():
+            if name.startswith("Event"):
+                props = ms.resolve(sch).get("properties", {})
+                for attr in ("type", "eventType"):   # `type` since OP-54, `eventType` before
+                    const = (props.get(attr) or {}).get("const")
+                    if isinstance(const, str):
+                        owners.setdefault(mid, set()).add(const)
+    return {k: frozenset(v) for k, v in owners.items()}
+
+
+def event_types(mid: str) -> frozenset[str]:
+    """Event names a module publishes: FRAMEWORK 6, section 10 of its README, its Event schemas."""
+    return _event_types(str(spec_dir())).get(mid, frozenset())
+
+
 def flows_file() -> Path:
     return Path(os.environ.get("FLOWS_FILE") or spec_dir() / "C12-M1-ProcessOrchestration" / "flows.yaml")

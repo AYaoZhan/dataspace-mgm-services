@@ -48,8 +48,8 @@ $F check                        # flows.yaml against the specs, like C12-M1 at s
 
 | Field | Meaning (C12-M1 README 6.1) |
 |---|---|
-| `trigger` | event (with `when` condition on its fields) that starts a process |
-| `subject`, `correlateBy` | what the process is about; which field assigns later events to it |
+| `trigger` | event (with `when` condition on the fields of its `data`) that starts a process |
+| `subject`, `correlateBy` | what the process is about; which field of `data` assigns later events to it |
 | `when` on a step | the step runs only if the condition holds, otherwise `SKIPPED` |
 | `waitFor` | the step waits for this event (e.g. the decision `ApplicationApproved`); no time limit |
 | `completesOn` / `failsOn` | events that end a `RUNNING` (long-running) step; `set` adds process variables |
@@ -60,8 +60,8 @@ $F check                        # flows.yaml against the specs, like C12-M1 at s
 
 1. `show <flow>` and find the step: which module, which event it waits for or completes on.
 2. A `waitFor` step waits for a human decision or a callback; a `completesOn` step waits for the module's own event.
-   Check that the module published it with the exact name and the `correlateBy` field (`GET /scaffold/events` in the
-   scaffold lists what was published).
+   Check that the module published it with the exact name in `type` and the `correlateBy` field in `data` (events are
+   CloudEvents, FRAMEWORK 6; `GET /scaffold/events?type=<Name>` in the scaffold lists what was published).
 3. An input with no source value is left out; if the step needs it, the step answers 400 and the run is `FAILED`
    (README 6.1). Follow the source back with `show`.
 4. Retries: `retryable: true` errors are retried with back-off up to `maxAttempts`; `false` is final, OSP staff can

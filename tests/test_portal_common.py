@@ -1,9 +1,33 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """portal_common: spec access, settings, tokens, service tokens, Problem Details, neighbours, event relay."""
+import datetime as dt
 import json
 import threading
 import time
+import uuid
 
 import httpx
 import jwt
@@ -238,38 +262,109 @@ def test_publish_returns_before_subscribers_run_and_failures_are_isolated():
 
     def slow(ev):
         gate.wait(2)
-        got.append(("slow", ev["eventType"]))
+        got.append(("slow", ev["type"]))
 
     def broken(ev):
         raise RuntimeError("subscriber bug")
 
     relay.subscribe("slow", slow)
     relay.subscribe("broken", broken)
-    relay.subscribe("fine", lambda ev: got.append(("fine", ev["eventType"])))
+    relay.subscribe("fine", lambda ev: got.append(("fine", ev["type"])))
     relay.start()
     t0 = time.time()
-    ev = relay.publish({"eventType": "CompanyCreated", "companyId": "c1"})
-    assert time.time() - t0 < 0.5 and ev["eventId"] and ev["occurredAt"]
+    ev = relay.publish("c3-m1", "CompanyCreated", {"companyId": "c1"})
+    assert time.time() - t0 < 0.5 and ev["id"] and ev["time"]
     gate.set()
     assert relay.wait_idle(5)
     assert got == [("slow", "CompanyCreated"), ("fine", "CompanyCreated")]
-    assert relay.failures[0]["subscriber"] == "broken"
+    assert relay.failures == [{"subscriber": "broken", "id": ev["id"], "type": "CompanyCreated",
+                               "error": "RuntimeError('subscriber bug')"}]
     relay.stop()
 
 
-def test_events_never_carry_secrets():
+def test_publish_returns_a_cloudevent():
+    """FRAMEWORK 6: CloudEvents 1.0 with `source` `urn:<module>`, the content in `data`."""
+    relay = events.Relay()
+    data = {"companyId": "c1", "bpn": "BPNL000000000001"}
+    ev = relay.publish("c3-m1", "CompanyIdentifierAssigned", data)
+    assert set(ev) == set(events.ATTRIBUTES)
+    assert (ev["specversion"], ev["source"], ev["type"], ev["datacontenttype"]) == \
+        ("1.0", "urn:c3-m1", "CompanyIdentifierAssigned", "application/json")
+    assert str(uuid.UUID(ev["id"])) == ev["id"]
+    assert dt.datetime.fromisoformat(ev["time"]).utcoffset() == dt.timedelta(0)
+    assert ev["data"] == data and ev["data"] is not data
+    assert relay.log == [ev] and relay.publish("c3-m1", "CompanyRejected", {"companyId": "c1"})["id"] != ev["id"]
+    built = events.cloudevent("c3-m1", "CompanyRejected", {"companyId": "c1"}, id="e1", time="2026-11-06T09:30:00Z")
+    assert (built["id"], built["time"], events.source_of("c12-m1")) == ("e1", "2026-11-06T09:30:00Z", "urn:c12-m1")
+    assert len(relay.log) == 2   # cloudevent() does not publish
+
+
+@pytest.mark.parametrize("module,etype,data", [
+    ("C3-M1", "CompanyCreated", {}), ("c3_m1", "CompanyCreated", {}), ("urn:c3-m1", "CompanyCreated", {}),
+    (None, "CompanyCreated", {}), ("c3-m1", "companyCreated", {}), ("c3-m1", "company-created", {}),
+    ("c3-m1", "", {}), ("c3-m1", None, {}), ("c3-m1", "CompanyCreated", ["c1"]), ("c3-m1", "CompanyCreated", "c1")])
+def test_publish_rejects_invalid_module_type_and_data(module, etype, data):
+    relay = events.Relay()
     with pytest.raises(ValueError):
-        events.Relay().publish({"eventType": "X", "clientSecret": "s"})
+        relay.publish(module, etype, data)
+    assert relay.log == []
+
+
+@pytest.mark.parametrize("key", ["clientSecret", "password", "apiKey", "accessToken"])
+def test_events_never_carry_secrets(key):
+    with pytest.raises(ValueError, match="secrets"):
+        events.Relay().publish("c2-m3", "TechnicalUserCreated", {"technicalUserId": "t1", key: "s"})
+
+
+def _caller(globals_: dict, via: str):
+    """A function defined in another module (its globals), that publishes in the old flat form."""
+    src = f"def publish_flat(ev):\n    return {via}.publish(ev)\n"
+    exec(compile(src, "<team-fork>", "exec"), globals_)   # noqa: S102 - test of the caller inference
+    return globals_["publish_flat"]
+
+
+OLD_ID = "6f1f6b2e-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
+
+
+@pytest.mark.parametrize("via", ["events", "relay"])   # module-level events.publish and Relay().publish
+@pytest.mark.parametrize("globals_,source", [
+    ({"MODULE": "c3-m1", "__name__": "modules.c3_m1.router"}, "urn:c3-m1"),
+    ({"MODULE": "c3-m1", "__name__": "modules.c1_m2.router"}, "urn:c3-m1"),   # MODULE wins
+    ({"__name__": "modules.c10_m1.router"}, "urn:c10-m1"),                    # package of the caller
+])
+def test_deprecated_flat_form_takes_the_module_of_the_caller(via, globals_, source):
+    relay = events.Relay()
+    publish_flat = _caller({**globals_, "events": events, "relay": relay}, via)
+    with pytest.warns(DeprecationWarning, match="events.publish") as rec:
+        ev = publish_flat({"eventType": "CompanyCreated", "eventId": OLD_ID, "occurredAt": "2026-11-06T09:00:00Z",
+                           "companyId": "c1"})
+    assert rec[0].filename == "<team-fork>"   # the warning names the caller
+    assert (ev["source"], ev["type"], ev["data"]) == (source, "CompanyCreated", {"companyId": "c1"})
+    # an eventId and occurredAt of the caller are kept, as before (e.g. a replay to test C12-M1 README 6.7)
+    assert (ev["id"], ev["time"]) == (OLD_ID, "2026-11-06T09:00:00Z") and set(ev) == set(events.ATTRIBUTES)
+    assert ev in (events.RELAY.log if via == "events" else relay.log)
+
+
+@pytest.mark.parametrize("via", ["events", "relay"])
+def test_deprecated_flat_form_needs_a_known_module(via):
+    publish_flat = _caller({"__name__": "teamfork.helpers", "events": events, "relay": events.Relay()}, via)
+    with pytest.raises(ValueError, match="module of the caller"):
+        publish_flat({"eventType": "CompanyCreated", "companyId": "c1"})
+    with pytest.raises(ValueError, match="module of the caller"):   # this test module has no MODULE
+        events.publish({"eventType": "CompanyCreated", "companyId": "c1"})
+    with pytest.raises(ValueError, match="eventType"):
+        events.Relay().publish({"companyId": "c1"})
+    assert events.RELAY.log == []
 
 
 def test_drain_without_thread():
     relay = events.Relay()
     got = []
     relay.subscribe("a", got.append)
-    relay.publish({"eventType": "A"})
+    ev = relay.publish("c1-m2", "ApplicationCreated", {"applicationId": "a1"})
     assert got == []
     relay.drain()
-    assert got[0]["eventType"] == "A"
+    assert got == [ev] and got[0]["type"] == "ApplicationCreated" and got[0]["data"] == {"applicationId": "a1"}
 
 
 # ---------------------------------------------------------------- spec-driven stand-in

@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """One installation (OSP A or OSP B) as a modular monolith (FRAMEWORK 1).
 
     SETTINGS_FILE=config/osp-a/installation.json BASE_URL=http://localhost:8000 \
@@ -16,9 +38,11 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 
+from controllers.fastapi import include as include_controllers
 from portal_common import csp, events, http, problems, settings, standin, tokens
 
 from tools import iam_backend
@@ -86,6 +110,7 @@ def create_app() -> FastAPI:
         app.include_router(standin.fallback_router(e.id, e.module.router if e.module else None))
         if e.module and hasattr(e.module, "on_event"):
             events.subscribe(e.id, e.module.on_event)
+    include_controllers(app)   # APIs of the installation outside the modules, /api/v1/<category>/...
     app.state.entries = entries
     reset_all(entries)
 
@@ -94,9 +119,12 @@ def create_app() -> FastAPI:
         return [{"module": e.id, "kind": e.kind} for e in entries]
 
     @app.get("/scaffold/events", tags=["Scaffold"])
-    def event_log(eventType: str | None = None):
-        """Test tool: events published so far (no secrets by construction) and subscriber failures."""
-        return {"events": [x for x in events.RELAY.log if not eventType or x["eventType"] == eventType],
+    def event_log(type_: Annotated[str | None, Query(alias="type", description="CloudEvents attribute `type`")] = None,
+                  eventType: Annotated[str | None, Query(deprecated=True, description="old name of `type`")] = None):
+        """Test tool: the CloudEvents published so far (FRAMEWORK 6; no secrets by construction) and
+        subscriber failures. `type` filters by the event name; `eventType` is a deprecated alias."""
+        want = type_ or eventType
+        return {"events": [x for x in events.RELAY.log if not want or x["type"] == want],
                 "failures": events.RELAY.failures}
 
     @app.post("/scaffold/reset", tags=["Scaffold"])

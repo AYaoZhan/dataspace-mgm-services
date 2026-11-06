@@ -20,7 +20,7 @@ variable names, own test data and silent errors. The rules below prevent this.
 
 1. Work only in your team's folder `modules/<id>/` (for example `modules/c3_m1/`). Outside it, you
    may only add your module tests as `tests/test_<id>_*.py` (for example `tests/test_c3_m1_steps.py`).
-2. Never change another team's module, `portal_common/`, `scaffold/`, `tools/`, `iam/`, `ebw/`, `testdata/`,
+2. Never change another team's module, `portal_common/`, `controllers/`, `scaffold/`, `tools/`, `iam/`, `ebw/`, `testdata/`,
    `config/` or `spec/`. If something there is wrong or missing, open an issue and work with the
    current state.
 3. The spec in `spec/` is the contract. Read `spec/FRAMEWORK.md`, then the `README.md`,
@@ -32,7 +32,8 @@ variable names, own test data and silent errors. The rules below prevent this.
    - `problems`: `Problem` and `problems.route_class(module)` (validation errors 400, never 422;
      unhandled errors 500 as Problem Details).
    - `settings`: installation settings (FRAMEWORK 4.8), for example `settings.get("ospCompanyId")`.
-   - `events`: `events.publish(event)`.
+   - `events`: `events.publish(MODULE, "<Type>", {data})` publishes a CloudEvent (FRAMEWORK 6) and
+     returns it; `MODULE` is the module id in `interface.py` (for example `"c3-m1"`).
    - `sse`: Server-Sent Events for the UI, `sse.Broker()` and `sse.response(...)` (paths ending in `/events`).
    - `neighbours`: `neighbours.query(caller, target, function, **params)` calls a neighbour's
      interface function in-process or over HTTP with service token, with the shared error rule.
@@ -47,8 +48,11 @@ variable names, own test data and silent errors. The rules below prevent this.
    answer with your built-in stand-in (empty address).
 7. Test data only from FRAMEWORK 7a and `testdata/` (helpers in `tools/testdata.py`). Do not
    create other IDs for objects that 7a lists.
-8. Events: names and fields as in FRAMEWORK section 6 and section 10 of your README. Publish with
-   `events.publish({"eventType": "...", ...})`. Receive events in `on_event(event)` in `router.py`.
+8. Events: names and fields as in FRAMEWORK section 6 and section 10 of your README. Every event is
+   a CloudEvent (FRAMEWORK 6, OP-54). Publish with `events.publish(MODULE, "<Type>", {data})`; the
+   fields of section 10 go into `data`. Receive events in `on_event(event)` in `router.py`: the name
+   is `event["type"]`, the id `event["id"]`, the fields are in `event["data"]`. The flat form
+   `events.publish({"eventType": ...})` is deprecated.
 9. No secrets (passwords, client secrets, tokens, API keys) in logs, events or step results
    (FRAMEWORK 4.6).
 10. If the spec is unclear or contradicts itself, do not guess silently. Write the question in
@@ -85,6 +89,13 @@ The folder name uses `c3_m1`; the spec, the URL path, `Problem` and `service_tok
 files of the module (for example `service.py`, data files) belong in the same folder.
 Operations you have not implemented yet are added from the spec (steps answer `DONE`, others 501).
 
+APIs of the installation that belong to no module live in `controllers/`, laid out as in the Industry
+Core Hub backend: one folder per API category and version, one file per controller,
+`controllers/fastapi/routers/<category>/v1/<name>_api.py` with its own `router`, mounted under
+`/api/v1` by `controllers/fastapi/__init__.py`. The first one is the event inbox
+`POST /api/v1/events/inbox` (FRAMEWORK 6, OP-54): split-out modules deliver their CloudEvents there.
+Module APIs never go there; they stay in `modules/<id>/router.py` under `/api/<module>`.
+
 ## Definition of done
 
 1. Your module tests pass: `uv run pytest -q tests/test_<id>_*.py`.
@@ -102,11 +113,14 @@ Operations you have not implemented yet are added from the spec (steps answer `D
   `Signed-off-by` line.
 - The Eclipse Project Handbook asks contributors to disclose AI assistance. For AI-assisted
   commits, add the trailer `Assisted-by: <tool> (<model>)`, for example
-  `Assisted-by: GitHub Copilot (GPT-4o-2024-08-06)`. For files that are largely AI-generated, the
-  handbook also shows a disclosure in the file header; ask the maintainers before you use it.
+  `Assisted-by: GitHub Copilot (GPT-4o-2024-08-06)`.
 - A person reviews every AI-generated change before it is committed.
-- New `.py` files start with the same two header lines as the existing files
-  (`Copyright (c) 2026 Contributors to the Eclipse Foundation`, `SPDX-License-Identifier: Apache-2.0`).
+- Every new file starts with the license header of `CONTRIBUTING.md` ("License headers", TRG 7.02):
+  the `#` banner with `Copyright (c) 2026 Contributors to the Eclipse Foundation` and the Apache-2.0
+  notice. Written with AI help: keep the paragraph "AI Disclosure", `SPDX-License-Identifier:
+  Apache-2.0 AND CC0-1.0` and `Assisted-By: <tool> (<model>)`, e.g. `Assisted-By: Claude Code
+  (claude-opus-5-5)`. Written without AI help: leave out the AI disclosure and the `Assisted-By` line,
+  and write `SPDX-License-Identifier: Apache-2.0`. Copy the header of an existing file.
 
 ## How to run
 

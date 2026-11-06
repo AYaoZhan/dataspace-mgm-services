@@ -1,5 +1,27 @@
-# Copyright (c) 2026 Contributors to the Eclipse Foundation
-# SPDX-License-Identifier: Apache-2.0
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
 """Queries that a module calls at a neighbour (section 11 of every README) exist in the neighbour's
 stand-in and answer with the field names of the neighbour's openapi.yaml. A team that replaces one
 stand-in must find every other one complete. Modules of a team are not checked here; their own
@@ -117,7 +139,7 @@ def _params(ids: dict) -> dict[tuple[str, str], dict | None]:
 def test_standin_queries_answer_with_the_field_names_of_the_spec(tmp_path, monkeypatch):
     with installation(tmp_path, monkeypatch) as t:
         assert t.ok, "scenarios 1-3 failed; see test_demo_scenarios"
-        log = {e["eventType"]: e for e in events.RELAY.log}
+        log = {e["type"]: e["data"] for e in events.RELAY.log}   # CloudEvents (FRAMEWORK 6)
         ids = {"applicationId": log["ApplicationSubmitted"]["applicationId"],
                "companyId": log["CompanyActivated"]["companyId"], "bpn": log["CompanyActivated"]["bpn"],
                "offerId": log["OfferApproved"]["offerId"],
