@@ -758,10 +758,13 @@ def test_list_company_user_refs_filters_by_portal_role(h):
     h.dao.company_users.list_of_company.assert_called_once_with(MASCHINENBAU, {BindingStatus.ACTIVE})
 
 
-@pytest.mark.parametrize("company_id, portal_role", [(None, None), (MASCHINENBAU, "OSP Admin")])
+@pytest.mark.parametrize("company_id, portal_role", [(None, None), ("not-a-uuid", None),
+                                                     (MASCHINENBAU, "OSP Admin")])
 def test_list_company_user_refs_validation(h, company_id, portal_role):
     with pytest.raises(ValidationException):
         h.service.list_company_user_refs(company_id, portal_role, None)
+    if company_id != MASCHINENBAU:
+        h.dao.company_users.list_of_company.assert_not_called()
 
 
 # -- secrets (FRAMEWORK 4.6): no names in events ------------------------------------------------------------
@@ -816,3 +819,19 @@ def test_subscriptions_gateway_queries_c10_m1_and_keeps_only_active(monkeypatch)
     assert [s["offerSubscriptionId"] for s in found] == ["sub-1"]
     query.assert_called_once_with("c2-m2", "c10-m1", "find_subscriptions", customerCompanyId=MASCHINENBAU,
                                   offerId=APP, status="ACTIVE")
+
+
+@pytest.mark.parametrize("answer", [None, {"items": []}])
+def test_subscriptions_gateway_treats_a_missing_list_as_upstream_error(monkeypatch, answer):
+    monkeypatch.setattr("portal_common.neighbours.is_standin", lambda target: False)
+    monkeypatch.setattr("portal_common.neighbours.query", MagicMock(return_value=answer))
+
+    with pytest.raises(UpstreamErrorException):
+        SubscriptionsGatewayImpl().active_subscriptions(MASCHINENBAU, APP)
+
+
+def test_subscriptions_gateway_empty_list_means_no_subscriptions(monkeypatch):
+    monkeypatch.setattr("portal_common.neighbours.is_standin", lambda target: False)
+    monkeypatch.setattr("portal_common.neighbours.query", MagicMock(return_value=[]))
+
+    assert SubscriptionsGatewayImpl().active_subscriptions(MASCHINENBAU, APP) == []

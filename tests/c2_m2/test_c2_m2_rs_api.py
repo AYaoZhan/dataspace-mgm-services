@@ -186,6 +186,10 @@ def test_private_queries_still_work_with_service_tokens_and_reject_people(client
                           headers=bearer(tokens.service_token("c11-m1")))
     assert response.status_code == 200
     assert response.json() == []
+    response = client.get(API + "/internal/company-users", params={"companyId": "not-a-uuid"},
+                          headers=bearer(tokens.service_token("c11-m1")))
+    assert response.status_code == 400
+    assert response.json()["type"] == "urn:c2-m2:problem:validation"
 
 
 @needs_database

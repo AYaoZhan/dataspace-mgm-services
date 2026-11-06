@@ -46,7 +46,7 @@ from modules.c2_m2.c2_m2_impl.config.properties import as_list
 from modules.c2_m2.c2_m2_impl.context import Context, paginate, statuses
 from modules.c2_m2.c2_m2_impl.dao import DaoService
 from modules.c2_m2.c2_m2_impl.internal.model import AppInstanceClient, Company, CompanyUser, SuspendedRoles, now
-from modules.c2_m2.c2_m2_impl.utils.validation_utils import invalid
+from modules.c2_m2.c2_m2_impl.utils.validation_utils import Validator, invalid
 from portal_common import settings
 
 from .app_client_service_impl import AppClientServiceImpl
@@ -573,6 +573,7 @@ class UserServiceImpl(UserService):
                                status: list[str] | str | None) -> list[CompanyUserRef]:
         if not company_id:
             raise invalid("companyId is required")
+        company_id = Validator.uuid({"companyId": company_id}, "companyId")
         wanted = statuses(status, BindingStatus, [BindingStatus.ACTIVE])
         found = self.dao.company_users.list_of_company(company_id, wanted)
         if portal_role:

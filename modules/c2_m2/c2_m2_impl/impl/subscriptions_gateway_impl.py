@@ -24,6 +24,7 @@
 #################################################################################
 from __future__ import annotations
 
+from modules.c2_m2.c2_m2_api.exception import UpstreamErrorException
 from modules.c2_m2.c2_m2_impl.internal.services import SubscriptionsGateway
 
 from .neighbour_gateway import NeighbourGateway
@@ -41,4 +42,8 @@ class SubscriptionsGatewayImpl(NeighbourGateway, SubscriptionsGateway):
                     and s["offerId"] == offer_id and s["status"] == "ACTIVE"]
         found = self.query("find_subscriptions", customerCompanyId=customer_company_id, offerId=offer_id,
                            status="ACTIVE")
-        return [s for s in found or [] if s.get("status") == "ACTIVE"]
+        # Only an actual list is an answer; a 404 (None) or any other shape is an upstream error (README 11.2).
+        if not isinstance(found, list):
+            raise UpstreamErrorException(f"{self.TARGET} find_subscriptions gave no subscription list",
+                                         retryable=True)
+        return [s for s in found if isinstance(s, dict) and s.get("status") == "ACTIVE"]

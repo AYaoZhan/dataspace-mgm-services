@@ -28,9 +28,10 @@ from typing import Annotated
 
 from fastapi import Query
 
-from modules.c2_m2.c2_m2_rs_api.endpoint import Claims, RestApi, StatusFilter, api
+from modules.c2_m2.c2_m2_rs_api.endpoint import UUID_PATTERN, Claims, RestApi, StatusFilter, api
 
-CompanyFilter = Annotated[str | None, Query(alias="companyId")]
+# A string on purpose: the interface takes `companyId` as str; the pattern rejects non-UUIDs with 400.
+CompanyFilter = Annotated[str | None, Query(alias="companyId", pattern=UUID_PATTERN)]
 PortalRoleFilter = Annotated[str | None, Query(alias="portalRole")]
 
 

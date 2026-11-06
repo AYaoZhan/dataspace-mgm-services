@@ -85,6 +85,7 @@ PageNumber = Annotated[int, Query(alias="page", ge=0)]
 PageSize = Annotated[int, Query(alias="size", ge=1, le=100)]
 StatusFilter = Annotated[list[str] | None, Query(description="May be given several times.")]
 Lang = Annotated[str | None, Query()]
+UUID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 CompanyId = Annotated[str, Path(alias="companyId")]
 UserId = Annotated[str, Path(alias="userId")]
 AppId = Annotated[str, Path(alias="appId")]
