@@ -46,7 +46,7 @@ API = "/api/c2-m2"
 COMPANY = "c0000001-0000-4000-8000-000000000001"
 USER = "5a1c0001-0000-4000-8000-000000000001"
 
-needs_database = pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
+needs_database = pytest.mark.skipif(not (os.environ.get("C2_M2_DATABASE_URL") or os.environ.get("DATABASE_URL")),
                                     reason="C2-M2 needs its PostgreSQL: set DATABASE_URL (README 4)")
 
 
