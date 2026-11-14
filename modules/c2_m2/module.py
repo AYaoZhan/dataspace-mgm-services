@@ -32,6 +32,7 @@ from .c2_m2_impl.config import Config
 from .c2_m2_impl.context import Context
 from .c2_m2_impl.dao.impl import postgres_dao_service
 from .c2_m2_impl.dao.jdbc import MIGRATIONS_DIR
+from .c2_m2_impl.dao.memory import memory_dao_service
 from .c2_m2_impl.impl import (AppClientServiceImpl, CompanyProfileGatewayImpl, InvitationCleanupJobImpl,
                               InvitationServiceImpl, PostgresDatabase, SubscriptionsGatewayImpl, UserServiceImpl,
                               portal_iam)
@@ -41,11 +42,13 @@ class C2M2Module:
     def __init__(self, config: Config | None = None) -> None:
         config = config or Config()
         database_url = config.from_properties("database.url")
-        if not database_url:
-            raise RuntimeError(f"C2-M2 needs its database: set database.url (DATABASE_URL, README 4) in {config.config_file}")
-        db = PostgresDatabase(database_url)
-        db.migrate(MIGRATIONS_DIR)
-        self.ctx = Context(config, portal_iam(config), postgres_dao_service(db), SubscriptionsGatewayImpl(),
+        if database_url:
+            db = PostgresDatabase(database_url)
+            db.migrate(MIGRATIONS_DIR)
+            dao_service = postgres_dao_service(db)
+        else:
+            dao_service = memory_dao_service()
+        self.ctx = Context(config, portal_iam(config), dao_service, SubscriptionsGatewayImpl(),
                            CompanyProfileGatewayImpl())
         self.apps = AppClientServiceImpl(self.ctx)
         self.users = UserServiceImpl(self.ctx, self.apps)
