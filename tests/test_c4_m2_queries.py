@@ -464,3 +464,14 @@ def test_wallet_view_of_a_failed_wallet(osp_factory, companies):
     assert view.get("activatedAt") is None
     r = osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person("p-fail", ["IT Admin"], company_id=cid))
     assert r.status_code == 200 and r.json() == view
+
+
+def test_swagger_tags_c4_m2_as_implemented_not_as_stand_in():
+    """standin.router() tags its routes "<module> (stand-in)"; the implemented C4-M2 must not show so."""
+    from fastapi import FastAPI
+    from modules.c4_m2 import router
+    app = FastAPI()
+    app.include_router(router.router)
+    tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
+    assert tags == {"c4-m2 Dataspace Wallet Interface"}
+

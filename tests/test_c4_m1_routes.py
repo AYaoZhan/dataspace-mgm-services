@@ -803,3 +803,14 @@ def test_case_19_wallet_not_active_is_409_wallet_not_ready_and_no_requested_row(
     r = issue(w)
     assert_problem(r, 409, "wallet-not-ready", False)
     assert w.traffic.csp() == [] and store().get_credential(U6["id"], "BPN") is None
+
+
+def test_swagger_tags_c4_m1_as_implemented_not_as_stand_in():
+    """standin.router() tags its routes "<module> (stand-in)"; the implemented C4-M1 must not show so."""
+    from fastapi import FastAPI
+    from modules.c4_m1 import router
+    app = FastAPI()
+    app.include_router(router.router)
+    tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
+    assert tags == {"c4-m1 Credentials"}
+
