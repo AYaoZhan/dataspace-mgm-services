@@ -128,12 +128,15 @@ class TestIamPortalIamAdapter(PortalIam):
         if not u:
             return None
         roles = [{"id": f"role-{r}", "name": r} for r in u.get("roles", [])]
+        entry = {
+            "id": self.CORE_UUID,
+            "client": "portal-core",
+            "mappings": roles,
+        }
         return {
             "clientMappings": {
-                self.CORE_UUID: {
-                    "client": "portal-core",
-                    "mappings": roles,
-                }
+                self.CORE_UUID: entry,
+                "portal-core": entry,
             }
         }
 
