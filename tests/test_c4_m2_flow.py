@@ -79,6 +79,9 @@ def start(osp_factory, env: dict | None = None):
     osp = osp_factory({**ENV, **(env or {})}, csp=True)
     assert_reached_in_process("c4-m2", "c4-m1", "c3-m1")
     osp.csp_register(BPN, osp_id=OSP_A_ID)        # the company is registered at the CSP by C3-M2 (here: directly)
+    from modules.c3_m2 import store as c3_m2_store
+    c3_m2_store.registrations[U1["id"]] = c3_m2_store.Registration(
+        U1["id"], bpn=BPN, status="REGISTERED", membership="REGISTERED", registered_at=c3_m2_store.now())
     return osp, osp.service("svc-c12-m1")
 
 

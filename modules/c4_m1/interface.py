@@ -31,14 +31,6 @@ from __future__ import annotations
 from portal_common import standin
 
 from . import service
-from .service import (  # noqa: F401 - README 8.1, 8.2, 7.4, 7.2, 7.3, 9.1
-    confirm_revocation,
-    issue_credentials,
-    list_credentials,
-    query_company_credentials,
-    report_status,
-    revoke_credentials,
-)
 
 MODULE = "c4-m1"
 
@@ -46,6 +38,33 @@ MODULE = "c4-m1"
 def store():
     """The active `CredentialStore`."""
     return service.store()
+
+
+def issue_credentials(input: dict) -> dict:
+    """Step `issue-credentials` (README 8.1)."""
+    return service.issue_credentials(input)
+
+
+def revoke_credentials(input: dict) -> dict:
+    """Step `revoke-credentials` (README 8.2)."""
+    return service.revoke_credentials(input)
+
+
+def query_company_credentials(*, companyId: str) -> dict:
+    """Query `query_company_credentials` (README 9.1)."""
+    return service.query_company_credentials(companyId=companyId)
+
+
+def confirm_revocation(credential_id: str, body: object, claims: dict) -> dict:
+    return service.confirm_revocation(credential_id, body, claims)
+
+
+def list_credentials(*args, **kwargs):
+    return service.list_credentials(*args, **kwargs)
+
+
+def report_status(kind: str, bpn: str, status: str, message: str | None = None) -> None:
+    return service.report_status(kind, bpn, status, message)
 
 
 def reset() -> None:
