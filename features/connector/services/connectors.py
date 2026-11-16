@@ -23,75 +23,32 @@
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
 """Operations of people on the connector register (README 7) with the checks of README 6.2 and the
-calls to the neighbours C3-M1, C2-M3 and C10-M1 (README 11). No token checks here; the router passes
-the calling company and person."""
+calls to the neighbours C3-M1, C2-M3 and C10-M1 (README 11, `managers/neighbour_client.py`). No token checks
+here; the controllers pass the calling company and person."""
 from __future__ import annotations
 
 import ipaddress
-import json
 import re
 import uuid
 from urllib.parse import urlparse
 
-from portal_common import events, neighbours, settings
+from portal_common import events
 from portal_common.problems import Problem
 
-from .interface import (
-    ACTIVE,
-    COMPANY_CONNECTOR,
-    CONNECTOR_AS_A_SERVICE,
-    INACTIVE,
+from ..managers import config, neighbour_client
+from ..managers.store import (
     LOCK,
-    MODULE,
-    canonical,
     connectors,
     deleted_technical_users,
     ended_subscriptions,
     now,
-    publish_deactivated,
-    stub_companies,
-    stub_subscriptions,
-    view,
     write_audit,
 )
-
-
-# ---------------------------------------------------------------- neighbours (README 11)
-def company_status(company_id: str) -> str | None:
-    """C3-M1 `query_company`: status of the company; None if C3-M1 does not know it."""
-    if neighbours.is_standin("c3-m1"):
-        return stub_companies.get(company_id, ACTIVE)
-    company = neighbours.query(MODULE, "c3-m1", "query_company", companyId=company_id)
-    return (company or {}).get("status")
-
-
-def technical_user_usable(technical_user_id: str, host_company_id: str, offer_subscription_id: str | None) -> bool:
-    """C2-M3 `check_technical_user` (C2-M3 9.1): `usableForConnector`."""
-    if neighbours.is_standin("c2-m3"):
-        return True
-    params = {"id": technical_user_id, "companyId": host_company_id}
-    if offer_subscription_id:
-        params["offerSubscriptionId"] = offer_subscription_id
-    answer = neighbours.query(MODULE, "c2-m3", "check_technical_user", **params)
-    return bool(answer and answer.get("usableForConnector"))
-
-
-def subscription(offer_subscription_id: str) -> dict | None:
-    """C10-M1 `get_subscription_internal`: `status`, `providerCompanyId`, `customerCompanyId`."""
-    if neighbours.is_standin("c10-m1"):
-        return stub_subscriptions.get(offer_subscription_id)
-    return neighbours.query(MODULE, "c10-m1", "get_subscription_internal", offerSubscriptionId=offer_subscription_id)
+from ..models import ACTIVE, COMPANY_CONNECTOR, CONNECTOR_AS_A_SERVICE, INACTIVE, MODULE, view
+from .common import canonical, publish_deactivated
 
 
 # ---------------------------------------------------------------- checks (README 6.2)
-def _known_countries() -> set[str] | None:
-    """Country codes of the reference data (`masterDataFile` of the installation settings, OP-13)."""
-    path = settings.resolve_path(settings.get("masterDataFile"))
-    if not path or not path.exists():
-        return None
-    return {c["code"] for c in json.loads(path.read_text(encoding="utf-8")).get("countries", [])}
-
-
 _LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
 _PERCENT = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
@@ -132,7 +89,7 @@ def _check_input(name, endpoint, location, technical_user_id=None) -> None:
         errors.append({"field": "name", "message": "1 to 255 characters"})
     if (message := _endpoint_error(endpoint)) is not None:
         errors.append({"field": "endpoint", "message": message})
-    countries = _known_countries()
+    countries = config.known_countries()
     if technical_user_id is not None and not _is_uuid(technical_user_id):
         errors.append({"field": "technicalUserId", "message": "UUID"})
     if not isinstance(location, str) or len(location) != 2 or not (location.isalpha() and location.isupper()) or (countries is not None and location not in countries):
@@ -163,12 +120,12 @@ def _check_technical_user(tu_id: str | None, host: str, sub_id: str | None) -> N
     if not tu_id:
         return
     linked = any(c["technical_user_id"] == tu_id for c in _live())
-    if linked or not technical_user_usable(tu_id, host, sub_id):
+    if linked or not neighbour_client.technical_user_usable(tu_id, host, sub_id):
         raise Problem(MODULE, 409, "technical-user-not-usable")
 
 
 def _check_host_active(host: str) -> None:
-    if company_status(host) != ACTIVE:
+    if neighbour_client.company_status(host) != ACTIVE:
         raise Problem(MODULE, 409, "company-not-active")
 
 
@@ -258,7 +215,7 @@ def register_connector_as_a_service(company_id: str | None, sub: str | None, bod
         raise Problem(MODULE, 400, "validation", errors=[{"field": "offerSubscriptionId", "message": "UUID"}])
     sub_id = canonical(sub_id)
     body = body | {"technicalUserId": canonical(body["technicalUserId"]) if body.get("technicalUserId") else None}
-    s = subscription(sub_id)
+    s = neighbour_client.subscription(sub_id)
     if not s or s.get("providerCompanyId") != own:
         raise Problem(MODULE, 404, "not-found", detail="subscription unknown or not of an own offer")
     if s.get("status") not in ("PENDING", "ACTIVE"):
@@ -311,7 +268,7 @@ def delete_connector(company_id: str | None, sub: str | None, connector_id: str)
     own = _own_company(company_id)
     with LOCK:
         sub_id = _visible(connector_id, own)["offer_subscription_id"]
-    s = subscription(sub_id) if sub_id else None
+    s = neighbour_client.subscription(sub_id) if sub_id else None
     with LOCK:
         _delete_connector(company_id, sub, connector_id, s)
 
