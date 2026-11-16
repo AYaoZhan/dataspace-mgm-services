@@ -6,12 +6,15 @@
   },
   "areas": {
     "controllers": {
+      "mypy": 1,
       "ruff": 2
     },
     "iam": {
+      "mypy": 52,
       "ruff": 56
     },
     "modules/c10_m1": {
+      "mypy": 10,
       "neighbours": 2,
       "problems": 16,
       "ruff": 4
@@ -20,12 +23,14 @@
       "contract": 10,
       "http-route": 11,
       "layers": 1,
+      "mypy": 16,
       "neighbours": 1,
       "problems": 2,
       "ruff": 4
     },
     "modules/c12_m1": {
       "file-size": 1,
+      "mypy": 24,
       "neighbours": 1,
       "problems": 9,
       "ruff": 7
@@ -35,6 +40,7 @@
       "file-size": 1,
       "http-body": 7,
       "http-route": 47,
+      "mypy": 45,
       "neighbours": 1,
       "problems": 44,
       "ruff": 39
@@ -43,6 +49,7 @@
       "contract": 16,
       "http-body": 2,
       "http-route": 14,
+      "mypy": 11,
       "neighbours": 1,
       "problems": 19,
       "ruff": 5
@@ -52,6 +59,7 @@
       "function-size": 1,
       "http-route": 2,
       "module-map": 1,
+      "mypy": 78,
       "neighbours": 1,
       "problems": 1,
       "ruff": 41
@@ -68,6 +76,7 @@
       "http-route": 56,
       "layers": 1,
       "module-map": 1,
+      "mypy": 72,
       "neighbours": 1,
       "problems": 77,
       "ruff": 19
@@ -82,6 +91,7 @@
       "http-body": 4,
       "http-route": 13,
       "layers": 1,
+      "mypy": 32,
       "neighbours": 2,
       "problems": 15,
       "ruff": 6
@@ -92,6 +102,7 @@
       "http-body": 5,
       "http-route": 24,
       "layers": 2,
+      "mypy": 26,
       "neighbours": 2,
       "problems": 11,
       "ruff": 27
@@ -101,16 +112,19 @@
       "http-body": 5,
       "http-route": 17,
       "layers": 2,
+      "mypy": 19,
       "neighbours": 1,
       "problems": 20,
       "ruff": 2
     },
     "modules/c8_m1": {
+      "mypy": 9,
       "neighbours": 1,
       "problems": 8,
       "ruff": 1
     },
     "portal_common": {
+      "mypy": 27,
       "ruff": 9
     },
     "root": {
@@ -119,6 +133,7 @@
       "ruff": 22
     },
     "scaffold": {
+      "mypy": 9,
       "ruff": 4
     },
     "tests": {
@@ -126,6 +141,7 @@
     },
     "tools": {
       "function-size": 1,
+      "mypy": 93,
       "ruff": 24
     }
   }

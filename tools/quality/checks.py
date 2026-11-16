@@ -130,7 +130,7 @@ def mypy(areas: list[str]) -> list[Finding]:
         match = _MYPY_LINE.match(text)
         if not match:
             continue
-        path = PurePosixPath(match["path"])
+        path = PurePosixPath(match["path"].replace("\\", "/"))
         area = area_of(path)
         if area in code_areas:
             findings.append(Finding(area, "mypy", f"{path}:{match['line']}", match["message"]))
