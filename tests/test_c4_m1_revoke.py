@@ -47,21 +47,21 @@ from test_c4_m2_common import (
 U1 = COMPANIES["u1"]["id"]
 U1_BPN = "BPNLIUK2REMLK3F4"
 TYPES = ["BPN", "MEMBERSHIP"]
-ISSUE = "/api/c4-m1/steps/issue-credentials"
-REVOKE = "/api/c4-m1/steps/revoke-credentials"
+ISSUE = "/api/credentials/steps/issue-credentials"
+REVOKE = "/api/credentials/steps/revoke-credentials"
 
 
 # ------------------------------------------------------------------------------------------ helpers
 def store():
-    return seam("modules.c4_m1.interface").store()
+    return seam("features.credentials.interface").store()
 
 
 def flush() -> None:
-    seam("modules.c4_m1.service").flush_timers()
+    seam("features.credentials.services.credential_service").flush_timers()
 
 
 def orders() -> list[dict]:
-    return seam("modules.c4_m1.routes").stub_orders()
+    return seam("features.credentials.services.issuer_routes").stub_orders()
 
 
 def row_of(company_id: str, ctype: str) -> dict:
@@ -229,7 +229,7 @@ def test_case_09_interface_call_returns_the_step_reply(osp_factory, companies, w
     # README 8 (FRAMEWORK 4.4): result {stepRunId, state, result}, also in-process
     osp = osp_factory()
     issue_all(osp)
-    interface = seam("modules.c4_m1.interface")
+    interface = seam("features.credentials.interface")
     reply = interface.revoke_credentials({**step_input(U1, 90), "reason": "OTHER"})
     assert reply["state"] == "DONE"
     assert reply["stepRunId"] == step_input(U1, 90)["stepRunId"]
@@ -312,7 +312,7 @@ def test_case_10_late_success_report_over_http_revokes_at_once(osp_factory, comp
     osp = osp_factory()
     issue(osp)
     done(revoke(osp, reason="OTHER"))
-    r = osp.post("/api/c4-m1/issuer-callbacks/membership", osp.service("sa-credential-issuer"),
+    r = osp.post("/api/credentials/issuer-callbacks/membership", osp.service("sa-credential-issuer"),
                  json={"bpn": U1_BPN, "status": "SUCCESSFUL"})
     assert r.status_code == 204, r.text
     assert status_of(U1, "MEMBERSHIP") == "REVOKED"
@@ -337,7 +337,7 @@ def test_readme_8_2_failed_round_is_not_a_running_round(osp_factory, companies, 
     # README 8.2: "Running round: CANCELLED" - a round that is FAILED keeps its status
     osp = osp_factory()
     issue(osp)
-    r = osp.post("/api/c4-m1/issuer-callbacks/membership", osp.service("sa-credential-issuer"),
+    r = osp.post("/api/credentials/issuer-callbacks/membership", osp.service("sa-credential-issuer"),
                  json={"bpn": U1_BPN, "status": "UNSUCCESSFUL", "message": "declined"})
     assert r.status_code == 204, r.text
     assert store().get_run(U1)["status"] == "FAILED"

@@ -22,3 +22,6 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Business logic of the credentials: issuing and revoking (`credential_service`), the read views
+(`credential_views`), the choice of the issuer route (`issuer_routes`) and the built-in stand-in of the issuer
+(`stub_issuer`). No HTTP: Process Orchestration and other modules call these through `interface.py`."""

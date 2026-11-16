@@ -6,6 +6,7 @@
 Also migrated: `csp_connection` (C3-M2) from `modules/c3_m2/`.
 Then `notifications` (C11-M1) from `modules/c11_m1/`.
 Also migrated: `connector` (C6-M1) from `modules/c6_m1/`.
+Also migrated: `credentials` (C4-M1) from `modules/c4_m1/`.
 **Builds on:** [ADR-0002](ADR-0002-runtime-per-module.md) (one image, many runtimes), the call convention of
 `AGENTS.md`, and the layered backend of the Eclipse Tractus-X Industry Core Hub (`controllers/`, `services/`,
 `managers/`, `models/`, `runtimes/`).
@@ -131,6 +132,7 @@ adapters, models, and runtimes that assemble the app.
        reads `COMPANY_PROFILE_DATABASE_URL`, then `C3_M1_DATABASE_URL`, then `DATABASE_URL`, and runs on a private
        in-memory SQLite database without one; the tables are created at start (no migrations yet);
      - `registration` and `technical_user` keep their data in memory;
+     - `credentials` keeps its data in SQLModel tables in its own database (`models/tables.py`, F17);
      - `csp_connection` keeps its tables in its own database through `portal_common.database` (SQLModel);
      - `notifications` keeps its inbox in SQLModel tables of its own database (`portal_common.database`);
      - `connector` keeps its register in SQLModel tables of its own database (`portal_common.database`);

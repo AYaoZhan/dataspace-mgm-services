@@ -26,7 +26,7 @@
 query); acceptance cases 8 and 20 (README 13).
 
 Rows are seeded through the store seam of TEAM3-PLAN 12.3
-(`seam("modules.c4_m1.interface").store().put_credential(row)`), with timezone-aware datetimes in the
+(`seam("features.credentials.interface").store().put_credential(row)`), with timezone-aware datetimes in the
 timestamp fields (OPEN-QUESTION: the contract names the keys but not the Python type of the timestamps;
 datetimes follow `service.now() -> datetime` of 12.3).
 """
@@ -49,7 +49,7 @@ from test_c4_m2_common import (
 
 U1, U4 = COMPANIES["u1"], COMPANIES["u4"]
 T0 = dt.datetime(2026, 11, 5, 8, 0, tzinfo=dt.UTC)
-P = "/api/c4-m1"
+P = "/api/credentials"
 PROBLEM = "urn:c4-m1:problem:"
 
 
@@ -63,7 +63,7 @@ def parse(s: str) -> dt.datetime:
 
 
 def store():
-    return seam("modules.c4_m1.interface").store()
+    return seam("features.credentials.interface").store()
 
 
 def row(company: dict, ctype: str, status: str, changed: float = 0, **kw) -> dict:
@@ -220,7 +220,7 @@ def test_internal_query_returns_credentials_and_last_round(osp_factory, companie
     # README 9.1, openapi CompanyCredentialsInternal
     osp = osp_factory()
     seed(row(U1, "BPN", "ISSUED", issued_at=t(0)), row(U1, "MEMBERSHIP", "REQUESTED", requested_at=t(1)))
-    seam("modules.c4_m1.interface").store().put_run({
+    seam("features.credentials.interface").store().put_run({
         "company_id": U1["id"], "credential_types": ["BPN", "MEMBERSHIP"], "status": "RUNNING",
         "process_id": str(uuid.uuid4()), "step_run_id": str(uuid.uuid4()), "started_at": t(1), "finished_at": None})
     r = osp.get(f"{P}/internal/companies/{U1['id']}/credentials", osp.service("svc-c4-m1"))
@@ -237,7 +237,7 @@ def test_internal_query_returns_credentials_and_last_round(osp_factory, companie
 def test_internal_query_finished_round_has_finished_at(osp_factory, companies):
     osp = osp_factory()
     seed(row(U1, "BPN", "ISSUED"), row(U1, "MEMBERSHIP", "ISSUED"))
-    seam("modules.c4_m1.interface").store().put_run({
+    seam("features.credentials.interface").store().put_run({
         "company_id": U1["id"], "credential_types": ["BPN", "MEMBERSHIP"], "status": "DONE", "process_id": None,
         "step_run_id": None, "started_at": t(1), "finished_at": t(2)})
     body = osp.get(f"{P}/internal/companies/{U1['id']}/credentials", osp.service("svc-c4-m1")).json()
@@ -265,7 +265,7 @@ def test_case_20_unknown_company_is_200_with_empty_list_and_run_null(osp_factory
 def test_case_20_interface_function_returns_a_dict_and_never_raises(osp_factory, companies):
     osp_factory()
     unknown = "00000000-0000-4000-8000-0000deadbeef"
-    out = seam("modules.c4_m1.interface").query_company_credentials(companyId=unknown)
+    out = seam("features.credentials.interface").query_company_credentials(companyId=unknown)
     assert out == {"companyId": unknown, "credentials": [], "run": None}
 
 
@@ -466,7 +466,8 @@ def test_confirm_revocation_in_another_status_is_409_invalid_state(osp_factory, 
 def test_confirm_revocation_success_changes_row_history_audit_and_event(osp_factory, companies, monkeypatch):
     # README 7.3 step 3 and 4, 13 case 11 (second half)
     osp = osp_factory()
-    clock = Clock(dt.datetime(2026, 11, 6, 12, 30, tzinfo=dt.UTC)).install(monkeypatch, "modules.c4_m1.service")
+    clock = Clock(dt.datetime(2026, 11, 6, 12, 30, tzinfo=dt.UTC)).install(
+        monkeypatch, "features.credentials.services.credential_service")
     (c,) = seed(_pending())
     token = osp.person("p2-osp-staff", ["OSP Admin"], given="Olga", family="Staffer")
     note = "revoked at the Credential Issuer, ticket 4711"
