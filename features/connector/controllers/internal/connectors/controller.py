@@ -32,6 +32,9 @@ from portal_common.routing import Controller, Permission
 controller = Controller("Connector: Process Steps and Queries")
 
 
-@controller.get("", summary="Active connectors that use a technical user", response_model=list[ConnectorRef])
-def list_connectors_internal(technicalUserId: str | None = None, _: dict = Permission):
+@controller.get("",
+                operation_id="listConnectorsInternal",
+                summary="Active connectors that use a technical user",
+                response_model=list[ConnectorRef])
+def list_connectors_internal(technicalUserId: str | None = None, _: dict = Permission) -> list[dict]:
     return interface.list_connectors_internal(technicalUserId=technicalUserId)

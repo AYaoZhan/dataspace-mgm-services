@@ -44,35 +44,48 @@ from portal_common.routing import Controller, Page, Permission, Size
 controller = Controller("Connector: Connectors")
 
 
-@controller.get("", summary="Connectors of the own company", response_model=PageOf[Connector])
+@controller.get("",
+                operation_id="listConnectors",
+                summary="Connectors of the own company",
+                response_model=PageOf[Connector])
 def list_connectors(role: Role | None = None, type: ConnectorType | None = None, status: ConnectorStatus | None = None,
-                    page: int = Page, size: int = Size, claims: dict = Permission):
+                    page: int = Page, size: int = Size, claims: dict = Permission) -> PageOf[Connector]:
     return interface.list_connectors(claims.get("company_id"), role=role and role.value, type=type and type.value,
                                      status=status and status.value, page=page, size=size)
 
 
-@controller.post("", status_code=201, summary="Register a company connector", response_model=Connector)
-def register_connector(body: ConnectorInput, claims: dict = Permission):
+@controller.post("",
+                 status_code=201,
+                 operation_id="registerConnector",
+                 summary="Register a company connector",
+                 response_model=Connector)
+def register_connector(body: ConnectorInput, claims: dict = Permission) -> Connector:
     return interface.register_connector(claims.get("company_id"), claims.get("sub"), body)
 
 
-@controller.post("/as-a-service", status_code=201, summary="Register a connector as a service for a customer",
+@controller.post("/as-a-service",
+                 status_code=201,
+                 operation_id="registerConnectorAsAService",
+                 summary="Register a connector as a service for a customer",
                  response_model=Connector)
-def register_connector_as_a_service(body: ConnectorAsAServiceInput, claims: dict = Permission):
+def register_connector_as_a_service(body: ConnectorAsAServiceInput, claims: dict = Permission) -> Connector:
     return interface.register_connector_as_a_service(claims.get("company_id"), claims.get("sub"), body)
 
 
-@controller.get("/{connectorId}", summary="One connector", response_model=Connector)
-def get_connector(connectorId: str, claims: dict = Permission):
+@controller.get("/{connectorId}", operation_id="getConnector", summary="One connector", response_model=Connector)
+def get_connector(connectorId: str, claims: dict = Permission) -> Connector:
     return interface.get_connector(claims.get("company_id"), connectorId)
 
 
-@controller.patch("/{connectorId}", summary="Change the endpoint", response_model=Connector)
-def change_endpoint(connectorId: str, body: EndpointChange, claims: dict = Permission):
+@controller.patch("/{connectorId}",
+                  operation_id="changeEndpoint",
+                  summary="Change the endpoint",
+                  response_model=Connector)
+def change_endpoint(connectorId: str, body: EndpointChange, claims: dict = Permission) -> Connector:
     return interface.change_endpoint(claims.get("company_id"), claims.get("sub"), connectorId, body)
 
 
-@controller.delete("/{connectorId}", status_code=204, summary="Delete a connector")
-def delete_connector(connectorId: str, claims: dict = Permission):
+@controller.delete("/{connectorId}", status_code=204, operation_id="deleteConnector", summary="Delete a connector")
+def delete_connector(connectorId: str, claims: dict = Permission) -> Response:
     interface.delete_connector(claims.get("company_id"), claims.get("sub"), connectorId)
     return Response(status_code=204)

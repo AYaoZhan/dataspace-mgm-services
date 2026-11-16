@@ -168,9 +168,17 @@ def test_a_route_with_model_body_operation_id_and_precise_return_is_fine():
                          "def x() -> dict[str, Any]:\n    return {}\n") == [("http-route", "x: no response model")]
 
 
-def test_the_contract_of_c3_m2_matches_its_spec_and_c6_m1_shows_the_gaps():
-    """C3-M2 is built with schemas.py and operation ids; C6-M1 takes dict bodies without operation ids."""
+def test_the_contract_of_c3_m2_and_c6_m1_matches_their_spec_and_gaps_are_found(monkeypatch):
+    """C3-M2 and the feature of C6-M1 are built with typed models and operation ids; the same API with dict
+    bodies and without operation ids shows the gaps."""
     assert http_layer.check_contract("c3-m2") == []
+    assert http_layer.check_contract("c6-m1") == []
+    generated = http_layer._generated("c6-m1")
+    for item in generated["paths"].values():
+        for operation in item.values():
+            operation.pop("operationId", None)
+            operation.pop("requestBody", None)
+    monkeypatch.setattr(http_layer, "_generated", lambda module_id: generated)
     gaps = [f.message for f in http_layer.check_contract("c6-m1")]
     assert any("POST /connectors: operationId" in m and "'registerConnector'" in m for m in gaps)
     assert any(m.startswith("POST /connectors: request body untyped") for m in gaps)

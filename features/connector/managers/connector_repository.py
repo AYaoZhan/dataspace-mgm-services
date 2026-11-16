@@ -85,10 +85,12 @@ def add(row: ConnectorRow) -> ConnectorRow:
     return row
 
 
-def update(connector_id: str, **changes) -> ConnectorRow:
+def update(connector_id: str, **changes: object) -> ConnectorRow:
     """Changes the columns of one row and sets `changed_at`."""
     with _session() as session:
         row = session.get(ConnectorRow, connector_id)
+        if row is None:
+            raise KeyError(connector_id)
         for name, value in (changes | {"changed_at": now()}).items():
             setattr(row, name, value)
         session.add(row)
@@ -100,7 +102,7 @@ def delete(connector_id: str) -> None:
         session.delete(session.get(ConnectorRow, connector_id))
 
 
-def live_exists(*, ignore: str | None = None, **columns) -> bool:
+def live_exists(*, ignore: str | None = None, **columns: object) -> bool:
     """Is there a connector that is not `INACTIVE` with these column values (uniqueness of README 5)?"""
     query = select(ConnectorRow.connector_id).where(ConnectorRow.status != INACTIVE)
     for name, value in columns.items():
@@ -111,7 +113,7 @@ def live_exists(*, ignore: str | None = None, **columns) -> bool:
         return session.exec(query.limit(1)).first() is not None
 
 
-def find(**columns) -> list[ConnectorRow]:
+def find(**columns: object) -> list[ConnectorRow]:
     """The connectors with these column values, oldest first."""
     query = select(ConnectorRow)
     for name, value in columns.items():
@@ -127,7 +129,7 @@ def page_of_company(company_id: str, *, role: str | None, type: str | None, stat
     as_provider = ConnectorRow.provider_company_id == company_id
     as_host = ((ConnectorRow.host_company_id == company_id) & (ConnectorRow.type == CONNECTOR_AS_A_SERVICE)
                & (ConnectorRow.provider_company_id != company_id))
-    visible = {"provider": as_provider, "host": as_host}.get(role, or_(as_provider, as_host))
+    visible = {"provider": as_provider, "host": as_host}.get(role or "", or_(as_provider, as_host))
     conditions = [visible, ConnectorRow.status == status if status else ConnectorRow.status != INACTIVE]
     if type:
         conditions.append(ConnectorRow.type == type)

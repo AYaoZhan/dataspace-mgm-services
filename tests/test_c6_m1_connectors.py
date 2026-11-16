@@ -27,10 +27,10 @@ over HTTP with person and service tokens, plus the interface functions in-proces
 import threading
 
 import pytest
-from conftest import BASE, bearer, person_token
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from conftest import BASE, bearer, person_token
 from features import connector
 from features.connector import interface
 from features.connector.managers import connector_repository as repository
@@ -198,7 +198,8 @@ def test_8_unlink_technical_user_is_repeatable(api):
     r = api.post(f"{BASE_PATH}/steps/unlink-technical-user", headers=svc("c12-m1"), json=step)
     assert r.json()["result"] == {"connectorIds": [con]} and r.json()["state"] == "DONE"
     assert repository.get(con).technical_user_id is None and repository.get(con).status == "ACTIVE"
-    again = api.post(f"{BASE_PATH}/steps/unlink-technical-user", headers=svc("c12-m1"), json=step | {"stepRunId": RUN_2})
+    again = api.post(f"{BASE_PATH}/steps/unlink-technical-user", headers=svc("c12-m1"),
+                     json=step | {"stepRunId": RUN_2})
     assert again.json() == {"stepRunId": RUN_2, "state": "DONE", "result": {"connectorIds": []}}
 
 
@@ -290,8 +291,9 @@ def test_steps_in_process_validate_and_repeat():
 def test_steps_require_uuid_identifiers_before_any_change(step, key, missing):
     interface.reset()
     repository.add(ConnectorRow(connector_id="c", name="edc", endpoint=ENDPOINT, location="DE",
-                                type="COMPANY_CONNECTOR", status="ACTIVE", provider_company_id=HOST, host_company_id=HOST, technical_user_id=TU,
-                                offer_subscription_id=SUB, created_at="2026-11-01T00:00:00Z"))
+                                type="COMPANY_CONNECTOR", status="ACTIVE", provider_company_id=HOST,
+                                host_company_id=HOST, technical_user_id=TU, offer_subscription_id=SUB,
+                                created_at="2026-11-01T00:00:00Z"))
     body = {"processId": PROCESS, "stepRunId": RUN_1, key: SUB if key == "offerSubscriptionId" else TU}
     if missing == "not-uuid":
         body[key] = "abc"

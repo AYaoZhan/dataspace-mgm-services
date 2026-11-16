@@ -30,7 +30,7 @@ than the shape (HTTPS endpoint, the country list of the installation) are checks
 """
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import Field
 
@@ -39,18 +39,18 @@ from portal_common.models import ApiModel, CountryCode, StepRequest, Uuid
 MODULE = "c6-m1"
 
 
-class ConnectorType(str, Enum):
+class ConnectorType(StrEnum):
     COMPANY_CONNECTOR = "COMPANY_CONNECTOR"
     CONNECTOR_AS_A_SERVICE = "CONNECTOR_AS_A_SERVICE"
 
 
-class ConnectorStatus(str, Enum):
+class ConnectorStatus(StrEnum):
     """README 6.1."""
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     """Filter of 7.1: connectors the own company runs (`provider`) or that a provider runs for it (`host`)."""
     PROVIDER = "provider"
     HOST = "host"

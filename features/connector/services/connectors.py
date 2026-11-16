@@ -34,7 +34,6 @@ from urllib.parse import urlparse
 
 from portal_common import events
 from portal_common.models import Page
-from portal_common.problems import Problem
 
 from ..managers import config, neighbour_client
 from ..managers import connector_repository as repository
@@ -50,9 +49,9 @@ from ..models import (
     ConnectorInput,
     EndpointChange,
 )
+from ..models.errors import problem
 from ..models.tables import ConnectorRow
 from .common import canonical, is_uuid, publish_deactivated
-
 
 # ---------------------------------------------------------------- checks (README 6.2)
 _LABEL = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
@@ -71,7 +70,7 @@ def _valid_host(host: str) -> bool:
             and not all(label.isdigit() for label in labels))
 
 
-def _endpoint_error(endpoint) -> str | None:
+def _endpoint_error(endpoint: str) -> str | None:
     """None for a usable HTTPS endpoint, otherwise the message (never echoing the value, FRAMEWORK 4.6)."""
     if not isinstance(endpoint, str) or not endpoint or len(endpoint) > 2000 or not endpoint.isascii() \
             or any(ch.isspace() or ord(ch) < 32 or ch in "\\\x7f" for ch in endpoint) or _PERCENT.search(endpoint):
@@ -98,12 +97,12 @@ def _check_endpoint_and_location(endpoint: str, location: str | None = None) -> 
     if countries is not None and location not in countries:
         errors.append({"field": "location", "message": "unknown country code"})
     if errors:
-        raise Problem(MODULE, 400, "validation", errors=errors)
+        raise problem(400, "validation", errors=errors)
 
 
 def _check_duplicate(name: str, endpoint: str, ignore: str | None = None) -> None:
     if repository.live_exists(name=name, endpoint=endpoint, ignore=ignore):
-        raise Problem(MODULE, 409, "duplicate", detail="a connector with this name and endpoint exists")
+        raise problem(409, "duplicate", detail="a connector with this name and endpoint exists")
 
 
 def _check_technical_user(tu_id: str | None, host: str, sub_id: str | None) -> None:
@@ -111,24 +110,24 @@ def _check_technical_user(tu_id: str | None, host: str, sub_id: str | None) -> N
         return
     linked = repository.live_exists(technical_user_id=tu_id)
     if linked or not neighbour_client.technical_user_usable(tu_id, host, sub_id):
-        raise Problem(MODULE, 409, "technical-user-not-usable")
+        raise problem(409, "technical-user-not-usable")
 
 
 def _check_host_active(host: str) -> None:
     if neighbour_client.company_status(host) != ACTIVE:
-        raise Problem(MODULE, 409, "company-not-active")
+        raise problem(409, "company-not-active")
 
 
 def _own_company(company_id: str | None) -> str:
     if not company_id:
-        raise Problem(MODULE, 403, "forbidden", detail="the token has no company_id")
+        raise problem(403, "forbidden", detail="the token has no company_id")
     return company_id
 
 
 def _visible(connector_id: str, company_id: str) -> ConnectorRow:
     c = repository.get(canonical(connector_id)) if is_uuid(connector_id) else None
     if not c or company_id not in (c.provider_company_id, c.host_company_id):
-        raise Problem(MODULE, 404, "not-found")
+        raise problem(404, "not-found")
     return c
 
 
@@ -143,14 +142,14 @@ def _register(body: ConnectorInput, *, technical_user_id: str | None, ctype: str
     requests that both passed the earlier checks, the second gets 409."""
     with LOCK:
         if sub_id and repository.subscription_ended(sub_id):
-            raise Problem(MODULE, 409, "invalid-state", detail="subscription ended or declined")
+            raise problem(409, "invalid-state", detail="subscription ended or declined")
         if sub_id and repository.live_exists(offer_subscription_id=sub_id):
-            raise Problem(MODULE, 409, "subscription-linked")
+            raise problem(409, "subscription-linked")
         _check_duplicate(body.name, body.endpoint)
         if technical_user_id and repository.technical_user_deleted(technical_user_id):
-            raise Problem(MODULE, 409, "technical-user-not-usable", detail="technical user was deleted")
+            raise problem(409, "technical-user-not-usable", detail="technical user was deleted")
         if technical_user_id and repository.live_exists(technical_user_id=technical_user_id):
-            raise Problem(MODULE, 409, "technical-user-not-usable")
+            raise problem(409, "technical-user-not-usable")
         c = repository.add(ConnectorRow(
             connector_id=str(uuid.uuid4()), name=body.name, endpoint=body.endpoint, location=body.location,
             type=ctype, status=ACTIVE, provider_company_id=provider, host_company_id=host,
@@ -191,11 +190,11 @@ def register_connector_as_a_service(company_id: str | None, sub: str | None,
     tu_id = canonical(body.technical_user_id) if body.technical_user_id else None
     s = neighbour_client.subscription(sub_id)
     if not s or s.get("providerCompanyId") != own:
-        raise Problem(MODULE, 404, "not-found", detail="subscription unknown or not of an own offer")
+        raise problem(404, "not-found", detail="subscription unknown or not of an own offer")
     if s.get("status") not in ("PENDING", "ACTIVE"):
-        raise Problem(MODULE, 409, "invalid-state", detail=f"subscription is {s.get('status')}")
+        raise problem(409, "invalid-state", detail=f"subscription is {s.get('status')}")
     if repository.live_exists(offer_subscription_id=sub_id):
-        raise Problem(MODULE, 409, "subscription-linked")
+        raise problem(409, "subscription-linked")
     host = s["customerCompanyId"]
     _check_host_active(host)
     _check_duplicate(body.name, body.endpoint)
@@ -216,9 +215,9 @@ def change_endpoint(company_id: str | None, sub: str | None, connector_id: str, 
     with LOCK:
         c = _visible(connector_id, own)
         if c.provider_company_id != own:
-            raise Problem(MODULE, 403, "forbidden", detail="only the provider company changes the endpoint")
+            raise problem(403, "forbidden", detail="only the provider company changes the endpoint")
         if c.status == INACTIVE:
-            raise Problem(MODULE, 409, "invalid-state", detail="connector is INACTIVE")
+            raise problem(409, "invalid-state", detail="connector is INACTIVE")
         _check_endpoint_and_location(body.endpoint)
         if body.endpoint == c.endpoint:
             return _view(c)
@@ -240,7 +239,7 @@ def delete_connector(company_id: str | None, sub: str | None, connector_id: str)
         c = _visible(connector_id, own)   # may have been deleted meanwhile: 404
         if c.offer_subscription_id:
             if s and s.get("status") == ACTIVE:
-                raise Problem(MODULE, 409, "subscription-active")
+                raise problem(409, "subscription-active")
             if c.status != INACTIVE:
                 c = repository.update(c.connector_id, status=INACTIVE)
                 repository.write_audit("delete-connector", c.connector_id, sub, own)

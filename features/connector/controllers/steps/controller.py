@@ -33,13 +33,17 @@ from portal_common.routing import Controller, Permission
 controller = Controller("Connector: Process Steps and Queries")
 
 
-@controller.post("/deactivate-subscription-connectors", summary="Deactivate the connector of an ended subscription",
+@controller.post("/deactivate-subscription-connectors",
+                 operation_id="stepDeactivateSubscriptionConnectors",
+                 summary="Deactivate the connector of an ended subscription",
                  response_model=StepResult[ConnectorIds])
-def deactivate_subscription_connectors(body: DeactivateSubscriptionConnectorsInput, _: dict = Permission):
+def deactivate_subscription_connectors(body: DeactivateSubscriptionConnectorsInput, _: dict = Permission) -> dict:
     return interface.deactivate_subscription_connectors(body)
 
 
-@controller.post("/unlink-technical-user", summary="Remove the link to a deleted technical user",
+@controller.post("/unlink-technical-user",
+                 operation_id="stepUnlinkTechnicalUser",
+                 summary="Remove the link to a deleted technical user",
                  response_model=StepResult[ConnectorIds])
-def unlink_technical_user(body: UnlinkTechnicalUserInput, _: dict = Permission):
+def unlink_technical_user(body: UnlinkTechnicalUserInput, _: dict = Permission) -> dict:
     return interface.unlink_technical_user(body)

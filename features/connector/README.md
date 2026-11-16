@@ -58,12 +58,13 @@ technical user, the subscription. All changes of the register run under one lock
 | `controllers/internal/connectors/` | `GET /internal/connectors?technicalUserId=` (README 9.1) |
 | `services/connectors.py` | the operations of people with the checks of README 6.2: HTTPS endpoint, country of the reference data, uniqueness, host company `ACTIVE`, technical user usable, subscription of an own offer |
 | `services/steps.py`, `services/queries.py` | the two steps and the query |
-| `services/common.py` | UUID spelling, the check of a dict input against a model (in-process calls), the deactivation event |
+| `services/common.py` | UUID spelling and the deactivation event |
 | `managers/connector_repository.py` | the only code with a database session: the tables of the register, the audit log and the steps' records, and the lock |
 | `managers/neighbour_client.py` | C3-M1 `query_company`, C2-M3 `check_technical_user`, C10-M1 `get_subscription_internal`, each with the built-in stand-in of README 11 when the neighbour address is empty |
 | `managers/config.py` | the country codes of the reference data (`masterDataFile` of the installation settings) |
 | `managers/data/` | `stub-companies.json`, `stub-subscriptions.json`: read-only data of the built-in stand-ins of C3-M1 and C10-M1 |
 | `models/connector.py` | pydantic models on `portal_common.models`: `ConnectorInput`, `ConnectorAsAServiceInput`, `EndpointChange`, the step inputs, `Connector`, `ConnectorRef`, `ConnectorIds`, the value sets `ConnectorType`, `ConnectorStatus`, `Role` |
+| `models/errors.py` | the Problem Details of C6-M1 (`problem()`) and the check of an in-process dict input against its model (`parse()`) |
 | `models/tables.py` | SQLModel tables `connector`, `audit_entry`, `ended_subscription`, `deleted_technical_user` |
 
 **In-process interface** (`interface.py`, call convention of `AGENTS.md`): the steps

@@ -25,16 +25,15 @@
 """The query of the connectors for other modules (README 9)."""
 from __future__ import annotations
 
-from portal_common.problems import Problem
-
 from ..managers import connector_repository as repository
-from ..models import ACTIVE, MODULE, ConnectorRef
+from ..models import ACTIVE, ConnectorRef
+from ..models.errors import problem
 from .common import canonical, is_uuid
 
 
 def list_connectors_internal(*, technical_user_id: str | None = None) -> list[ConnectorRef]:
     """9.1: the ACTIVE connectors that use this technical user."""
-    if not is_uuid(technical_user_id):
-        raise Problem(MODULE, 400, "validation", detail="technicalUserId must be a UUID")
+    if technical_user_id is None or not is_uuid(technical_user_id):
+        raise problem(400, "validation", detail="technicalUserId must be a UUID")
     rows = repository.find(technical_user_id=canonical(technical_user_id), status=ACTIVE)
     return [ConnectorRef.model_validate(row, from_attributes=True) for row in rows]

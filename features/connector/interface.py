@@ -59,6 +59,6 @@ def unlink_technical_user(input: dict | UnlinkTechnicalUserInput) -> dict:
 
 
 # -- queries for other modules (README 9): parameters by their openapi names ------------------------
-def list_connectors_internal(*, technicalUserId: str | None = None, **_other) -> list:
+def list_connectors_internal(*, technicalUserId: str | None = None, **_other: object) -> list[dict]:
     """9.1: the ACTIVE connectors that use this technical user, as `ConnectorRef`."""
     return [ref.to_json() for ref in services.list_connectors_internal(technical_user_id=technicalUserId)]

@@ -29,13 +29,18 @@ of README 5 and the steps look up by are indexed.
 """
 from __future__ import annotations
 
-from sqlmodel import Field
+from typing import TYPE_CHECKING
+
+from sqlmodel import Field, SQLModel
 
 from portal_common import database
 
 from .connector import MODULE
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:   # a class built at run time is no valid base class for mypy
+    Table = SQLModel
+else:
+    Table = database.table_base(MODULE)
 
 
 class ConnectorRow(Table, table=True):

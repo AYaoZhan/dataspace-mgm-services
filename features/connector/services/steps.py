@@ -30,7 +30,8 @@ from portal_common.models import StepResult
 from ..managers import connector_repository as repository
 from ..managers.connector_repository import LOCK
 from ..models import ACTIVE, INACTIVE, ConnectorIds, DeactivateSubscriptionConnectorsInput, UnlinkTechnicalUserInput
-from .common import canonical, parse, publish_deactivated
+from ..models.errors import parse
+from .common import canonical, publish_deactivated
 
 
 def deactivate_subscription_connectors(
