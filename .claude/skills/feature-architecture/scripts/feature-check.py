@@ -33,7 +33,7 @@ Usage: feature-check.py [feature ...] [--strict] [--json]
   --strict      exit 1 when a finding is a blocker or high (pre-push hook, CI)
   --json        the findings as JSON, one object per finding
 
-The rules are the ones of `features/AGENTS.md` (F1 to F14); each finding names its rule, the file and how to fix it.
+The rules are the ones of `features/AGENTS.md` (F1 to F16); each finding names its rule, the file and how to fix it.
 """
 from __future__ import annotations
 
@@ -180,6 +180,8 @@ class Checker:
             self.f14_paths(path, tree)
         self.f11_old_folder()
         self.f12_tests()
+        self.f15_readme()
+        self.f16_models()
         return self.findings
 
     def f1_name(self) -> None:
@@ -367,6 +369,33 @@ class Checker:
     def f12_tests(self) -> None:
         if self.module and not list((ROOT / "tests").glob(f"test_{self.module.replace('-', '_')}_*.py")):
             self.add("F12", "medium", f"tests/test_{self.module.replace('-', '_')}_*.py", "no tests of the feature")
+
+    def f15_readme(self) -> None:
+        path = self.feature / "README.md"
+        if not path.is_file():
+            self.add("F15", "medium", path, "missing: the README names the module it was migrated from "
+                                            "and explains what the feature does and how it works")
+            return
+        text = path.read_text(encoding="utf-8")
+        origin = f"modules/{self.module.replace('-', '_')}" if self.module else None
+        if origin and origin not in text:
+            self.add("F15", "medium", path, f"name the module the feature was migrated from (`{origin}/`)")
+        for heading in ("What it does", "How it works"):
+            if not re.search(rf"^#+\s+{heading}", text, re.MULTILINE | re.IGNORECASE):
+                self.add("F15", "medium", path, f"no section `## {heading}`")
+
+    def f16_models(self) -> None:
+        models = self.feature / "models"
+        if not (models / "__init__.py").is_file():
+            self.add("F16", "medium", models, "missing package: the feature defines its request, step and response "
+                                              "models with pydantic in models/ (bases in portal_common.models)")
+            return
+        uses_pydantic = any(re.search(r"^\s*(from|import)\s+(pydantic|portal_common\.models)\b",
+                                      f.read_text(encoding="utf-8"), re.MULTILINE)
+                            for f in models.rglob("*.py") if "__pycache__" not in f.parts)
+        if not uses_pydantic:
+            self.add("F16", "medium", models, "no pydantic model in models/: build the models on pydantic "
+                                              "(`portal_common.models.ApiModel`, `RequestBody`, `StepRequest`, `Page`)")
 
     def f13_header(self, path: Path) -> None:
         head = "".join(path.read_text(encoding="utf-8").splitlines(keepends=True)[:30])

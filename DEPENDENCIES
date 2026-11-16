@@ -25,6 +25,7 @@ pypi/pypi/-/python-multipart/0.0.32, Apache-2.0, approved, #25779
 pypi/pypi/-/pyyaml/6.0.3, MIT, approved, #25755
 pypi/pypi/-/scramp/1.5.0, , restricted, clearlydefined
 pypi/pypi/-/sqlalchemy/2.1.8, MIT AND LGPL-2.0-only AND BSD-3-Clause AND LGPL-2.0-or-later, approved, #32977
+pypi/pypi/-/sqlmodel/0.0.48, MIT, restricted, clearlydefined
 pypi/pypi/-/starlette/1.10.0, BSD-3-Clause, approved, #32981
 pypi/pypi/-/typing-extensions/4.16.0, BSD-3-Clause AND Python-2.0 AND Python-2.0.1 AND PSF-2.0, approved, #32413
 pypi/pypi/-/typing-inspection/0.4.4, MIT, approved, #26752
