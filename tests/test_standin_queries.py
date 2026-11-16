@@ -61,7 +61,7 @@ QUERIES = sorted(neighbour_queries())
 
 
 def kit_owned(target: str) -> bool:
-    """Stand-ins, the provided module and the features migrated from them (ADR-0003); not a team's module."""
+    """Stand-ins, provided modules and migrated features (whose interface keeps the stand-in fallback)."""
     return next(e.kind for e in registry.load() if e.id == target) in ("stand-in", "provided", "feature")
 
 
