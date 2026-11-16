@@ -189,15 +189,15 @@ def onboarding(t: Target, base: str, applicant: str, reviewer: str, admin: str, 
                    p and p["status"] == "WAITING", t.trace(p)):
         return False
     rv = t.token(base, reviewer)
-    cases = t.call("GET", f"{base}/api/c1-m3/review-cases", rv).json().get("items", [])
+    cases = t.call("GET", f"{base}/api/application-review/review-cases", rv).json().get("items", [])
     case = next((c for c in cases if c["applicationId"] == aid), None)
     if not t.check("C1-M3 review case visible to the OSP Reviewer", case is not None):
         return False
-    detail = t.call("GET", f"{base}/api/c1-m3/review-cases/{case['id']}", rv).json()
+    detail = t.call("GET", f"{base}/api/application-review/review-cases/{case['id']}", rv).json()
     checks = {c["checkKey"]: c["result"] for c in detail.get("checks", [])}
     t.check("C1-M3 duplicate check at the CSP through C3-M2 passed (CSP_MATCH_EXPECTED)",
             checks.get("CSP_MATCH_EXPECTED") == "PASSED", json.dumps(checks))
-    r = t.call("POST", f"{base}/api/c1-m3/review-cases/{case['id']}/approve", rv)
+    r = t.call("POST", f"{base}/api/application-review/review-cases/{case['id']}/approve", rv)
     t.check("OSP Reviewer approves -> ApplicationApproved", r.status_code == 200, r.text[:200])
     p = t.process(base, admin, "onboarding", aid, ("COMPLETED", "FAILED", "ENDED"), timeout=60)
     if not t.check("C12 onboarding runs to COMPLETED", p and p["status"] == "COMPLETED", t.trace(p)):

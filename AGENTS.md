@@ -102,12 +102,12 @@ Module APIs never go there; they stay in `modules/<id>/router.py` (or `features/
 ## Migrated features (ADR-0003)
 
 A module that is migrated lives in `features/<name>/` under its readable name (`registration` for C1-M2,
-`technical_user` for C2-M3, `company_profile` for C3-M1, `credentials` for C4-M1, `offers` for C8-M1, `notifications` for C11-M1, `connector` for C6-M1, `subscriptions` for C10-M1) instead of `modules/<id>/`; for its team that folder replaces `modules/<id>/` in
+`technical_user` for C2-M3, `application_review` for C1-M3, `company_profile` for C3-M1, `credentials` for C4-M1, `offers` for C8-M1, `notifications` for C11-M1, `connector` for C6-M1, `subscriptions` for C10-M1) instead of `modules/<id>/`; for its team that folder replaces `modules/<id>/` in
 rule 1. Every feature has the same shape: `__init__.py` (index: `NAME`, `MODULE`, `reset()`, optional
 `on_startup()` / `on_event(event)`), `router.py`, `main.py`, `interface.py` (the call convention, unchanged),
 `controllers/` (HTTP only; one folder per path segment of the API, each with a `controller.py` whose paths are
 relative to the folder, see `portal_common.routing`), `services/` (business logic, no HTTP), `managers/` (state, adapters) and `models/`.
-Its API is served under its readable name (`/api/registration`, `/api/technical-user`, `/api/company-profile`, `/api/credentials`, `/api/offers`, `/api/notifications`, `/api/connector`, `/api/subscriptions`), never under the spec id;
+Its API is served under its readable name (`/api/registration`, `/api/technical-user`, `/api/application-review`, `/api/company-profile`, `/api/credentials`, `/api/offers`, `/api/notifications`, `/api/connector`, `/api/subscriptions`), never under the spec id;
 Problem types, events, permissions and service accounts keep the spec id. Other modules import only
 `features.<name>.interface`. Runtimes in `runtimes/` import features
 (`create_runtime(registration, company_profile)`); `RUNTIME=<name> python -m runtimes` starts one.

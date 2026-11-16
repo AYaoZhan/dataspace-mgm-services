@@ -22,3 +22,36 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Business logic of the application review: the automatic pre-check (`checks`) and the review cases
+(`review_cases`). No HTTP here; the controllers and `interface.py` call these functions, which return the API
+models of `models/`."""
+from __future__ import annotations
+
+from ..managers import review_case_repository as _repository
+from ..managers.config import config
+from .review_cases import (
+    approve,
+    close_review,
+    decline,
+    get_case,
+    get_review_status_by_application,
+    list_cases,
+    open_review,
+    view,
+)
+
+
+def reset() -> None:
+    _repository.reset()
+
+
+def start() -> None:
+    """Start-up: an invalid configuration prevents the start (README 4, 6.6); the tables are created."""
+    config()
+    _repository.create_tables()
+
+
+__all__ = [
+    "approve", "close_review", "config", "decline", "get_case", "get_review_status_by_application", "list_cases",
+    "open_review", "reset", "start", "view",
+]

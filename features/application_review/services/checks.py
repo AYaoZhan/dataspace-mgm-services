@@ -31,15 +31,12 @@ Findings carry no names of people and no values of the application's identifiers
 from __future__ import annotations
 
 import datetime as dt
-import os
 
 from portal_common import settings
 from portal_common.problems import Problem
 
-from . import calls
+from ..managers import config, neighbour_client
 
-ORDER = ["ATTESTATION_VALID", "REPRESENTATION_CONFIRMED", "COMPANY_DATA_MATCH", "NO_DUPLICATE",
-         "CSP_MATCH_EXPECTED", "CONSENTS_COMPLETE"]
 ATTESTATION_CHECKS = {"ATTESTATION_VALID", "REPRESENTATION_CONFIRMED", "COMPANY_DATA_MATCH"}
 DUPLICATE_STATUSES = ["REQUESTED", "ACTIVE", "INACTIVE"]
 MATCH_ORDER = ["EBWOID", "EUID", "NAME"]
@@ -62,7 +59,8 @@ def attestation_valid(app: dict) -> tuple[str, dict]:
     issued, expires, submitted = _time(att.get("issuedAt")), _time(att.get("expiresAt")), _time(app.get("submittedAt"))
     expired = bool(expires and submitted and submitted >= expires)
     in_time = bool(issued and expires and submitted and issued <= submitted < expires)
-    return ("PASSED" if sig == "VALID" and in_time else "FAILED"), {"signatureCheck": sig, "expiredAtSubmission": expired}
+    result = "PASSED" if sig == "VALID" and in_time else "FAILED"
+    return result, {"signatureCheck": sig, "expiredAtSubmission": expired}
 
 
 def representation_confirmed(app: dict) -> tuple[str, dict]:
@@ -87,13 +85,12 @@ def _neighbour_failed(name: str, problem: Problem) -> tuple[str, dict]:
 
 
 def no_duplicate(app: dict) -> tuple[str, dict]:
-    types = [t.strip() for t in os.environ.get("DUPLICATE_CHECK_IDENTIFIER_TYPES", "EUID,EBWOID,VAT_ID,LEI_CODE")
-             .split(",") if t.strip()]
+    types = config.duplicate_check_identifier_types()
     ids = [{"type": t, "value": v} for t, v in _identifiers(app).items() if t in types]
     if not ids:
         return "PASSED", {"duplicates": []}
     try:
-        found = calls.identifier_matches(ids, app["companyId"], DUPLICATE_STATUSES)
+        found = neighbour_client.identifier_matches(ids, app["companyId"], DUPLICATE_STATUSES)
     except Problem as p:
         return _neighbour_failed("C3-M1", p)
     dups = [{"companyId": m["companyId"], "companyStatus": m["status"], "matchedOn": m["matchedOn"]} for m in found]
@@ -118,25 +115,24 @@ def _merge(found: list[dict]) -> list[dict]:
     return list(merged.values())
 
 
-def _evaluate(kind: str, matches: list[dict], company_bpn: str | None, existing: bool) -> tuple[str, dict | None]:
-    """Table of 6.3, the first matching row applies. Returns `cspOutcome` and the expected match."""
-    here = [m for m in matches if m["homeIsThisOsp"]]
-    if kind == "ONBOARDING":
-        return ("NO_MATCH" if not matches else "REGISTERED_HERE" if here else "REGISTERED_AT_OTHER_OSP"), None
-    if not matches:
-        return "NO_MATCH", None
-    if kind == "TRANSFER":
-        if here:
-            return "REGISTERED_HERE", None
-        if len(matches) > 1:
-            return "MULTIPLE_MATCHES", None
-        only = matches[0]
-        if not {"EBWOID", "EUID"} & set(only["matchedBy"]):
-            return "NAME_MATCH_ONLY", None
-        if existing and only["bpn"] != company_bpn:
-            return "BPN_MISMATCH", None
-        return "EXPECTED_MATCH", only
-    own = next((m for m in matches if company_bpn and m["bpn"] == company_bpn), None)   # REACTIVATION
+Outcome = tuple[str, dict | None]   # `cspOutcome` and the expected match, if any
+
+
+def _evaluate_transfer(matches: list[dict], here: list[dict], company_bpn: str | None, existing: bool) -> Outcome:
+    if here:
+        return "REGISTERED_HERE", None
+    if len(matches) > 1:
+        return "MULTIPLE_MATCHES", None
+    only = matches[0]
+    if not {"EBWOID", "EUID"} & set(only["matchedBy"]):
+        return "NAME_MATCH_ONLY", None
+    if existing and only["bpn"] != company_bpn:
+        return "BPN_MISMATCH", None
+    return "EXPECTED_MATCH", only
+
+
+def _evaluate_reactivation(matches: list[dict], company_bpn: str | None) -> Outcome:
+    own = next((m for m in matches if company_bpn and m["bpn"] == company_bpn), None)
     if own is None:
         return "BPN_MISMATCH", None
     if not own["homeIsThisOsp"]:
@@ -146,11 +142,23 @@ def _evaluate(kind: str, matches: list[dict], company_bpn: str | None, existing:
     return "EXPECTED_MATCH", own
 
 
+def _evaluate(kind: str, matches: list[dict], company_bpn: str | None, existing: bool) -> Outcome:
+    """Table of 6.3, the first matching row applies."""
+    here = [m for m in matches if m["homeIsThisOsp"]]
+    if kind == "ONBOARDING":
+        return ("NO_MATCH" if not matches else "REGISTERED_HERE" if here else "REGISTERED_AT_OTHER_OSP"), None
+    if not matches:
+        return "NO_MATCH", None
+    if kind == "TRANSFER":
+        return _evaluate_transfer(matches, here, company_bpn, existing)
+    return _evaluate_reactivation(matches, company_bpn)
+
+
 def csp_match_expected(app: dict) -> tuple[str, dict]:
     ids, data = _identifiers(app), app.get("companyData") or {}
     kind, existing = app["kind"], bool(app.get("existingCompany"))
     try:
-        found = calls.find_companies(ids.get("EBWOID"), ids.get("EUID"), data.get("legalName"),
+        found = neighbour_client.find_companies(ids.get("EBWOID"), ids.get("EUID"), data.get("legalName"),
                                      (data.get("address") or {}).get("countryCode"))
     except Problem as p:
         return _neighbour_failed("C3-M2", p)
@@ -158,7 +166,7 @@ def csp_match_expected(app: dict) -> tuple[str, dict]:
     company_bpn = None
     if matches and (kind == "REACTIVATION" or (kind == "TRANSFER" and existing)):
         try:
-            company = calls.get_company(app["companyId"])
+            company = neighbour_client.get_company(app["companyId"])
         except Problem as p:
             return _neighbour_failed("C3-M1", p)
         company_bpn = (company or {}).get("bpn")
