@@ -33,14 +33,14 @@ Configuration is read from the environment at call time (AGENTS.md rule 6).
 """
 from __future__ import annotations
 
-import os
 import time
 
 import httpx
 
 from features.credentials.models.problems import MODULE, upstream as _upstream
 from features.credentials.models.values import CREDENTIAL_ISSUER, CSP_ISSUER, ISSUER_SERVICE
-from portal_common import csp, http, neighbours, settings, spec
+from features.credentials.managers import config, neighbour_client
+from portal_common import csp, http, settings, spec
 from portal_common.problems import Problem
 
 
@@ -48,17 +48,7 @@ from portal_common.problems import Problem
 def _callback_url(kind: str) -> str:
     """`{CALLBACK_BASE_URL}{base path}/issuer-callbacks/{kind}` (base path `/api/credentials`, ADR-0003); without
     the variable the address of the installation (OPEN-QUESTIONS.md)."""
-    base = (os.environ.get("CALLBACK_BASE_URL") or settings.base_url()).rstrip("/")
-    return f"{base}{spec.module(MODULE).base_path}/issuer-callbacks/{kind}"
-
-
-def _definitions(variable: str, default: str) -> dict[str, str]:
-    out = {}
-    for part in (os.environ.get(variable) or default).split(","):
-        if ":" in part:
-            t, ident = part.split(":", 1)
-            out[t.strip().upper()] = ident.strip()
-    return out
+    return f"{config.callback_base_url()}{spec.module(MODULE).base_path}/issuer-callbacks/{kind}"
 
 
 def _member_of() -> str | None:
@@ -68,7 +58,7 @@ def _member_of() -> str | None:
 def _holder_access(ctx: dict) -> dict:
     """Holder access from C4-M2, once per run just before the first order; kept in memory only."""
     if "access" not in ctx:
-        access = neighbours.query(MODULE, "c4-m2", "get_holder_access", companyId=ctx["company"]["id"])
+        access = neighbour_client.holder_access(ctx["company"]["id"])
         if not access:
             raise Problem(MODULE, 409, "wallet-not-ready", detail="no holder access for the wallet", retryable=False)
         ctx["access"] = access
@@ -79,7 +69,7 @@ def _identity_request(ctx: dict, credential_type: str, attempt: int, issuer_did:
     """Credential request in the identity interface of the holder's wallet (README 11.4); returns `holderPid`."""
     access = _holder_access(ctx)
     holder_pid = f"{ctx['company']['id']}:{credential_type}:{attempt}"
-    credential = {"type": identifier, "format": os.environ.get("CREDENTIAL_FORMAT") or "VC1_0_JWT"}
+    credential = {"type": identifier, "format": config.credential_format()}
     try:
         r = http.request("POST", f"{access['identityApiUrl'].rstrip('/')}/participants/{access['participantContextId']}"
                          "/credentials/request",
@@ -101,7 +91,7 @@ class CspIssuerRoute:
     @staticmethod
     def _csp(method: str, path: str, body: dict | None = None, revocation: bool = False) -> None:
         try:
-            status, _ = csp.request(os.environ.get("CSP_ISSUER_URL", ""), method, path, body)
+            status, _ = csp.request(config.csp_issuer_url(), method, path, body)
         except csp.CspUnavailable as e:
             raise _upstream(f"CSP issuer: {e}") from e
         if 200 <= status < 300:
@@ -120,8 +110,8 @@ class CspIssuerRoute:
         if kind == "membership":
             grant["memberOf"] = _member_of()
         self._csp("PUT", f"/holders/{bpn}/grants/{kind}", grant)
-        issuer_did = os.environ.get("CSP_ISSUER_DID") or "did:web:issuer.csp.example.org"
-        identifier = _definitions("CSP_ISSUER_CREDENTIAL_DEFINITIONS", "BPN:bpn,MEMBERSHIP:membership")[credential_type]
+        issuer_did = config.csp_issuer_did()
+        identifier = config.csp_issuer_definitions()[credential_type]
         return _identity_request(ctx, credential_type, attempt, issuer_did, identifier), issuer_did
 
     def _remove_grant(self, row: dict) -> None:
@@ -147,14 +137,12 @@ class CredentialIssuerRoute:
 
     @staticmethod
     def _token() -> str:
-        url = os.environ.get("CREDENTIAL_ISSUER_TOKEN_URL", "")
+        url, form = config.credential_issuer_token_request()
         cached = _issuer_tokens.get(url)
         if cached and cached[1] > time.time() + 30:
             return cached[0]
         try:
-            r = http.request("POST", url, data={"grant_type": "client_credentials",
-                                                "client_id": os.environ.get("CREDENTIAL_ISSUER_CLIENT_ID", ""),
-                                                "client_secret": os.environ.get("CREDENTIAL_ISSUER_CLIENT_SECRET", "")})
+            r = http.request("POST", url, data=form)
             body = r.json() if r.status_code == 200 else {}
         except (httpx.HTTPError, ValueError) as e:
             raise _upstream(f"Credential Issuer token endpoint: {type(e).__name__}") from e
@@ -175,7 +163,7 @@ class CredentialIssuerRoute:
         if kind == "membership":
             body["memberOf"] = _member_of()
         try:
-            r = http.request("POST", os.environ.get("CREDENTIAL_ISSUER_URL", "").rstrip("/") + f"/api/issuer/{kind}",
+            r = http.request("POST", config.credential_issuer_url() + f"/api/issuer/{kind}",
                              json=body, headers={"Authorization": "Bearer " + self._token()})
         except httpx.HTTPError as e:
             raise _upstream(f"Credential Issuer: {type(e).__name__}") from e
@@ -199,11 +187,9 @@ class IssuerServiceRoute:
 
     @staticmethod
     def _admin(method: str, path: str, body: dict | None = None, accept: tuple[int, ...] = ()) -> None:
-        pid = os.environ.get("ISSUER_SERVICE_PARTICIPANT_ID") or "issuer"
         try:
-            r = http.request(method, os.environ.get("ISSUER_SERVICE_ADMIN_URL", "").rstrip("/")
-                             + f"/api/admin/participants/{pid}{path}", json=body,
-                             headers={"x-api-key": os.environ.get("ISSUER_SERVICE_API_KEY", "")})
+            r = http.request(method, config.issuer_service_admin_url() + path, json=body,
+                             headers={"x-api-key": config.issuer_service_api_key()})
         except httpx.HTTPError as e:
             raise _upstream(f"IssuerService: {type(e).__name__}") from e
         if not (r.is_success or r.status_code in accept):
@@ -217,15 +203,15 @@ class IssuerServiceRoute:
                     accept=(409,))                # an existing holder counts as success
 
     def order(self, ctx: dict, credential_type: str, attempt: int) -> tuple[str, str | None]:
-        issuer_did = os.environ.get("ISSUER_DID", "")
-        identifier = _definitions("ISSUER_SERVICE_CREDENTIAL_DEFINITIONS", "BPN:bpn,MEMBERSHIP:membership")[credential_type]
+        issuer_did = config.issuer_did()
+        identifier = config.issuer_service_definitions()[credential_type]
         return _identity_request(ctx, credential_type, attempt, issuer_did, identifier), issuer_did
 
     def cancel(self, row: dict) -> None:
         """Nothing to remove."""
 
     def revoke(self, row: dict) -> bool:
-        ident = _definitions("ISSUER_SERVICE_CREDENTIAL_DEFINITIONS", "BPN:bpn,MEMBERSHIP:membership")[row["credential_type"]]
+        ident = config.issuer_service_definitions()[row["credential_type"]]
         self._admin("POST", f"/holders/{row['bpn']}/credentials/revoke", {"credentialDefinition": ident})
         return True
 

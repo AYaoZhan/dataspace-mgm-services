@@ -35,13 +35,13 @@ import datetime as dt
 import logging
 import uuid
 
-from features.credentials.managers import config
+from features.credentials.managers import config, neighbour_client
 from features.credentials.managers.credential_store import store
 from features.credentials.models.problems import MODULE, validation as _validation
 from features.credentials.models.values import BPN_RE, CREDENTIAL_ISSUER, TYPES
 from features.credentials.services import issuer_routes as routes
 from features.credentials.services.credential_views import detail_view as _detail_view
-from portal_common import events, neighbours, standin
+from portal_common import events, standin
 from portal_common.problems import Problem
 
 log = logging.getLogger("c4-m1")
@@ -120,22 +120,13 @@ def _check_round(cid: str) -> None:
     events.publish(MODULE, "CredentialsIssued", {"companyId": cid, "credentialTypes": list(run["credential_types"])})
 
 
-# ------------------------------------------------------------------------------------ neighbours
-def get_company(cid: str) -> dict | None:
-    return neighbours.query(MODULE, "c3-m1", "query_company", companyId=cid)
-
-
-def get_wallet(cid: str) -> dict | None:
-    return neighbours.query(MODULE, "c4-m2", "get_wallet_info", companyId=cid)
-
-
 def _preconditions(cid: str) -> tuple[dict, dict, str]:
     """README 8.1: company, then wallet, then route. Returns (company, wallet, route name)."""
-    company = get_company(cid)
+    company = neighbour_client.company(cid)
     if not company or not company.get("bpn") or company.get("status") not in ("REQUESTED", "ACTIVE"):
         raise Problem(MODULE, 409, "company-not-ready", detail="company without BPN or not REQUESTED/ACTIVE",
                       retryable=False)
-    wallet = get_wallet(cid)
+    wallet = neighbour_client.wallet(cid)
     if not wallet or wallet.get("status") != "ACTIVE" or not wallet.get("did"):
         raise Problem(MODULE, 409, "wallet-not-ready", detail="dataspace wallet not ACTIVE or without DID",
                       retryable=False)
