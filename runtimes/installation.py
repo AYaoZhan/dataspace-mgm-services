@@ -8,9 +8,11 @@
 #  terms of the Apache License, Version 2.0 which is available at
 #  https://www.apache.org/licenses/LICENSE-2.0.
 #
-#  The program is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-#  CONDITIONS OF ANY KIND, either express or implied. See the License for the
-#  specific language governing permissions and limitations under the License.
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
 #
 #  AI Disclosure: This file was entirely AI-generated.
 #  The AI-generated portions are made available under CC0-1.0 and not subject
@@ -18,12 +20,11 @@
 #  that the code is correct.
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
-#  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
-#################################################################################
-"""Full installation runtime: every migrated feature and legacy module."""
+#  Assisted-By: GitHub Copilot (claude-opus-5.5)
+"""Every module in one process, the modular monolith (FRAMEWORK 1); `ENABLED_FEATURES` narrows it to
+a list of features, e.g. for a pod of a module that has no runtime of its own yet."""
+from __future__ import annotations
 
-from . import create_runtime
+from scaffold.app import create_app
 
-
-def create_app():
-    return create_runtime()
+__all__ = ["create_app"]

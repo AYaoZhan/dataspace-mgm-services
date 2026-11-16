@@ -218,7 +218,7 @@ def test_10_new_connector_for_pending_subscription_after_delete(api):
 
 
 def test_11_customer_account_of_the_subscription(api, monkeypatch):
-    from modules.c2_m3 import interface as c2_m3
+    from features.technical_user import interface as c2_m3
     monkeypatch.setenv("C2_M3_URL", "in-process")
     c2_m3.reset()
     # the step input of C2-M3 openapi `StepCreateForSubscription`: UUIDs for the ids, at least one role

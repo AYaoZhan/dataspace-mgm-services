@@ -28,7 +28,7 @@ Found at the go-live of 06.11.2026: DATABASE_URL for C2-M2 switched C3-M1 to Pos
 import pytest
 
 from modules.c2_m2.c2_m2_impl.config.config import Config
-from modules.c3_m1 import store
+from features.company_profile.managers import company_repository as store
 
 VARIABLES = ("DATABASE_URL", "C2_M2_DATABASE_URL", "C3_M1_DATABASE_URL", "C2_M2_CONFIG_FILE")
 
