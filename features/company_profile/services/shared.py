@@ -28,8 +28,9 @@ from __future__ import annotations
 import datetime as dt
 
 from features.company_profile.managers import company_repository
+from features.company_profile.models import MODULE
 
-MODULE = "c3-m1"
+__all__ = ["MODULE", "audit_step", "parse_timestamp", "utc_now"]
 
 
 def parse_timestamp(value: str | None) -> dt.datetime | None:

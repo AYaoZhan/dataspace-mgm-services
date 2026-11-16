@@ -25,31 +25,38 @@
 """
 from __future__ import annotations
 
-from features.company_profile.managers import config
-from features.company_profile.managers import company_repository
+from features.company_profile.managers import company_repository, config
+from features.company_profile.models.company import (
+    CompanyInternal,
+    CompanyLookupResult,
+    IdentifierMatch,
+    IdentifierMatchResult,
+)
+from features.company_profile.models.company_role import CompanyRoleDefinition
+from features.company_profile.models.value_sets import CompanyStatus
 from features.company_profile.services import company_validation
-from features.company_profile.services.company_views import company_internal
+from features.company_profile.services.company_views import company_internal, internal_view
 from features.company_profile.services.shared import MODULE
 from portal_common.problems import Problem
 
 
 # --------------------------------------------------------------------------- queries (9.1 - 9.3)
-def query_company_role_catalog(*, lang: str | None = None, **_other) -> list[dict]:
+def query_company_role_catalog(*, lang: str | None = None, **_other) -> list[CompanyRoleDefinition]:
     """9.4: role catalogue with descriptions in `lang`; the terms of the roles are at C1-M2 (9.3)."""
     wanted = lang or "en"
-    return [{"companyRole": role, "assignableBy": entry.get("assignableBy"),
-             "description": config.description(role, wanted),
-             "descriptions": entry.get("descriptions") or {}}
+    return [CompanyRoleDefinition(company_role=role, assignable_by=entry.get("assignableBy"),
+                                  description=config.description(role, wanted),
+                                  descriptions=entry.get("descriptions") or {})
             for role, entry in config.role_catalogue().items()]
 
 
-def query_company(*, companyId: str) -> dict:
+def query_company(*, companyId: str) -> CompanyInternal:
     """9.1"""
     return company_internal(companyId)
 
 
 def query_companies(*, id: list[str] | str | None = None, bpn: list[str] | str | None = None,
-                    **_other) -> dict:
+                    **_other) -> CompanyLookupResult:
     """9.2: exactly one of `id` and `bpn`, 1 to QUERY_MAX_COMPANIES values."""
     ids = [id] if isinstance(id, str) else list(id or [])
     bpns = [bpn] if isinstance(bpn, str) else list(bpn or [])
@@ -61,62 +68,69 @@ def query_companies(*, id: list[str] | str | None = None, bpn: list[str] | str |
                       errors=[{"field": "id,bpn", "reason": "too many values"}])
     items, found = [], set()
     for wanted in ids:
-        if company_repository.get_company(wanted) is not None:
-            items.append(company_internal(wanted))
+        row = company_repository.get_company(wanted)
+        if row is not None:
+            items.append(internal_view(row))
             found.add(wanted)
     for wanted in bpns:
         rows = company_repository.find_companies(bpn=wanted, size=config.query_max_companies())[0]
-        live = [row for row in rows if row["status"] != "REJECTED"] or rows
+        live = [row for row in rows if row["status"] != CompanyStatus.REJECTED] or rows
         for other in live:
-            items.append(company_internal(other["id"]))
+            items.append(internal_view(other))
             found.add(wanted)
-    return {"items": items, "notFound": [value for value in ids + bpns if value not in found]}
+    return CompanyLookupResult(items=items, not_found=[value for value in ids + bpns if value not in found])
 
 
 def find_identifier_matches(*, identifiers: list[dict], name: str | None = None,
                             excludeCompanyId: str | None = None,
-                            statuses: list[str] | str | None = None, **_other) -> dict:
+                            statuses: list[str] | str | None = None, **_other) -> IdentifierMatchResult:
     """9.3: local duplicate search; the caller decides whether a match is a duplicate."""
     wanted_statuses = [statuses] if isinstance(statuses, str) else list(statuses or [])
-    errors = []
-    if not 1 <= len(identifiers) <= 10:
-        errors.append({"field": "identifiers", "reason": "1 to 10 entries"})
-    for entry in identifiers:
-        if entry.get("type") not in (*company_repository.IDENTIFIER_TYPES, "BPN"):
-            errors.append({"field": "identifiers.type", "reason": str(entry.get("type"))})
-        if not entry.get("value"):
-            errors.append({"field": "identifiers.value", "reason": "required"})
-    for value in wanted_statuses:
-        if value not in company_repository.STATUSES:
-            errors.append({"field": "statuses", "reason": value})
+    errors = _match_query_errors(identifiers, wanted_statuses)
     if errors:
         raise Problem(MODULE, 400, "validation", errors=errors)
-    if not 1 <= len(identifiers) <= 10:
-        raise Problem(MODULE, 400, "validation",
-                      errors=[{"field": "identifiers", "reason": "1 to 10 entries"}])
-    candidates, page, total = [], 0, None
-    while total is None or len(candidates) < total:
-        batch, total = company_repository.find_companies(
-            status=wanted_statuses or ["REQUESTED", "ACTIVE", "INACTIVE"], page=page, size=100)
-        candidates += batch
-        if not batch:
-            break
-        page += 1
+    candidates = _candidates(wanted_statuses or ["REQUESTED", "ACTIVE", "INACTIVE"])
     wanted_name = company_validation.normalise(name) if name else None
+    wanted = {(entry["type"], company_validation.value_normalized(entry["value"])) for entry in identifiers}
+    identifiers_of = company_repository.identifiers_by_company([row["id"] for row in candidates])
     matches = []
     for row in candidates:
         if row["id"] == excludeCompanyId:
             continue
-        own = {(entry["type"], entry["value_normalized"])
-               for entry in company_repository.list_identifiers(row["id"])}
+        own = {(entry["type"], entry["value_normalized"]) for entry in identifiers_of.get(row["id"], [])}
         if row["bpn"]:
             own.add(("BPN", company_validation.value_normalized(row["bpn"])))
-        matched = sorted({entry["type"] for entry in identifiers
-                          if (entry["type"], company_validation.value_normalized(entry["value"])) in own})
+        matched = sorted({kind for kind, _value in wanted & own})
         if wanted_name and company_validation.normalise(row["name"]) == wanted_name:
             matched.append("NAME")
         if matched:
-            matches.append({"companyId": row["id"], "name": row["name"], "status": row["status"],
-                            "bpn": row["bpn"], "matchedOn": matched})
-    matches.sort(key=lambda match: len(match["matchedOn"]), reverse=True)
-    return {"matches": matches}
+            matches.append(IdentifierMatch(company_id=row["id"], name=row["name"], status=row["status"],
+                                           bpn=row["bpn"], matched_on=matched))
+    matches.sort(key=lambda match: len(match.matched_on), reverse=True)
+    return IdentifierMatchResult(matches=matches)
+
+
+def _match_query_errors(identifiers: list[dict], statuses: list[str]) -> list[dict]:
+    errors = []
+    if not 1 <= len(identifiers) <= 10:
+        errors.append({"field": "identifiers", "reason": "1 to 10 entries"})
+    for entry in identifiers:
+        if entry.get("type") not in (*company_validation.IDENTIFIER_TYPES, "BPN"):
+            errors.append({"field": "identifiers.type", "reason": str(entry.get("type"))})
+        if not entry.get("value"):
+            errors.append({"field": "identifiers.value", "reason": "required"})
+    errors += [{"field": "statuses", "reason": value} for value in statuses
+               if value not in company_validation.STATUSES]
+    return errors
+
+
+def _candidates(statuses: list[str]) -> list[dict]:
+    """Every company with one of the statuses, read page by page."""
+    candidates, page, total = [], 0, None
+    while total is None or len(candidates) < total:
+        batch, total = company_repository.find_companies(status=statuses, page=page, size=100)
+        if not batch:
+            break
+        candidates += batch
+        page += 1
+    return candidates
