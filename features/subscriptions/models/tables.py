@@ -26,13 +26,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlmodel import Field
 
 from features.subscriptions.models.subscription import MODULE
 from portal_common import database
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:   # the type checker sees the plain SQLModel base; at run time it is the feature's own registry
+    from sqlmodel import SQLModel as Table
+else:
+    Table = database.table_base(MODULE)
 
 
 class SubscriptionRow(Table, table=True):

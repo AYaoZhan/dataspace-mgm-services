@@ -30,41 +30,41 @@ from __future__ import annotations
 import uuid
 
 from features.subscriptions.managers import neighbour_client, subscription_repository
+from features.subscriptions.models.errors import problem
 from features.subscriptions.models.requests import StartSetupRequest, SubscribeRequest
-from features.subscriptions.models.subscription import MODULE, Subscription, SubscriptionInternal
+from features.subscriptions.models.subscription import MODULE, SetupStatus, Subscription, SubscriptionInternal
 from portal_common import events
-from portal_common.problems import Problem
 
-_ACTIVATION_REFUSED = {"RUNNING": "setup-not-finished", "FAILED": "setup-failed"}
+_ACTIVATION_REFUSED: dict[str, str] = {"RUNNING": "setup-not-finished", "FAILED": "setup-failed"}
 
 
 def _visible(company_id: str | None, sid: str, provider_only: bool = False) -> SubscriptionInternal:
     s = subscription_repository.get(sid)
     if not s or company_id not in (s.provider_company_id, s.customer_company_id):
-        raise Problem(MODULE, 404, "not-found")
+        raise problem(404, "not-found")
     if provider_only and company_id != s.provider_company_id:
-        raise Problem(MODULE, 403, "forbidden")
+        raise problem(403, "forbidden")
     return s
 
 
-def _setup_status(sid: str) -> str | None:
+def _setup_status(sid: str) -> SetupStatus | None:
     """Status of the `subscription-setup` process of the subscription at C12-M1, None without one."""
     procs = neighbour_client.find_processes_of_subscription(sid)
     return next((p["status"] for p in procs if p["flowKey"] == "subscription-setup"), None)
 
 
-def _view(s: SubscriptionInternal, setup_status: str | None = None) -> Subscription:
+def _view(s: SubscriptionInternal, setup_status: SetupStatus | None = None) -> Subscription:
     return Subscription(**s.model_dump(), setup_status=setup_status)
 
 
 def subscribe(company_id: str | None, body: SubscribeRequest) -> Subscription:
     if not company_id:
-        raise Problem(MODULE, 403, "forbidden", detail="the token names no company")
+        raise problem(403, "forbidden", detail="the token names no company")
     offer = neighbour_client.get_offer_internal(body.offer_id)
     if not offer or offer["status"] != "ACTIVE":
-        raise Problem(MODULE, 409, "offer-not-active")
+        raise problem(409, "offer-not-active")
     if offer["providerCompanyId"] == company_id:
-        raise Problem(MODULE, 409, "own-offer")
+        raise problem(409, "own-offer")
     s = SubscriptionInternal(offer_subscription_id=str(uuid.uuid4()), offer_id=offer["offerId"],
                              offer_type=offer["offerType"], instance_kind=offer.get("instanceKind"),
                              customer_company_id=company_id, provider_company_id=offer["providerCompanyId"],
@@ -82,7 +82,7 @@ def get_subscription(company_id: str | None, sid: str) -> Subscription:
 def start_setup(company_id: str | None, sid: str, body: StartSetupRequest) -> Subscription:
     s = _visible(company_id, sid, provider_only=True)
     if s.status != "REQUESTED":
-        raise Problem(MODULE, 409, "invalid-state")
+        raise problem(409, "invalid-state")
     s.status, s.instance_url = "PENDING", body.instance_url
     subscription_repository.save(s)
     events.publish(MODULE, "SubscriptionSetupStarted", s.event_data(instanceUrl=s.instance_url))
@@ -92,10 +92,11 @@ def start_setup(company_id: str | None, sid: str, body: StartSetupRequest) -> Su
 def activate(company_id: str | None, sid: str) -> Subscription:
     s = _visible(company_id, sid, provider_only=True)
     if s.status != "PENDING":
-        raise Problem(MODULE, 409, "invalid-state")
-    refused = _ACTIVATION_REFUSED.get(_setup_status(sid))
+        raise problem(409, "invalid-state")
+    status = _setup_status(sid)
+    refused = _ACTIVATION_REFUSED.get(status) if status else None
     if refused:
-        raise Problem(MODULE, 409, refused)
+        raise problem(409, refused)
     s.status = "ACTIVE"
     subscription_repository.save(s)
     events.publish(MODULE, "SubscriptionActivated", s.event_data(instanceKind=s.instance_kind))

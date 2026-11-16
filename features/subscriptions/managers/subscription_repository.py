@@ -27,15 +27,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from sqlmodel import select
+from sqlmodel import col, select
 
 from features.subscriptions.models.subscription import MODULE, SubscriptionInternal
 from features.subscriptions.models.tables import SubscriptionRow
 from portal_common import database
 
 
-def _model(row: SubscriptionRow | None) -> SubscriptionInternal | None:
-    return SubscriptionInternal.model_validate(row, from_attributes=True) if row else None
+def _model(row: SubscriptionRow) -> SubscriptionInternal:
+    return SubscriptionInternal.model_validate(row, from_attributes=True)
 
 
 def save(subscription: SubscriptionInternal) -> None:
@@ -46,7 +46,8 @@ def save(subscription: SubscriptionInternal) -> None:
 
 def get(offer_subscription_id: str) -> SubscriptionInternal | None:
     with database.session(MODULE) as session:
-        return _model(session.get(SubscriptionRow, offer_subscription_id))
+        row = session.get(SubscriptionRow, offer_subscription_id)
+        return _model(row) if row else None
 
 
 def find(customer_company_id: str | None, offer_id: str | None, statuses: Iterable[str]) -> list[SubscriptionInternal]:
@@ -57,6 +58,6 @@ def find(customer_company_id: str | None, offer_id: str | None, statuses: Iterab
     if offer_id:
         query = query.where(SubscriptionRow.offer_id == offer_id)
     if statuses := list(statuses):
-        query = query.where(SubscriptionRow.status.in_(statuses))
+        query = query.where(col(SubscriptionRow.status).in_(statuses))
     with database.session(MODULE) as session:
         return [_model(row) for row in session.exec(query)]

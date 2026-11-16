@@ -30,26 +30,25 @@ from typing import Literal
 import httpx
 
 from features.subscriptions.managers import provider_configuration_repository
-from features.subscriptions.models.subscription import MODULE
+from features.subscriptions.models.errors import problem
 from portal_common import http
-from portal_common.problems import Problem
 
 
 def call(provider_company_id: str, kind: Literal["setup", "callback"], body: dict) -> None:
     """POST `body` to the setup or callback URL of the provider's configuration."""
     cfg = provider_configuration_repository.get(provider_company_id)
     if not cfg:
-        raise Problem(MODULE, 409, "invalid-state", detail="provider has no configuration", retryable=False)
+        raise problem(409, "invalid-state", detail="provider has no configuration", retryable=False)
     url = cfg.setup_url if kind == "setup" else cfg.callback_url
     try:
         t = http.request("POST", cfg.token_url, data={"grant_type": "client_credentials", "client_id": cfg.client_id,
                                                       "client_secret": cfg.client_secret})
         if t.status_code != 200:
-            raise Problem(MODULE, 502, "provider-rejected", detail=f"token {t.status_code}",
+            raise problem(502, "provider-rejected", detail=f"token {t.status_code}",
                           retryable=t.status_code >= 500)
         r = http.request("POST", url, json=body, headers={"Authorization": "Bearer " + t.json()["access_token"]})
     except httpx.HTTPError as e:
-        raise Problem(MODULE, 502, "upstream-error", detail=type(e).__name__, retryable=True) from e
+        raise problem(502, "upstream-error", detail=type(e).__name__, retryable=True) from e
     if not r.is_success:
-        raise Problem(MODULE, 502, "provider-rejected" if r.status_code < 500 else "upstream-error",
+        raise problem(502, "provider-rejected" if r.status_code < 500 else "upstream-error",
                       detail=f"{kind} {r.status_code}", retryable=r.status_code >= 500)

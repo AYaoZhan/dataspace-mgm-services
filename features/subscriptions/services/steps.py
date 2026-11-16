@@ -33,17 +33,17 @@ from features.subscriptions.managers import (
     provider_configuration_repository,
     subscription_repository,
 )
+from features.subscriptions.models.errors import problem
 from features.subscriptions.models.requests import ActivationCallbackStep, SubscriptionStep
-from features.subscriptions.models.subscription import MODULE, SubscriptionInternal
-from features.subscriptions.services.validation import parse
+from features.subscriptions.models.subscription import SubscriptionInternal
+from features.subscriptions.models.validation import parse
 from portal_common.models import StepResult
-from portal_common.problems import Problem
 
 
 def _subscription(step: SubscriptionStep) -> SubscriptionInternal:
     s = subscription_repository.get(step.offer_subscription_id)
     if not s:
-        raise Problem(MODULE, 404, "not-found", retryable=False)
+        raise problem(404, "not-found", retryable=False)
     return s
 
 

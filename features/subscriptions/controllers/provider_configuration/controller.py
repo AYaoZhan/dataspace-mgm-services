@@ -25,7 +25,7 @@
 """Configuration of a provider (setup and callback addresses, token client)."""
 from __future__ import annotations
 
-from features.subscriptions import services
+from features.subscriptions import interface
 from features.subscriptions.models.provider_configuration import ProviderConfiguration, ProviderConfigurationInput
 from portal_common.routing import Controller, Permission
 
@@ -33,5 +33,5 @@ controller = Controller("Subscriptions: Provider Configuration")
 
 
 @controller.put("", response_model=ProviderConfiguration)
-def put_config(body: ProviderConfigurationInput, claims: dict = Permission):
-    return services.put_provider_configuration(claims.get("company_id"), body)
+def put_config(body: ProviderConfigurationInput, claims: dict = Permission) -> ProviderConfiguration:
+    return interface.put_provider_configuration(claims.get("company_id"), body)

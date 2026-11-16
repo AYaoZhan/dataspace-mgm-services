@@ -60,7 +60,7 @@ class SubscriptionInternal(SubscriptionRef):
     def ref(self) -> SubscriptionRef:
         return SubscriptionRef.model_validate(self.model_dump(include=set(SubscriptionRef.model_fields)))
 
-    def event_data(self, **extra) -> dict:
+    def event_data(self, **extra: object) -> dict:
         """Content of the subscription events (section 10): the subscription's identity plus `extra`."""
         return self.model_dump(mode="json", include={"offer_subscription_id", "offer_id", "offer_type",
                                                      "customer_company_id", "provider_company_id"}) | extra

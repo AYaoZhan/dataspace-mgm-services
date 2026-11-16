@@ -26,8 +26,8 @@
 from __future__ import annotations
 
 from features.subscriptions.managers import subscription_repository
-from features.subscriptions.models.subscription import MODULE, SubscriptionInternal, SubscriptionRef
-from portal_common.problems import Problem
+from features.subscriptions.models.errors import problem
+from features.subscriptions.models.subscription import SubscriptionInternal, SubscriptionRef
 
 
 def find_subscriptions(*, customerCompanyId: str | None = None, offerId: str | None = None,
@@ -41,5 +41,5 @@ def get_subscription_internal(*, offerSubscriptionId: str) -> SubscriptionIntern
     """9.2: one subscription by id."""
     s = subscription_repository.get(offerSubscriptionId)
     if not s:
-        raise Problem(MODULE, 404, "not-found")
+        raise problem(404, "not-found")
     return s

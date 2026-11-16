@@ -29,18 +29,17 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from features.subscriptions.managers import provider_configuration_repository
+from features.subscriptions.models.errors import problem
 from features.subscriptions.models.provider_configuration import (
     ProviderConfiguration,
     ProviderConfigurationInput,
     StoredProviderConfiguration,
 )
-from features.subscriptions.models.subscription import MODULE
-from portal_common.problems import Problem
 
 
 def put_provider_configuration(company_id: str | None, body: ProviderConfigurationInput) -> ProviderConfiguration:
     if not company_id:
-        raise Problem(MODULE, 400, "validation", detail="the token names no company")
+        raise problem(400, "validation", detail="the token names no company")
     stored = StoredProviderConfiguration(company_id=company_id, updated_at=datetime.now(UTC), **body.model_dump())
     provider_configuration_repository.save(stored)
     return stored.public()

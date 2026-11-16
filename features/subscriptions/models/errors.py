@@ -22,25 +22,20 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Checks the input of the in-process interface against the models: every failure is 400 `validation`, as over
-HTTP. The controllers get the same check from FastAPI."""
+"""Factory of the C10-M1 Problem Details (README section 12): every error of the feature is built here."""
 from __future__ import annotations
-
-from typing import TypeVar
-
-from pydantic import BaseModel, ValidationError
 
 from features.subscriptions.models.subscription import MODULE
 from portal_common.problems import Problem
 
-Model = TypeVar("Model", bound=BaseModel)
+
+def problem(status: int, name: str, *, detail: str | None = None, retryable: bool | None = None) -> Problem:
+    """`urn:c10-m1:problem:<name>`; `retryable` (steps, FRAMEWORK 4.4) is in the body only when it is given."""
+    if retryable is None:
+        return Problem(MODULE, status, name, detail=detail)
+    return Problem(MODULE, status, name, detail=detail, retryable=retryable)
 
 
-def parse(model: type[Model], data: object) -> Model:
-    if isinstance(data, model):
-        return data
-    try:
-        return model.model_validate(data)
-    except ValidationError as exc:
-        fields = sorted({".".join(str(part) for part in issue["loc"]) or "body" for issue in exc.errors()})
-        raise Problem(MODULE, 400, "validation", detail="invalid: " + ", ".join(fields), retryable=False) from exc
+def invalid(fields: list[str]) -> Problem:
+    """400 `validation` naming the invalid fields, never their values."""
+    return problem(400, "validation", detail="invalid: " + ", ".join(fields), retryable=False)

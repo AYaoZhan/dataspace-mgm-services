@@ -25,7 +25,7 @@
 """The steps of the subscriptions in the flows of Process Orchestration."""
 from __future__ import annotations
 
-from features.subscriptions import services
+from features.subscriptions import interface
 from features.subscriptions.models.requests import ActivationCallbackStep, SubscriptionStep
 from portal_common.models import StepResult
 from portal_common.routing import Controller, Permission
@@ -34,11 +34,11 @@ controller = Controller("Subscriptions: Process Steps")
 
 
 @controller.post("/notify-provider", summary="Step: notify-provider", response_model=StepResult[dict])
-def notify_provider(body: SubscriptionStep, _: dict = Permission):
-    return services.notify_provider(body)
+def notify_provider(body: SubscriptionStep, _: dict = Permission) -> dict:
+    return interface.notify_provider(body)
 
 
 @controller.post("/send-activation-callback", summary="Step: send-activation-callback",
                  response_model=StepResult[dict])
-def send_activation_callback(body: ActivationCallbackStep, _: dict = Permission):
-    return services.send_activation_callback(body)
+def send_activation_callback(body: ActivationCallbackStep, _: dict = Permission) -> dict:
+    return interface.send_activation_callback(body)

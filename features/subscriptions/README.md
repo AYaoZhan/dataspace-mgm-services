@@ -60,18 +60,17 @@ company; any other company gets 404, and only the provider may start the setup o
 | `controllers/steps/` | `POST /steps/notify-provider`, `POST /steps/send-activation-callback` |
 | `services/subscriptions.py` | subscribe, visibility, start setup, activate, setup status, events |
 | `services/provider_configuration.py` | validation and storage of the provider configuration (secret never returned) |
-| `services/validation.py` | checks interface input against the models (400 `validation`, as over HTTP) |
 | `services/steps.py` | the two steps: setup notice and activation callback to the provider system |
 | `services/queries.py` | the queries of section 9 |
 | `managers/subscription_repository.py` | the subscriptions in the feature's database: save, get by id, find by customer, offer and status |
 | `managers/provider_configuration_repository.py` | the provider configurations (with secret) in the feature's database |
 | `managers/provider_client.py` | client-credentials token at the provider's `tokenUrl`, then POST to `setupUrl` / `callbackUrl` |
 | `managers/neighbour_client.py` | queries to C8-M1 (offer), C12-M1 (processes), C3-M1 (customer name), C2-M3 (rotated secret) |
-| `models/` | pydantic models on `portal_common.models`: `subscription.py` (spec id, value sets, `SubscriptionRef`, `SubscriptionInternal`, `Subscription`), `requests.py` (`SubscribeRequest`, `StartSetupRequest`, the step inputs `SubscriptionStep` and `ActivationCallbackStep`), `provider_configuration.py` (input, answer without secret, stored form), `tables.py` (SQLModel tables `subscription` and `provider_configuration`) |
+| `models/` | pydantic models on `portal_common.models`: `subscription.py` (spec id, value sets, `SubscriptionRef`, `SubscriptionInternal`, `Subscription`), `requests.py` (`SubscribeRequest`, `StartSetupRequest`, the step inputs `SubscriptionStep` and `ActivationCallbackStep`), `provider_configuration.py` (input, answer without secret, stored form), `tables.py` (SQLModel tables `subscription` and `provider_configuration`), `errors.py` (the Problem factory), `validation.py` (checks interface input against the models: 400 `validation`, as over HTTP) |
 
-In-process interface (`interface.py`): the steps `notify_provider(input)` and `send_activation_callback(input)`,
+In-process interface (`interface.py`, also the entry point of the controllers): the steps `notify_provider(input)` and `send_activation_callback(input)`,
 the queries `find_subscriptions(customerCompanyId=, offerId=, status=)` and
-`get_subscription_internal(offerSubscriptionId=)`. Steps and queries of the spec without an implementation exist as
+`get_subscription_internal(offerSubscriptionId=)`, and the operations of people that the controllers call (`subscribe`, `get_subscription`, `start_setup`, `activate`, `put_provider_configuration`). Steps and queries of the spec without an implementation exist as
 stand-in functions (`standin.missing_interface`).
 
 Events published (source `urn:c10-m1`): `SubscriptionRequested`, `SubscriptionSetupStarted`,
