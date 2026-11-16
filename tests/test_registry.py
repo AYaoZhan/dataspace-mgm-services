@@ -35,10 +35,9 @@ from scaffold import registry
 def test_every_spec_module_has_a_folder_and_a_kind():
     kinds = {e.id: e.kind for e in registry.load()}
     assert set(kinds) == set(spec.modules())
-    assert kinds["c12-m1"] == "provided"
-    # every other module is a stand-in, the module of a team or a migrated feature (ADR-0003)
-    assert {k for k, v in kinds.items() if v not in ("stand-in", "team", "feature")} == {"c12-m1"}
-    assert kinds["c1-m2"] == kinds["c3-m1"] == "feature"
+    # every module is a stand-in, the module of a team or a migrated feature (ADR-0003)
+    assert {k for k, v in kinds.items() if v not in ("stand-in", "team", "feature")} == set()
+    assert kinds["c1-m2"] == kinds["c3-m1"] == kinds["c12-m1"] == "feature"
     assert [e.id for e in registry.load()][-2:] == ["c11-m1", "c12-m1"]   # subscribers last
 
 
@@ -76,4 +75,4 @@ def test_unimplemented_operation_answers_501_with_permission_check():
     assert r.status_code == 501 and r.headers["content-type"].startswith("application/problem+json")
     r = c.get("/api/company-profile/osp/change-requests", headers=bearer(person_token("lieschen")))
     assert r.status_code == 403
-    assert installation.get("/scaffold/modules").json()[-1] == {"module": "c12-m1", "kind": "provided"}
+    assert installation.get("/scaffold/modules").json()[-1] == {"module": "c12-m1", "kind": "feature"}

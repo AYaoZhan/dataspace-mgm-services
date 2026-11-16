@@ -22,3 +22,21 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""README 7.7: live changes of one process for OSP staff (Server-Sent Events, 7.6)."""
+from __future__ import annotations
+
+from fastapi import Header, Request
+from fastapi.responses import StreamingResponse
+
+from features.process_orchestration import interface
+from portal_common import sse
+from portal_common.routing import Controller, Permission
+
+controller = Controller("Process Orchestration: Live State")
+
+
+@controller.get("", summary="Live changes of one process")
+def stream_process_events(processId: str, request: Request, claims: dict = Permission,
+                          last_event_id: str | None = Header(None, alias="Last-Event-ID")) -> StreamingResponse:
+    stream = interface.process_stream(processId)   # 404 for an unknown process
+    return sse.response(stream.broker, request, claims, last_event_id, visible=stream.visible, initial=stream.initial)

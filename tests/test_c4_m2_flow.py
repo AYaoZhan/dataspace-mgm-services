@@ -34,7 +34,7 @@ Covers: C4-M2 README 10 (event `DataspaceWalletCreated` with all required fields
 takes `steps.create-wallet.did` from the event payload; demo.py check "CSP: DID in the directory = wallet DID"),
 and C4-M2 README 8.3 (event `WalletAccountCreated`).
 
-The flow test runs the in-process C12 engine (`modules.c12_m1.engine.Engine`) on a flow file derived from the
+The flow test runs the in-process C12 engine (`features.process_orchestration.services.engine.Engine`) on a flow file derived from the
 `onboarding` flow of `spec/C12-M1-ProcessOrchestration/flows.yaml`, reduced to the three steps under test; the
 events of the relay are handed to the engine by the test (the app's own engine only knows the real flows).
 """
@@ -210,7 +210,7 @@ def pump(engine, timers: bool = True) -> None:
 def test_onboarding_flow_register_did_gets_the_wallet_did_from_the_event_payload(osp_factory, companies, tmp_path):
     # flows.yaml onboarding: create-wallet (completesOn DataspaceWalletCreated) -> register-did {did: steps.create-wallet.did}
     # -> issue-credentials (completesOn CredentialsIssued); demo.py: "CSP: DID in the directory = wallet DID"
-    from modules.c12_m1 import engine as eng
+    from features.process_orchestration.services import engine as eng
     osp, _svc = start(osp_factory)
     engine = eng.Engine(mini_flow(tmp_path))
     engine.on_event(events.cloudevent("c1-m2", "ApplicationSubmitted", {
@@ -268,7 +268,7 @@ def reduced_flow(tmp_path, key: str, steps: list[str]):
 
 
 def engine_for(tmp_path, key: str, steps: list[str]):
-    from modules.c12_m1 import engine as eng
+    from features.process_orchestration.services import engine as eng
     return eng.Engine(reduced_flow(tmp_path, key, steps))
 
 

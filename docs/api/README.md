@@ -22,7 +22,7 @@ between modules in the same process. The module specifications (until they are m
 | C8-M1 Offers | `/api/offers` (migrated feature, ADR-0003) |
 | C10-M1 Subscriptions | `/api/subscriptions` (migrated feature, ADR-0003) |
 | C11-M1 Notifications | `/api/notifications` (migrated feature, ADR-0003) |
-| C12-M1 Process Orchestration | `/api/c12-m1` |
+| C12-M1 Process Orchestration | `/api/process-orchestration` (migrated feature, ADR-0003) |
 
 A migrated feature (`features/<name>/`, ADR-0003) is served under its readable name instead of the spec id; the old
 path answers 404. Every other module keeps `/api/<module>` of its `openapi.yaml` until it migrates.

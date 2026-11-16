@@ -38,7 +38,7 @@ from features import company_profile
 from features.company_profile import interface
 from features.company_profile.managers import company_repository
 from features.company_profile.services import company_lifecycle_service
-from modules.c12_m1 import engine as eng
+from features.process_orchestration.services import engine as eng
 from portal_common import events
 
 company_lifecycle_service = wired(company_lifecycle_service)

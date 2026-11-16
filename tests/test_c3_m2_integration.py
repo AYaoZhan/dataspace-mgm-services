@@ -39,8 +39,8 @@ from fastapi.testclient import TestClient
 
 import demo
 from conftest import BASE, needs_admin_api
-from modules.c12_m1 import engine as eng
 from features.csp_connection.managers import store
+from features.process_orchestration.services import engine as eng
 from portal_common import csp as csp_client
 from portal_common import http as phttp
 from scaffold import app as scaffold_app

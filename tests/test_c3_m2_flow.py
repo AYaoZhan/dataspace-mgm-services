@@ -33,9 +33,9 @@ import pytest
 from fastapi import FastAPI
 
 from conftest import BASE
-from modules.c12_m1 import engine as eng
 from features.csp_connection import interface
 from features.csp_connection.managers import csp_client
+from features.process_orchestration.services import engine as eng
 from portal_common import events
 from portal_common import http as phttp
 from tools import test_iam

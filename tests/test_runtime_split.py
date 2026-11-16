@@ -85,13 +85,14 @@ def test_feature_packages_are_found_by_their_readable_name():
         "c3-m2": "csp_connection",
         "c11-m1": "notifications",
         "c6-m1": "connector",
+        "c12-m1": "process_orchestration",
         "c4-m2": "dataspace_wallet_interface",
         "c10-m1": "subscriptions",
     }
     assert (registration.NAME, registration.MODULE) == ("registration", "c1-m2")
     assert (company_profile.NAME, company_profile.MODULE) == ("company_profile", "c3-m1")
     assert layout.interface_package("c3-m1") == "features.company_profile.interface"
-    assert layout.interface_package("c12-m1") == "modules.c12_m1.interface"   # not migrated yet
+    assert layout.interface_package("c12-m1") == "features.process_orchestration.interface"
 
 
 def test_hybrid_runtime_serves_both_onboarding_features(monkeypatch):
@@ -116,12 +117,12 @@ def test_single_feature_runtime_serves_its_paths_only():
 def test_a_feature_is_served_under_its_readable_name_and_no_longer_under_its_spec_id():
     assert layout.base_path("c1-m2") == "/api/registration"
     assert layout.base_path("c3-m1") == "/api/company-profile"
-    assert layout.base_path("c12-m1") == "/api/c12-m1"   # not migrated yet: the path of the spec
+    assert layout.base_path("c12-m1") == "/api/process-orchestration"
     paths = TestClient(create_runtime(registration, company_profile, "process_orchestration"),
                        base_url=BASE).get("/openapi.json").json()["paths"]
     prefixes = {"/".join(path.split("/")[:3]) for path in paths if path.startswith("/api/")}
-    assert {"/api/registration", "/api/company-profile", "/api/c12-m1"} <= prefixes
-    assert not prefixes & {"/api/c1-m2", "/api/c3-m1"}
+    assert {"/api/registration", "/api/company-profile", "/api/process-orchestration"} <= prefixes
+    assert not prefixes & {"/api/c1-m2", "/api/c3-m1", "/api/c12-m1"}
 
 
 def test_runtime_mixes_features_and_modules_not_migrated_yet():
