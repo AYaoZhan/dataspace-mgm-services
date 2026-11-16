@@ -22,26 +22,19 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Public interface of the C8-M1 stand-in: `getOfferInternal` serves the lookup `offer` of Process
-Orchestration and Subscriptions."""
+"""The technical user profile of an own offer, scope `company`."""
 from __future__ import annotations
 
-from portal_common import standin
-from portal_common.problems import Problem
+from fastapi import Body
 
-MODULE = "c8-m1"
-offers: dict[str, dict] = {}
+from features.offers import services
+from features.offers.models import MODULE
+from portal_common.routing import Controller, Permission, company_scope
 
-
-def reset() -> None:
-    offers.clear()
+controller = Controller("Offers: Technical User Profile")
 
 
-def get_offer_internal(*, offerId: str) -> dict:
-    o = offers.get(offerId)
-    if not o:
-        raise Problem(MODULE, 404, "not-found")
-    return o | {"hasTechnicalUserProfile": o["technicalUserProfile"] is not None}
-
-
-__getattr__ = standin.missing_interface(MODULE)   # steps and queries not implemented yet: stand-in
+@controller.put("", summary="Set the technical user profile")
+def put_technical_user_profile(offerId: str, body: dict = Body(...), claims: dict = Permission):
+    company_scope(MODULE, claims, services.provider_of(offerId))
+    return services.put_technical_user_profile(offerId, body)
