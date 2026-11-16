@@ -29,17 +29,18 @@ from __future__ import annotations
 
 from features.offers import services
 from features.offers.models import MODULE
-from portal_common import standin
+from portal_common import database, standin
 
 __all__ = ["MODULE", "get_offer_internal", "reset"]
 
 
 def reset() -> None:
-    services.reset()
+    database.reset_tables(MODULE)
 
 
 def get_offer_internal(*, offerId: str) -> dict:
-    return services.get_offer_internal(offerId)
+    """README 9.1, as JSON (the in-process answer equals the HTTP one)."""
+    return services.get_offer_internal(offerId).model_dump(mode="json", by_alias=True)
 
 
 __getattr__ = standin.missing_interface(MODULE)   # steps and queries not implemented yet: stand-in

@@ -33,9 +33,8 @@ from features.offers.services.offers import (
     provider_of,
     put_technical_user_profile,
     replace_planned_roles,
-    reset,
     submit_offer,
 )
 
 __all__ = ["approve_offer", "create_offer", "get_offer", "get_offer_internal", "provider_of",
-           "put_technical_user_profile", "replace_planned_roles", "reset", "submit_offer"]
+           "put_technical_user_profile", "replace_planned_roles", "submit_offer"]

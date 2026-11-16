@@ -27,18 +27,23 @@ path: a provider creates an offer (company role checked at C3-M1), sets roles an
 submits; OSP staff approve (`OfferApproved`); `GET /internal/offers/{offerId}` serves the lookup `offer` of
 Process Orchestration and Subscriptions. Every other operation of the spec answers from the scaffold fallback.
 
-Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hook `reset()`.
+Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks `on_startup()`
+(creates the tables) and `reset()` (empties them).
 The HTTP API is `features.offers.router.router`.
 """
 from __future__ import annotations
 
-from features.offers import services
 from features.offers.models import MODULE
+from portal_common import database
 
 NAME = "offers"
 
-__all__ = ["MODULE", "NAME", "reset"]
+__all__ = ["MODULE", "NAME", "on_startup", "reset"]
+
+
+def on_startup() -> None:
+    database.create_tables(MODULE)
 
 
 def reset() -> None:
-    services.reset()
+    database.reset_tables(MODULE)

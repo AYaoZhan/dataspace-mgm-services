@@ -25,27 +25,25 @@
 """The own offers of a provider (README 6.1, 6.2), scope `company`: create, read, submit."""
 from __future__ import annotations
 
-from fastapi import Body
-
 from features.offers import services
-from features.offers.models import MODULE
+from features.offers.models import MODULE, Offer, OfferInput
 from portal_common.routing import Controller, Permission, company_scope
 
 controller = Controller("Offers: Offers")
 
 
-@controller.post("", status_code=201, summary="Create an offer (company role checked at C3-M1)")
-def create_offer(body: dict = Body(...), claims: dict = Permission):
+@controller.post("", status_code=201, response_model=Offer, summary="Create an offer (company role checked at C3-M1)")
+def create_offer(body: OfferInput, claims: dict = Permission):
     return services.create_offer(company_id=claims.get("company_id"), body=body)
 
 
-@controller.get("/{offerId}", summary="An own offer")
+@controller.get("/{offerId}", response_model=Offer, summary="An own offer")
 def get_own_offer(offerId: str, claims: dict = Permission):
     company_scope(MODULE, claims, services.provider_of(offerId))
     return services.get_offer(offerId)
 
 
-@controller.post("/{offerId}/submit", summary="Submit an offer for review")
+@controller.post("/{offerId}/submit", response_model=Offer, summary="Submit an offer for review")
 def submit_offer(offerId: str, claims: dict = Permission):
     company_scope(MODULE, claims, services.provider_of(offerId))
     return services.submit_offer(offerId)

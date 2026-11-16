@@ -26,11 +26,12 @@
 from __future__ import annotations
 
 from features.offers import interface
+from features.offers.models import OfferInternal
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Offers: Internal")
 
 
-@controller.get("/{offerId}", summary="An offer for Process Orchestration and Subscriptions")
+@controller.get("/{offerId}", response_model=OfferInternal, summary="An offer for Process Orchestration and Subscriptions")
 def get_offer_internal(offerId: str, claims: dict = Permission):
     return interface.get_offer_internal(offerId=offerId)

@@ -185,3 +185,24 @@ def test_interface_lookup_and_stand_in_functions(client, hans):
         interface.get_offer_internal(offerId=oid)
     with pytest.raises(AttributeError):
         interface.no_such_function   # noqa: B018
+
+
+def test_wire_format_keeps_the_field_names_and_nulls(client, hans):
+    offer = _create(client, hans, privacyPolicies=["COMPANY_DATA"])
+    assert list(offer) == ["offerId", "status", "offerType", "name", "providerCompanyId", "instanceKind",
+                           "instanceUrl", "roles", "technicalUserProfile", "agreements"]
+    assert offer["technicalUserProfile"] is None and offer["instanceUrl"] is None and offer["roles"] == []
+    internal = interface.get_offer_internal(offerId=offer["offerId"])
+    assert internal == offer | {"hasTechnicalUserProfile": False}
+
+
+def test_offers_live_in_the_feature_database(client, hans):
+    from features.offers.models.tables import OfferRow
+    from portal_common import database
+
+    oid = _create(client, hans)["offerId"]
+    with database.session(offers.MODULE) as session:
+        assert session.get(OfferRow, oid).provider_company_id == PROVIDER
+    offers.reset()
+    with database.session(offers.MODULE) as session:
+        assert session.get(OfferRow, oid) is None

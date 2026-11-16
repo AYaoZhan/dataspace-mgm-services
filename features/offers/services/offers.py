@@ -31,79 +31,85 @@ from __future__ import annotations
 import uuid
 
 from features.offers.managers import neighbour_client, offer_repository
-from features.offers.models import MODULE, ROLE_FOR, problem
+from features.offers.models import (
+    MODULE,
+    ROLE_FOR,
+    AppRole,
+    Offer,
+    OfferEvent,
+    OfferInput,
+    OfferInternal,
+    TechnicalUserProfile,
+    problem,
+)
 from portal_common import events
-
-
-def reset() -> None:
-    offer_repository.reset()
 
 
 def provider_of(offer_id: str) -> str | None:
     """The provider company of an offer, for the scope `company` of the controllers; None if unknown."""
     offer = offer_repository.get(offer_id)
-    return offer and offer["providerCompanyId"]
+    return offer.provider_company_id if offer else None
 
 
-def _offer(offer_id: str) -> dict:
+def get_offer(offer_id: str) -> Offer:
     offer = offer_repository.get(offer_id)
-    if not offer:
+    if offer is None:
         raise problem(404, "not-found")
     return offer
 
 
-def create_offer(*, company_id: str | None, body: dict) -> dict:
-    kind = body.get("offerType")
-    if kind not in ROLE_FOR or not body.get("name"):
-        raise problem(400, "validation", detail="offerType APP or SERVICE and name")
+def create_offer(*, company_id: str | None, body: OfferInput) -> Offer:
+    """A draft; the provider company needs the company role of the offer type at C3-M1 (README 6.2)."""
+    role = ROLE_FOR[body.offer_type]
     company = neighbour_client.query_company(company_id) if company_id else None
-    if not company or ROLE_FOR[kind] not in company.get("companyRoles", []):
-        raise problem(403, "company-role-missing", detail=f"company role {ROLE_FOR[kind]} missing")
-    return offer_repository.add({
-        "offerId": str(uuid.uuid4()), "status": "DRAFT", "offerType": kind, "name": body["name"],
-        "providerCompanyId": company_id, "instanceKind": body.get("instanceKind", "MULTI") if kind == "APP" else None,
-        "instanceUrl": body.get("instanceUrl"), "roles": [], "technicalUserProfile": None, "agreements": []})
+    if not company or role not in company.get("companyRoles", []):
+        raise problem(403, "company-role-missing", detail=f"company role {role} missing")
+    is_app = body.offer_type == "APP"
+    return offer_repository.save(Offer(
+        offer_id=str(uuid.uuid4()), status="DRAFT", offer_type=body.offer_type, name=body.name,
+        provider_company_id=company_id, instance_kind=body.instance_kind if is_app else None,
+        instance_url=body.instance_url))
 
 
-def get_offer(offer_id: str) -> dict:
-    return _offer(offer_id)
+def replace_planned_roles(offer_id: str, roles: list[AppRole]) -> list[AppRole]:
+    offer = get_offer(offer_id)
+    offer.roles = roles
+    offer_repository.save(offer)
+    return offer.roles
 
 
-def replace_planned_roles(offer_id: str, roles: list) -> list:
-    offer = _offer(offer_id)
-    offer["roles"] = [{"name": r["name"], "descriptions": r.get("descriptions", [])} for r in roles]
-    return offer["roles"]
+def put_technical_user_profile(offer_id: str, profile: TechnicalUserProfile) -> TechnicalUserProfile:
+    offer = get_offer(offer_id)
+    offer.technical_user_profile = profile
+    offer_repository.save(offer)
+    return profile
 
 
-def put_technical_user_profile(offer_id: str, body: dict) -> dict:
-    offer = _offer(offer_id)
-    if not body.get("name") or not body.get("roles"):
-        raise problem(400, "validation")
-    offer["technicalUserProfile"] = {"name": body["name"], "roles": [{"name": r["name"]} for r in body["roles"]]}
-    return offer["technicalUserProfile"]
-
-
-def submit_offer(offer_id: str) -> dict:
-    offer = _offer(offer_id)
-    if offer["status"] != "DRAFT":
+def submit_offer(offer_id: str) -> Offer:
+    """DRAFT -> IN_REVIEW; an app needs planned roles."""
+    offer = get_offer(offer_id)
+    if offer.status != "DRAFT":
         raise problem(409, "invalid-state")
-    if offer["offerType"] == "APP" and not offer["roles"]:
+    if offer.offer_type == "APP" and not offer.roles:
         raise problem(409, "incomplete", detail="an app needs roles")
-    offer["status"] = "IN_REVIEW"
-    return offer
+    offer.status = "IN_REVIEW"
+    return offer_repository.save(offer)
 
 
-def approve_offer(offer_id: str) -> dict:
-    offer = _offer(offer_id)
-    if offer["status"] != "IN_REVIEW":
+def approve_offer(offer_id: str) -> Offer:
+    """IN_REVIEW -> ACTIVE and `OfferApproved`, which starts the flow `app-approval` of Process Orchestration."""
+    offer = get_offer(offer_id)
+    if offer.status != "IN_REVIEW":
         raise problem(409, "invalid-state")
-    offer["status"] = "ACTIVE"
-    events.publish(MODULE, "OfferApproved", {"offerId": offer_id, "offerType": offer["offerType"],
-                                             "providerCompanyId": offer["providerCompanyId"]})
+    offer.status = "ACTIVE"
+    offer_repository.save(offer)
+    event = OfferEvent(offer_id=offer.offer_id, offer_type=offer.offer_type,
+                       provider_company_id=offer.provider_company_id)
+    events.publish(MODULE, "OfferApproved", event.to_json())
     return offer
 
 
-def get_offer_internal(offer_id: str) -> dict:
-    """README 9: the offer with `hasTechnicalUserProfile`."""
-    offer = _offer(offer_id)
-    return offer | {"hasTechnicalUserProfile": offer["technicalUserProfile"] is not None}
+def get_offer_internal(offer_id: str) -> OfferInternal:
+    """README 9.1: the offer with `hasTechnicalUserProfile`."""
+    offer = get_offer(offer_id)
+    return OfferInternal(**offer.model_dump(by_alias=False), has_technical_user_profile=offer.technical_user_profile is not None)

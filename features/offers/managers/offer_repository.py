@@ -22,20 +22,23 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The offers in memory (stand-in; no database yet)."""
+"""The offers in the feature's database (`models/tables.py`); the only code that opens its session."""
 from __future__ import annotations
 
-offers: dict[str, dict] = {}
+from features.offers.models import MODULE, Offer
+from features.offers.models.tables import OfferRow
+from portal_common import database
 
 
-def reset() -> None:
-    offers.clear()
+def get(offer_id: str) -> Offer | None:
+    """One offer by its primary key."""
+    with database.session(MODULE) as session:
+        row = session.get(OfferRow, offer_id)
+        return Offer.model_validate(row, from_attributes=True) if row else None
 
 
-def get(offer_id: str) -> dict | None:
-    return offers.get(offer_id)
-
-
-def add(offer: dict) -> dict:
-    offers[offer["offerId"]] = offer
+def save(offer: Offer) -> Offer:
+    """Insert or update the whole offer."""
+    with database.session(MODULE) as session:
+        session.merge(OfferRow(**offer.model_dump(by_alias=False)))
     return offer

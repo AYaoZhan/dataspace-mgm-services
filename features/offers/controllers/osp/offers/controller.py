@@ -26,11 +26,12 @@
 from __future__ import annotations
 
 from features.offers import services
+from features.offers.models import Offer
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Offers: OSP Review")
 
 
-@controller.post("/{offerId}/approve", summary="Approve a submitted offer")
+@controller.post("/{offerId}/approve", response_model=Offer, summary="Approve a submitted offer")
 def approve_offer(offerId: str, claims: dict = Permission):
     return services.approve_offer(offerId)

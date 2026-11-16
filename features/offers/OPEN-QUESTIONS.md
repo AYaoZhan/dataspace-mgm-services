@@ -29,3 +29,5 @@ The feature is still the stand-in of the hackathon core path; the open points of
 `spec/C8-M1-Offers/open-points.md`.
 
 1. **FRAMEWORK 4.1, base path `/api/c8-m1`** "until the common path convention is settled". Implemented: served under the readable feature name `/api/offers` (ADR-0003, decision 2); `/api/c8-m1` answers 404. Problem types, event sources, permissions and the service account `svc-c8-m1` keep the spec id.
+2. **README 6.1, status of a draft.** The schema `OfferStatus` names it `CREATED`; the stand-in answers `DRAFT` (as before the migration, `models/offer.py`), and has no `INACTIVE` yet. To decide when the stand-in is replaced by the real module.
+3. **Validation of the stand-in.** It is more lenient than `openapi.yaml`, unchanged by the migration: `name` needs 1 character (schema: 3), `descriptions` of an `AppRole` may be left out (schema: at least one), and further fields of `OfferInput` are accepted but not stored.

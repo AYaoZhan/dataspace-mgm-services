@@ -25,16 +25,14 @@
 """The technical user profile of an own offer, scope `company`."""
 from __future__ import annotations
 
-from fastapi import Body
-
 from features.offers import services
-from features.offers.models import MODULE
+from features.offers.models import MODULE, TechnicalUserProfile
 from portal_common.routing import Controller, Permission, company_scope
 
 controller = Controller("Offers: Technical User Profile")
 
 
-@controller.put("", summary="Set the technical user profile")
-def put_technical_user_profile(offerId: str, body: dict = Body(...), claims: dict = Permission):
+@controller.put("", response_model=TechnicalUserProfile, summary="Set the technical user profile")
+def put_technical_user_profile(offerId: str, body: TechnicalUserProfile, claims: dict = Permission):
     company_scope(MODULE, claims, services.provider_of(offerId))
     return services.put_technical_user_profile(offerId, body)
