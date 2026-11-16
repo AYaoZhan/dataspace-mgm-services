@@ -25,19 +25,20 @@
 """The steps of the application review in the flows of Process Orchestration (README 8)."""
 from __future__ import annotations
 
-from fastapi import Body
-
-from features.application_review import interface
+from features.application_review import services
+from features.application_review.models.requests import CloseReviewStep, OpenReviewStep
+from features.application_review.models.review_case import CloseReviewResult, OpenReviewResult
+from portal_common.models import StepResult
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Application Review: Process Steps and Queries")
 
 
-@controller.post("/open-review")
-def step_open_review(body: dict = Body(...), _: dict = Permission):
-    return interface.open_review(body)
+@controller.post("/open-review", response_model=StepResult[OpenReviewResult], response_model_exclude_unset=True)
+def step_open_review(body: OpenReviewStep, _: dict = Permission):
+    return services.open_review(body)
 
 
-@controller.post("/close-review")
-def step_close_review(body: dict = Body(...), _: dict = Permission):
-    return interface.close_review(body)
+@controller.post("/close-review", response_model=StepResult[CloseReviewResult], response_model_exclude_unset=True)
+def step_close_review(body: CloseReviewStep, _: dict = Permission):
+    return services.close_review(body)

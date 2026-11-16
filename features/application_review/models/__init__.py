@@ -22,4 +22,5 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Models of the application review (spec C1-M3 openapi.yaml): value sets and request bodies."""
+"""Models of the application review (spec C1-M3 openapi.yaml): value sets, request bodies and step inputs,
+response models, and the tables of its database."""

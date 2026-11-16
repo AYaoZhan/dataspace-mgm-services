@@ -45,4 +45,4 @@ def reset() -> None:
 
 
 def on_startup() -> None:
-    services.config()   # invalid configuration prevents the start (README 4, 6.6)
+    services.start()   # checks the configuration (README 4, 6.6) and creates the tables

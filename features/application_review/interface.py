@@ -24,9 +24,11 @@
 #################################################################################
 """In-process contract of the application review (call convention, AGENTS.md): the steps `open-review` and
 `close-review` of README 8, the query `getReviewStatusByApplication` of README 9, and the decisions of OSP staff
-(README 7), which only the controllers call. Other modules and Process Orchestration import only from here; the
-logic lives in `services/`."""
+(README 7). Other modules and Process Orchestration import only from here and get the JSON form of the answer
+(camelCase, as over HTTP); the logic lives in `services/`."""
 from __future__ import annotations
+
+from pydantic import BaseModel
 
 from features.application_review import services
 from features.application_review.models.value_sets import MODULE
@@ -38,33 +40,38 @@ __all__ = [
 ]
 
 
+def _json(model: BaseModel) -> dict:
+    """The answer as over HTTP: JSON field names, fields that were never set left out."""
+    return model.model_dump(mode="json", by_alias=True, exclude_unset=True)
+
+
 # -- steps for Process Orchestration (README 8): input = JSON body incl. processId and stepRunId ---
 def open_review(input: dict) -> dict:
-    return services.open_review(input)
+    return _json(services.open_review(input))
 
 
 def close_review(input: dict) -> dict:
-    return services.close_review(input)
+    return _json(services.close_review(input))
 
 
 # -- queries for other modules (README 9): parameters by their openapi names ------------------------
 def get_review_status_by_application(*, applicationId: str, **_other) -> dict:
-    return services.get_review_status_by_application(applicationId=applicationId)
+    return _json(services.get_review_status_by_application(applicationId=applicationId))
 
 
 # -- operations of OSP staff (README 7) -----------------------------------------------------------
 def list_cases(status: list[str] | None, kind: list[str] | None, verification: list[str] | None,
                application_id: str | None, page: int, size: int) -> dict:
-    return services.list_cases(status, kind, verification, application_id, page, size)
+    return _json(services.list_cases(status, kind, verification, application_id, page, size))
 
 
 def get_case(case_id: str) -> dict:
-    return services.get_case(case_id)
+    return _json(services.get_case(case_id))
 
 
 def approve(case_id: str, sub: str, comment: str | None) -> dict:
-    return services.approve(case_id, sub, comment)
+    return _json(services.approve(case_id, sub, comment))
 
 
 def decline(case_id: str, sub: str, reason: str) -> dict:
-    return services.decline(case_id, sub, reason)
+    return _json(services.decline(case_id, sub, reason))

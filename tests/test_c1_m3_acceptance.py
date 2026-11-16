@@ -36,7 +36,8 @@ import features.application_review as feature
 from features.application_review import interface, router
 from features.application_review.managers import neighbour_client
 from features.application_review.managers import review_case_repository as repo
-from features.application_review.services import checks, view
+from features.application_review.models.value_sets import CHECK_ORDER
+from features.application_review.services import view
 from portal_common import events, problems, standin
 from portal_common import http as phttp
 from portal_common.problems import Problem
@@ -219,12 +220,11 @@ def step(name: str, key: str, n: int = 1) -> dict:
 
 
 def checks_of(key: str) -> dict:
-    case = repo.cases[repo.by_application[APPS[key]["id"]]]
-    return {c["checkKey"]: c for c in view(case)["checks"]}
+    return repo.by_application(APPS[key]["id"]).checks
 
 
 def case_id(key: str) -> str:
-    return repo.by_application[APPS[key]["id"]]
+    return repo.by_application(APPS[key]["id"]).id
 
 
 def events_of(event_type: str) -> list[dict]:
@@ -249,12 +249,12 @@ def problem(exc: pytest.ExceptionInfo) -> dict:
 def test_01_02_open_review_six_checks_passed_and_idempotent(env):
     r = step("open", "A1")
     assert r["state"] == "DONE" and r["result"]["status"] == "OPEN"
-    assert [c["checkKey"] for c in r["result"]["checks"]] == checks.ORDER
+    assert [c["checkKey"] for c in r["result"]["checks"]] == CHECK_ORDER
     assert {c["result"] for c in r["result"]["checks"]} == {"PASSED"}
     again = step("open", "A1", 2)
     assert again["result"] == r["result"]
     assert {c["attempts"] for c in checks_of("A1").values()} == {1}
-    assert len(repo.cases) == 1
+    assert repo.count() == 1
 
 
 # -------------------------------------------------------------------------- 3 to 7: single checks
@@ -299,9 +299,9 @@ def test_08_not_submitted_and_unknown(env):
     with pytest.raises(Problem) as e:
         step("open", "A7")
     assert problem(e)["status"] == 409 and problem(e)["type"] == "urn:c1-m3:problem:invalid-state"
-    assert problem(e)["retryable"] is False and not repo.cases
+    assert problem(e)["retryable"] is False and not repo.count()
     with pytest.raises(Problem) as e:
-        interface.open_review({"processId": "p", "stepRunId": "s", "applicationId": standin.stable_id("unknown")})
+        interface.open_review({"processId": standin.stable_id("p"), "stepRunId": standin.stable_id("s"), "applicationId": standin.stable_id("unknown")})
     assert problem(e)["status"] == 404 and problem(e)["retryable"] is False
 
 
@@ -335,10 +335,12 @@ def test_09_rejected_request_is_not_retryable(env, monkeypatch):
     assert problem(e)["retryable"] is False and problem(e)["pendingChecks"] == ["NO_DUPLICATE"]
     check = checks_of("A9")["NO_DUPLICATE"]
     assert check["result"] == "ERROR" and check["details"] == {"error": "C3-M1 rejected the request"}
-    assert "_rejected" not in view(repo.cases[case_id("A9")])
+    assert "rejected" not in view(repo.get(case_id("A9"))).model_dump()
 
     env.write("csp", "unavailable")   # together with a temporary error, a repetition can still help
-    repo.cases[case_id("A9")]["checks"].pop("CSP_MATCH_EXPECTED")
+    case = repo.get(case_id("A9"))
+    case.checks = {k: c for k, c in case.checks.items() if k != "CSP_MATCH_EXPECTED"}
+    repo.save(case)
     with pytest.raises(Problem) as e:
         step("open", "A9", 2)
     assert problem(e)["type"] == "urn:c1-m3:problem:upstream-error" and problem(e)["retryable"] is True
@@ -351,7 +353,7 @@ def test_09_rejected_request_is_not_retryable(env, monkeypatch):
     env.env(STUB_APPLICATIONS_FILE=str(env.files["applications"]), STUB_COMPANIES_FILE=str(env.files["companies"]),
             STUB_CSP_FILE=str(env.files["csp"]))
     assert step("open", "A9", 3)["state"] == "DONE"
-    assert not repo.cases[case_id("A9")]["_rejected"]
+    assert not repo.get(case_id("A9")).rejected
 
 
 # ------------------------------------------------------------------------------ 10 to 13: CSP match
@@ -485,9 +487,9 @@ def test_19_close_review(env, client):
 def test_19_open_review_of_a_withdrawn_application_without_a_case(env):
     r = step("open", "A16")   # 8.1 step 2: a closed review case, no checks, DONE
     assert r["state"] == "DONE" and r["result"]["status"] == "CLOSED" and r["result"]["checks"] == []
-    case = repo.cases[case_id("A16")]
-    assert case["closure"]["reason"] == "WITHDRAWN" and not events.RELAY.log
-    assert step("open", "A16", 2)["result"] == r["result"] and len(repo.cases) == 1
+    case = repo.get(case_id("A16"))
+    assert case.closure["reason"] == "WITHDRAWN" and not events.RELAY.log
+    assert step("open", "A16", 2)["result"] == r["result"] and repo.count() == 1
 
 
 def test_20_withdrawn_before_close_review(env, client):
@@ -537,7 +539,7 @@ def test_24_auto_approval(env):
     env.env(AUTO_APPROVE_KINDS="ONBOARDING")
     r = step("open", "A1")
     assert r["result"]["status"] == "APPROVED"
-    assert repo.cases[case_id("A1")]["decision"]["autoApproved"] is True
+    assert repo.get(case_id("A1")).decision["autoApproved"] is True
     assert len(events_of("ApplicationApproved")) == 1
     assert step("open", "A2")["result"]["status"] == "OPEN"
     assert step("open", "A12")["result"]["status"] == "OPEN"
@@ -577,7 +579,7 @@ def test_27_audit_log_and_no_personal_data(env, client):
     step("open", "A2")
     approve(client, "A2", "rolf", "checked")
     decline(client, "A2", "renate")
-    ops = [(a["operation"], a["sub"], a["processId"] is not None) for a in repo.audit_log]
+    ops = [(a.operation, a.sub, a.process_id is not None) for a in repo.audit_log()]
     assert ops == [("open-review", None, True), ("approve", R1, False), ("decline", R2, False)]
     text = json.dumps([c["details"] for c in checks_of("A2").values()]) + json.dumps(events.RELAY.log)
     for value in ("Erika", "Mustermann", "EBWOID-DE-1000000002", "DEXX001T.HRB200002", "DE123456789"):

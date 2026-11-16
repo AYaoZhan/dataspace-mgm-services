@@ -36,9 +36,7 @@ from portal_common import settings
 from portal_common.problems import Problem
 
 from ..managers import config, neighbour_client
-from ..models.value_sets import CHECK_ORDER
 
-ORDER = CHECK_ORDER
 ATTESTATION_CHECKS = {"ATTESTATION_VALID", "REPRESENTATION_CONFIRMED", "COMPANY_DATA_MATCH"}
 DUPLICATE_STATUSES = ["REQUESTED", "ACTIVE", "INACTIVE"]
 MATCH_ORDER = ["EBWOID", "EUID", "NAME"]

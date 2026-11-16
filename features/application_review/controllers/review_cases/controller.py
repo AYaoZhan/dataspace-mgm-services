@@ -22,37 +22,37 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The review cases and the decisions of OSP staff (README 7). Every operation has the scope `osp` (README 6.7)
-and calls `interface.py`."""
+"""The review cases and the decisions of OSP staff (README 7). Every operation has the scope `osp` (README 6.7)."""
 from __future__ import annotations
 
 from fastapi import Body, Query
 
-from features.application_review import interface
+from features.application_review import services
 from features.application_review.models.requests import ApproveRequest, DeclineRequest
+from features.application_review.models.review_case import ReviewCase, ReviewCasePage
 from features.application_review.models.value_sets import Kind, Status, Verification
 from portal_common.routing import Controller, Page, Permission, Size
 
 controller = Controller("Application Review: Review Cases")
 
 
-@controller.get("")
+@controller.get("", response_model=ReviewCasePage, response_model_exclude_unset=True)
 def list_review_cases(status: list[Status] | None = Query(None), kind: list[Kind] | None = Query(None),
                       verification: list[Verification] | None = Query(None), applicationId: str | None = None,
                       page: int = Page, size: int = Size, _: dict = Permission):
-    return interface.list_cases(status, kind, verification, applicationId, page, size)
+    return services.list_cases(status, kind, verification, applicationId, page, size)
 
 
-@controller.get("/{reviewCaseId}")
+@controller.get("/{reviewCaseId}", response_model=ReviewCase, response_model_exclude_unset=True)
 def get_review_case(reviewCaseId: str, _: dict = Permission):
-    return interface.get_case(reviewCaseId)
+    return services.get_case(reviewCaseId)
 
 
-@controller.post("/{reviewCaseId}/approve")
+@controller.post("/{reviewCaseId}/approve", response_model=ReviewCase, response_model_exclude_unset=True)
 def approve_review_case(reviewCaseId: str, body: ApproveRequest | None = Body(None), claims: dict = Permission):
-    return interface.approve(reviewCaseId, claims["sub"], body.comment if body else None)
+    return services.approve(reviewCaseId, claims["sub"], body.comment if body else None)
 
 
-@controller.post("/{reviewCaseId}/decline")
+@controller.post("/{reviewCaseId}/decline", response_model=ReviewCase, response_model_exclude_unset=True)
 def decline_review_case(reviewCaseId: str, body: DeclineRequest, claims: dict = Permission):
-    return interface.decline(reviewCaseId, claims["sub"], body.reason)
+    return services.decline(reviewCaseId, claims["sub"], body.reason)

@@ -22,25 +22,94 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Review cases, the index by application and the audit log, kept in memory (README 5).
+"""Review cases and the audit log in the feature's own database (README 5, `portal_common.database`).
 
-One lock stands for the row lock of 6.8, so two reviewers deciding at the same time produce exactly one
-decision.
+The only code that opens a session of C1-M3. `lock` stands for the row lock of 6.8 (`SELECT ... FOR UPDATE`):
+a service holds it from reading a case to saving it, so two reviewers deciding at the same time produce exactly
+one decision.
 """
 from __future__ import annotations
 
-import itertools
 import threading
+from collections.abc import Iterable
 
-cases: dict[str, dict] = {}
-by_application: dict[str, str] = {}
-audit_log: list[dict] = []
+from sqlalchemy import func
+from sqlmodel import select
+
+from portal_common import database
+
+from ..models.tables import AuditLogRow, ReviewCaseRow
+from ..models.value_sets import MODULE
+
 lock = threading.RLock()
-seq = itertools.count()
+_created: set[str] = set()   # database URLs whose tables exist
+
+
+def create_tables() -> None:
+    database.create_tables(MODULE)
+    _created.add(database.url(MODULE))
 
 
 def reset() -> None:
     with lock:
-        cases.clear()
-        by_application.clear()
-        audit_log.clear()
+        database.reset_tables(MODULE)
+        _created.add(database.url(MODULE))
+
+
+def _session():
+    """A session of C1-M3; creates the tables first if neither `on_startup()` nor `reset()` ran (in-process use)."""
+    if database.url(MODULE) not in _created:
+        create_tables()
+    return database.session(MODULE)
+
+
+def get(case_id: str) -> ReviewCaseRow | None:
+    with _session() as session:
+        return session.get(ReviewCaseRow, case_id)
+
+
+def by_application(application_id: str) -> ReviewCaseRow | None:
+    with _session() as session:
+        return session.exec(select(ReviewCaseRow).where(ReviewCaseRow.application_id == application_id)).first()
+
+
+def next_seq() -> int:
+    with _session() as session:
+        return (session.exec(select(func.max(ReviewCaseRow.seq))).one() or 0) + 1
+
+
+def save(case: ReviewCaseRow) -> ReviewCaseRow:
+    """Insert or update a case; the JSON columns are written as a whole."""
+    with _session() as session:
+        return session.merge(case)
+
+
+def find(statuses: Iterable[str], kinds: Iterable[str] | None, verifications: Iterable[str] | None,
+         application_id: str | None, page: int, size: int) -> tuple[list[ReviewCaseRow], int]:
+    """One page of the cases that match the filters of 7.1, oldest first, and the number of all matches."""
+    query = select(ReviewCaseRow).where(ReviewCaseRow.status.in_(list(statuses)))
+    if kinds:
+        query = query.where(ReviewCaseRow.kind.in_(list(kinds)))
+    if verifications:
+        query = query.where(ReviewCaseRow.verification.in_(list(verifications)))
+    if application_id:
+        query = query.where(ReviewCaseRow.application_id == application_id)
+    with _session() as session:
+        total = session.exec(select(func.count()).select_from(query.subquery())).one()
+        rows = list(session.exec(query.order_by(ReviewCaseRow.seq).offset(page * size).limit(size)))
+    return rows, total
+
+
+def count() -> int:
+    with _session() as session:
+        return session.exec(select(func.count()).select_from(ReviewCaseRow)).one()
+
+
+def audit(entry: AuditLogRow) -> None:
+    with _session() as session:
+        session.add(entry)
+
+
+def audit_log() -> list[AuditLogRow]:
+    with _session() as session:
+        return list(session.exec(select(AuditLogRow).order_by(AuditLogRow.id)))

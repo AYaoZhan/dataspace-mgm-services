@@ -72,12 +72,13 @@ def list_applications(application_ids: list[str]) -> list[dict]:
         return []
     if not neighbours.is_standin(C1_M2):
         return neighbours.query(MODULE, C1_M2, "list_applications_internal", applicationId=application_ids) or []
+    wanted = set(application_ids)
     return [{"id": a["id"], "companyId": a["companyId"], "kind": a["kind"], "existingCompany": a["existingCompany"],
              "verification": a["verification"], "status": a["status"], "legalName": a["companyData"]["legalName"],
              "countryCode": (a["companyData"].get("address") or {}).get("countryCode"),
              "companyRoles": a.get("companyRoles", []), "createdAt": a.get("createdAt"),
              "submittedAt": a.get("submittedAt")}
-            for a in _stub("STUB_APPLICATIONS_FILE", C1_M2) if a.get("id") in application_ids]
+            for a in _stub("STUB_APPLICATIONS_FILE", C1_M2) if a.get("id") in wanted]
 
 
 def application_status(application_id: str) -> str | None:

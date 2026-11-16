@@ -22,15 +22,29 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Request bodies of the decisions of OSP staff (openapi.yaml `ApproveRequest`, `DeclineRequest`)."""
+"""Request bodies and step inputs (openapi.yaml `ApproveRequest`, `DeclineRequest`, `StepOpenReview`,
+`StepCloseReview`). The two request bodies allow further fields, as the spec does not forbid them."""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from portal_common.models import ApiModel, StepRequest, Uuid
+
+from .value_sets import ClosureReason
 
 
-class ApproveRequest(BaseModel):
+class ApproveRequest(ApiModel):
     comment: str | None = Field(default=None, min_length=1, max_length=1000)
 
 
-class DeclineRequest(BaseModel):
+class DeclineRequest(ApiModel):
     reason: str = Field(min_length=1, max_length=1000)
+
+
+class OpenReviewStep(StepRequest):
+    application_id: Uuid
+
+
+class CloseReviewStep(StepRequest):
+    application_id: Uuid
+    reason: ClosureReason
