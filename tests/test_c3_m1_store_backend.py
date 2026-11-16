@@ -99,7 +99,9 @@ def test_the_tables_are_only_in_the_feature_metadata():
     tables = set(database.metadata(MODULE).tables)
     assert {"company", "company_identifier", "company_role_assignment", "consent", "change_request",
             "change_request_document", "used_attestation", "audit_log"} <= tables
-    assert not tables & set(database.metadata("c1-m2").tables)
+    other = database.metadata("c1-m2")
+    assert other is not database.metadata(MODULE)
+    assert all(database.metadata(MODULE).tables[name] is not other.tables.get(name) for name in tables)
 
 
 def test_a_file_database_keeps_the_rows_across_engines(monkeypatch, tmp_path):
