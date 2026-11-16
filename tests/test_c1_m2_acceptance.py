@@ -689,3 +689,13 @@ def test_document_changes_cannot_follow_a_submission(client, env):
         thread.join(5)
         assert isinstance(outcome[0], Problem) and outcome[0].status == 409
     assert [d["documentId"] for d in application_repository.applications[aid]["documents"]] == [doc]
+
+
+def test_swagger_tags_c1_m2_as_implemented_not_as_stand_in():
+    """Every C1-M2 route carries the tag of its Registration controller, none the "c1-m2 (stand-in)" tag that
+    standin.router() gives an unimplemented module (#61)."""
+    app = FastAPI()
+    app.include_router(registration_router)
+    tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
+    assert tags and all(tag.startswith("Registration: ") for tag in tags), tags
+
