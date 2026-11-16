@@ -25,24 +25,36 @@
 """The steps of the dataspace wallets in the flows of Process Orchestration (README 8)."""
 from __future__ import annotations
 
-from fastapi import Body
-
 from features.dataspace_wallet_interface import interface
+from features.dataspace_wallet_interface.models.api import (
+    CreateWalletInput,
+    WalletAccountInput,
+    WalletAccountStepReply,
+    WalletStepReply,
+)
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Steps")
+# A step result leaves out the optional fields that are empty, as the services build it.
+WALLET = {"response_model": WalletStepReply, "response_model_exclude_unset": True}
+ACCOUNT = {"response_model": WalletAccountStepReply, "response_model_exclude_unset": True}
 
 
-@controller.post("/create-wallet", summary="Step: create-wallet")
-def step_create_wallet(body: dict = Body(...), _: dict = Permission):
-    return interface.create_wallet(body)
+def _input(body: CreateWalletInput | WalletAccountInput) -> dict:
+    """The step input as the in-process contract takes it: the JSON fields the caller sent."""
+    return body.model_dump(by_alias=True, exclude_unset=True)
 
 
-@controller.post("/create-wallet-account", summary="Step: create-wallet-account")
-def step_create_wallet_account(body: dict = Body(...), _: dict = Permission):
-    return interface.create_wallet_account(body)
+@controller.post("/create-wallet", summary="Step: create-wallet", **WALLET)
+def step_create_wallet(body: CreateWalletInput, _: dict = Permission):
+    return interface.create_wallet(_input(body))
 
 
-@controller.post("/delete-wallet-account", summary="Step: delete-wallet-account")
-def step_delete_wallet_account(body: dict = Body(...), _: dict = Permission):
-    return interface.delete_wallet_account(body)
+@controller.post("/create-wallet-account", summary="Step: create-wallet-account", **ACCOUNT)
+def step_create_wallet_account(body: WalletAccountInput, _: dict = Permission):
+    return interface.create_wallet_account(_input(body))
+
+
+@controller.post("/delete-wallet-account", summary="Step: delete-wallet-account", **ACCOUNT)
+def step_delete_wallet_account(body: WalletAccountInput, _: dict = Permission):
+    return interface.delete_wallet_account(_input(body))

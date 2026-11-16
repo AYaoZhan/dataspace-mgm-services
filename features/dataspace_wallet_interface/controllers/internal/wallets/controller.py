@@ -28,17 +28,18 @@ from __future__ import annotations
 from fastapi import Response
 
 from features.dataspace_wallet_interface import interface
+from features.dataspace_wallet_interface.models.api import HolderAccess, WalletInfo
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Internal")
 
 
-@controller.get("/{companyId}", summary="Query: getWalletInfo")
+@controller.get("/{companyId}", summary="Query: getWalletInfo", response_model=WalletInfo)
 def get_wallet_info(companyId: str, _: dict = Permission):
     return interface.get_wallet_info(companyId=companyId)
 
 
-@controller.get("/{companyId}/holder-access", summary="Query: getHolderAccess")
+@controller.get("/{companyId}/holder-access", summary="Query: getHolderAccess", response_model=HolderAccess)
 def get_holder_access(companyId: str, response: Response, claims: dict = Permission):
     response.headers["Cache-Control"] = "no-store"
     return interface.get_holder_access(companyId=companyId, claims=claims)

@@ -44,6 +44,7 @@ from portal_common.problems import Problem
 
 from ..managers import config, crypto, providers
 from ..models import MODULE
+from ..models.api import WalletAccount, WalletAccountCredentials, WalletAccountStepReply, WalletAccountStepResult
 from . import wallet_service as service
 REQUESTED, ACTIVE, FAILED, DELETING, DELETED = "REQUESTED", "ACTIVE", "FAILED", "DELETING", "DELETED"
 NONE, AVAILABLE, RETRIEVED, EXPIRED = "NONE", "AVAILABLE", "RETRIEVED", "EXPIRED"
@@ -84,32 +85,31 @@ def _save(account: dict) -> dict:
     return account
 
 
-def _result(account: dict) -> dict:
+def _result(account: dict) -> WalletAccountStepResult:
     """README 8.2 and 8.3 result (openapi `StepResultWalletAccount`); no secrets."""
-    result = {"walletAccountRef": account["id"], "technicalUserId": account["technical_user_id"],
-              "companyId": account["company_id"], "provider": account["provider"], "status": account["status"]}
-    if account.get("failure_reason"):
-        result["failureReason"] = account["failure_reason"]
-    return result
+    reason = {"failure_reason": account["failure_reason"]} if account.get("failure_reason") else {}
+    return WalletAccountStepResult(wallet_account_ref=account["id"], technical_user_id=account["technical_user_id"],
+                                   company_id=account["company_id"], provider=account["provider"],
+                                   status=account["status"], **reason)
 
 
-def _reply(input: dict, step: str, state: str, account: dict) -> dict:
+def _reply(input: dict, step: str, state: str, account: dict) -> WalletAccountStepReply:
     service.log_step(input, step, account["id"], state)
-    return {"stepRunId": input["stepRunId"], "state": state, "result": _result(account)}
+    return WalletAccountStepReply(step_run_id=input["stepRunId"], state=state, result=_result(account))
 
 
 # ------------------------------------------------------------------------------------------ views
-def _view(account: dict) -> dict:
+def _view(account: dict) -> WalletAccount:
     """README 7.2 and 9.2 body (openapi `WalletAccount`): the state of the credentials, never the credentials."""
     expires = None
     if account.get("credentials_state") == AVAILABLE:
         row = service.get_store().get_account_credentials(account["id"])
         expires = service.iso(row["expires_at"]) if row else None
-    return {"walletAccountRef": account["id"], "technicalUserId": account["technical_user_id"],
-            "companyId": account["company_id"], "provider": account["provider"], "status": account["status"],
-            "failureReason": account.get("failure_reason"), "credentialsState": account["credentials_state"],
-            "credentialsExpireAt": expires, "createdAt": service.iso(account.get("created_at")),
-            "changedAt": service.iso(account.get("changed_at"))}
+    return WalletAccount(wallet_account_ref=account["id"], technical_user_id=account["technical_user_id"],
+                         company_id=account["company_id"], provider=account["provider"], status=account["status"],
+                         failure_reason=account.get("failure_reason"), credentials_state=account["credentials_state"],
+                         credentials_expire_at=expires, created_at=service.iso(account.get("created_at")),
+                         changed_at=service.iso(account.get("changed_at")))
 
 
 def _current(technical_user_id: str) -> dict:
@@ -120,12 +120,12 @@ def _current(technical_user_id: str) -> dict:
     return account
 
 
-def get_wallet_account_internal(*, technicalUserId: str) -> dict:
+def get_wallet_account_internal(*, technicalUserId: str) -> WalletAccount:
     """Query `getWalletAccountInternal` (README 9.2): as 7.2, without the check of the company."""
     return _view(_current(technicalUserId))
 
 
-def view_wallet_account(technical_user_id: str, claims: dict) -> dict:
+def view_wallet_account(technical_user_id: str, claims: dict) -> WalletAccount:
     """`GET /technical-users/{id}/wallet-account` (README 7.2): another company's account stays invisible (404)."""
     account = _current(technical_user_id)
     if not claims.get("company_id") or claims["company_id"] != account["company_id"]:
@@ -209,7 +209,7 @@ def _order(account: dict, wallet: dict) -> dict:
     return _save(account)
 
 
-def create_wallet_account(input: dict) -> dict:
+def create_wallet_account(input: dict) -> WalletAccountStepReply:
     """Step `create-wallet-account` (README 8.2)."""
     technical_user_id, company_id = _validate(input)
     with _lock(technical_user_id):
@@ -247,7 +247,7 @@ def _order_deletion(account: dict) -> dict:
     return _save(account)
 
 
-def delete_wallet_account(input: dict) -> dict:
+def delete_wallet_account(input: dict) -> WalletAccountStepReply:
     """Step `delete-wallet-account` (README 8.3). The status of the company does not matter."""
     technical_user_id, company_id = _validate(input)
     reference = input.get("walletAccountRef")
@@ -261,8 +261,8 @@ def delete_wallet_account(input: dict) -> dict:
             raise _problem(409, "conflict", "walletAccountRef is not the current wallet account of the technical user")
         if account is None:
             service.log_step(input, "delete-wallet-account", technical_user_id, "DONE")
-            return {"stepRunId": input["stepRunId"], "state": "DONE",
-                    "result": {"technicalUserId": technical_user_id, "companyId": company_id, "status": DELETED}}
+            return WalletAccountStepReply(step_run_id=input["stepRunId"], state="DONE", result=WalletAccountStepResult(
+                technical_user_id=technical_user_id, company_id=company_id, status=DELETED))
         if account["status"] == DELETED:
             return _reply(input, "delete-wallet-account", "DONE", account)
         if account["company_id"] != company_id:
@@ -319,7 +319,7 @@ def accept_account_deleted(reference: str, claims: dict | str | None) -> None:
 
 
 # ------------------------------------------------------------------------------ credentials (7.3)
-def retrieve_credentials(technical_user_id: str, claims: dict) -> dict:
+def retrieve_credentials(technical_user_id: str, claims: dict) -> WalletAccountCredentials:
     """`POST /technical-users/{id}/wallet-account/credentials` (README 7.3): hands the credentials out exactly
     once. Reading, deleting the row, `RETRIEVED` and the audit entry happen under the lock of the technical user."""
     store = service.get_store()
@@ -347,9 +347,9 @@ def retrieve_credentials(technical_user_id: str, claims: dict) -> dict:
         _save(account)
         service.audit(claims, "RETRIEVE_WALLET_CREDENTIALS", account["company_id"], account["id"])
         wallet = service.get_wallet(account["company_id"]) or {}
-        return {"walletAccountRef": account["id"], "tokenUrl": row["token_url"], "clientId": row["client_id"],
-                "clientSecret": secret, "did": wallet.get("did"),
-                "credentialServiceUrl": wallet.get("credential_service_url")}
+        return WalletAccountCredentials(wallet_account_ref=account["id"], token_url=row["token_url"],
+                                        client_id=row["client_id"], client_secret=secret, did=wallet.get("did"),
+                                        credential_service_url=wallet.get("credential_service_url"))
 
 
 # ------------------------------------------------------------------------------ scheduled tasks

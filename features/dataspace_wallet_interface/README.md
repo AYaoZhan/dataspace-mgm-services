@@ -75,12 +75,12 @@ Folder map:
 | `services/wallet_service.py` | the clock `now()`, provider choice, create-wallet, DID check, wallet callback, timer, wallet queries |
 | `services/account_service.py` | wallet accounts: steps, account callbacks, views, one-time credentials, account timer tasks |
 | `services/callback_service.py` | checks that a callback comes from the SAP DIV client, then hands it to the services |
-| `managers/wallet_store.py` | `WalletStore` contract and the in-memory store (wallets, secrets, accounts, audit and step log) |
+| `managers/wallet_store.py` | `WalletStore` contract and `DatabaseStore`, the repository of the tables (the only code with a database session) |
 | `managers/crypto.py` | AES-256-GCM encryption of the secrets (`SECRETS_KEY`, `SECRETS_KEY_VERSION`) |
 | `managers/did_resolver.py` | DID form and document checks, resolution (`TEST_DID_DOCUMENTS_DIR`, `DID_RESOLVER_URL`, did:web) |
 | `managers/providers/` | one adapter per provider (`sap_div`, `identity_hub`, `csp`) with built-in stand-ins, `STUB_FAILURES` |
 | `managers/config.py` | the variables the services read |
-| `models/` | `MODULE` and the pydantic models of the API |
+| `models/` | `MODULE`; `value_sets.py` (the enums of openapi.yaml as `Literal`); `api.py` (pydantic models on `portal_common.models`: step inputs `CreateWalletInput`, `WalletAccountInput`, step results, `Wallet`, `WalletInfo`, `WalletAccount`, `WalletAccountCredentials`, `HolderAccess`); `tables.py` (SQLModel tables) |
 
 `/wallet-control-challenges` (own wallet, later in the spec) is not implemented and answered by the stand-in of the
 spec with 501.
@@ -98,8 +98,17 @@ provider choice `ENABLED_PROVIDERS`, `DEFAULT_PROVIDER` and the provider variabl
 `managers/providers/`; `SECRETS_KEY*` in `managers/crypto.py`; `DID_RESOLVER_URL`, `TEST_DID_DOCUMENTS_DIR` in
 `managers/did_resolver.py`. Unset values and their defaults are listed in `OPEN-QUESTIONS.md`.
 
-Persistence: in memory (`InMemoryStore`); the spec's tables are the column names of the rows, so a database store can
-replace it behind `WalletStore`.
+Persistence: the feature's own database through SQLModel (`portal_common.database`): the tables
+`dataspace_wallet`, `wallet_secret`, `wallet_account`, `wallet_account_credentials`, `audit_log` and `step_log` of
+README 5 in `models/tables.py`, with indexes on the columns looked up by (BPN, DID, status, technical user, wallet).
+The URL is `DATASPACE_WALLET_INTERFACE_DATABASE_URL`, then `C4_M2_DATABASE_URL`, then `DATABASE_URL`; without one the
+feature runs on a private in-memory SQLite database. `on_startup()` creates the tables, `reset()` empties them. Rows
+reach the services as dicts with the column names of the spec; secrets are only stored as ciphertext.
+
+Models: the controllers declare the step inputs as request bodies and the responses as `response_model`; the
+services return the models and `interface.py` answers their JSON form. The SAP DIV callback bodies stay plain JSON
+objects checked by the services, because README 7.6 wants 403 for a foreign client before any body check and 204
+with `FAILED` for an invalid DID document.
 
 Run it alone and test it:
 

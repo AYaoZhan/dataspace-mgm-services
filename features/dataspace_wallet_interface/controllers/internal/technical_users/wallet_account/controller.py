@@ -26,11 +26,12 @@
 from __future__ import annotations
 
 from features.dataspace_wallet_interface import interface
+from features.dataspace_wallet_interface.models.api import WalletAccount
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Internal")
 
 
-@controller.get("", summary="Query: getWalletAccountInternal")
+@controller.get("", summary="Query: getWalletAccountInternal", response_model=WalletAccount)
 def get_wallet_account_internal(technicalUserId: str, _: dict = Permission):
     return interface.get_wallet_account_internal(technicalUserId=technicalUserId)

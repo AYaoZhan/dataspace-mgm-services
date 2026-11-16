@@ -43,8 +43,17 @@ from portal_common.problems import Problem
 
 from ..managers import config, crypto, providers
 from ..managers import did_resolver as did
-from ..managers.wallet_store import InMemoryStore, WalletStore
+from ..managers.wallet_store import DatabaseStore, WalletStore
 from ..models import MODULE
+from ..models.api import (
+    HolderAccess,
+    HolderAccessHolderRequests,
+    HolderAccessIssuerWrites,
+    Wallet,
+    WalletInfo,
+    WalletStepReply,
+    WalletStepResult,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +70,11 @@ def now() -> dt.datetime:
 
 
 def get_store() -> WalletStore:
-    """The active store (in memory today, a database store later)."""
+    """The active store: the repository of the feature's tables."""
     global _store
     with _store_lock:
         if _store is None:
-            _store = InMemoryStore()
+            _store = DatabaseStore()
         return _store
 
 
@@ -317,20 +326,15 @@ def _order(wallet: dict, company: dict) -> dict:
     return _save(wallet)
 
 
-def _step_result(wallet: dict) -> dict:
-    """README 8.1 result (openapi `StepResultWallet`); no secrets."""
-    result = {"walletId": wallet["id"], "companyId": wallet["company_id"], "provider": wallet["provider"],
-              "status": wallet["status"]}
-    if wallet.get("did"):
-        result["did"] = wallet["did"]
-    if wallet.get("did_document_location"):
-        result["didDocumentLocation"] = wallet["did_document_location"]
-    if wallet.get("failure_reason"):
-        result["failureReason"] = wallet["failure_reason"]
-    return result
+def _step_result(wallet: dict) -> WalletStepResult:
+    """README 8.1 result (openapi `StepResultWallet`); no secrets, empty optional fields are left out."""
+    optional = {"did": wallet.get("did"), "did_document_location": wallet.get("did_document_location"),
+                "failure_reason": wallet.get("failure_reason")}
+    return WalletStepResult(wallet_id=wallet["id"], company_id=wallet["company_id"], provider=wallet["provider"],
+                            status=wallet["status"], **{name: value for name, value in optional.items() if value})
 
 
-def create_wallet(input: dict) -> dict:
+def create_wallet(input: dict) -> WalletStepReply:
     """The step `create-wallet` (README 8.1). Long-running: `RUNNING` unless the wallet was already `ACTIVE`."""
     company_id, requested = _validate_create_input(input)
     store = get_store()
@@ -358,7 +362,7 @@ def create_wallet(input: dict) -> dict:
             wallet = _order(wallet, company)
         # REQUESTED with `provider_ordered_at` and VALIDATING: nothing else (RUNNING)
         log_step(input, "create-wallet", company_id, state)
-        return {"stepRunId": input["stepRunId"], "state": state, "result": _step_result(wallet)}
+        return WalletStepReply(step_run_id=input["stepRunId"], state=state, result=_step_result(wallet))
 
 
 # --------------------------------------------------------------------------- SAP DIV callbacks
@@ -521,30 +525,29 @@ def _wallet_or_404(company_id: str) -> dict:
     return wallet
 
 
-def wallet_info(company_id: str) -> dict:
+def wallet_info(company_id: str) -> WalletInfo:
     """README 9.1 `WalletInfo`: 13 fields, no secrets."""
     wallet = _wallet_or_404(company_id)
-    return {"walletId": wallet["id"], "companyId": wallet["company_id"], "bpn": wallet["bpn"],
-            "provider": wallet["provider"], "providerRef": wallet.get("provider_ref"), "status": wallet["status"],
-            "did": wallet.get("did"), "didDocumentLocation": wallet.get("did_document_location"),
-            "credentialServiceUrl": wallet.get("credential_service_url"),
-            "issuanceMode": _issuance_mode(wallet["provider"]), "supportsWalletAccounts": True,
-            "failureReason": wallet.get("failure_reason"), "activatedAt": iso(wallet.get("activated_at"))}
+    return WalletInfo(wallet_id=wallet["id"], company_id=wallet["company_id"], bpn=wallet["bpn"],
+                      provider=wallet["provider"], provider_ref=wallet.get("provider_ref"), status=wallet["status"],
+                      did=wallet.get("did"), did_document_location=wallet.get("did_document_location"),
+                      credential_service_url=wallet.get("credential_service_url"),
+                      issuance_mode=_issuance_mode(wallet["provider"]), supports_wallet_accounts=True,
+                      failure_reason=wallet.get("failure_reason"), activated_at=iso(wallet.get("activated_at")))
 
 
-def wallet_view(company_id: str) -> dict:
+def wallet_view(company_id: str) -> Wallet:
     """README 7.1 openapi `Wallet`: the view of the people of the company, no secrets."""
     wallet = _wallet_or_404(company_id)
-    return {"companyId": wallet["company_id"], "provider": wallet["provider"], "status": wallet["status"],
-            "did": wallet.get("did"), "didDocumentLocation": wallet.get("did_document_location"),
-            "credentialServiceUrl": wallet.get("credential_service_url"),
-            "bdrsUrl": config.bdrs_public_url(),
-            "stsTokenUrl": config.identityhub_sts_token_url() if wallet["provider"] == "IDENTITY_HUB" else None,
-            "supportsWalletAccounts": True, "failureReason": wallet.get("failure_reason"),
-            "createdAt": iso(wallet.get("created_at")), "activatedAt": iso(wallet.get("activated_at"))}
+    return Wallet(company_id=wallet["company_id"], provider=wallet["provider"], status=wallet["status"],
+                  did=wallet.get("did"), did_document_location=wallet.get("did_document_location"),
+                  credential_service_url=wallet.get("credential_service_url"), bdrs_url=config.bdrs_public_url(),
+                  sts_token_url=config.identityhub_sts_token_url() if wallet["provider"] == "IDENTITY_HUB" else None,
+                  supports_wallet_accounts=True, failure_reason=wallet.get("failure_reason"),
+                  created_at=iso(wallet.get("created_at")), activated_at=iso(wallet.get("activated_at")))
 
 
-def holder_access(company_id: str, claims: dict | str | None = None) -> dict:
+def holder_access(company_id: str, claims: dict | str | None = None) -> HolderAccess:
     """README 9.3 for C4-M1: how credentials get into the wallet, with the access needed for that.
     `claims` are the token claims over HTTP; in the same process the entry holds the name of C4-M1."""
     wallet = _wallet_or_404(company_id)
@@ -553,16 +556,18 @@ def holder_access(company_id: str, claims: dict | str | None = None) -> dict:
     access = wallet_secret(wallet["id"], HOLDER_ACCESS)
     if access is None:
         raise _problem(409, "wallet-not-active", "the wallet has no holder access")
-    base = {"issuanceMode": _issuance_mode(wallet["provider"]), "companyId": wallet["company_id"],
-            "bpn": wallet["bpn"], "did": wallet["did"], "provider": wallet["provider"]}
+    base = {"company_id": wallet["company_id"], "bpn": wallet["bpn"], "did": wallet["did"],
+            "provider": wallet["provider"]}
     if wallet["provider"] == "SAP_DIV":
-        base.update(holder=wallet["did_document_location"], walletUrl=access["url"],
-                    clientId=access["client_id"], clientSecret=access["secret"])
+        access_model = HolderAccessIssuerWrites(**base, holder=wallet["did_document_location"],
+                                                wallet_url=access["url"], client_id=access["client_id"],
+                                                client_secret=access["secret"])
     else:
-        base.update(identityApiUrl=access["url"], participantContextId=access["client_id"],
-                    apiKey=access["secret"], credentialServiceUrl=wallet.get("credential_service_url"))
+        access_model = HolderAccessHolderRequests(**base, identity_api_url=access["url"],
+                                                  participant_context_id=access["client_id"], api_key=access["secret"],
+                                                  credential_service_url=wallet.get("credential_service_url"))
     audit(claims if claims is not None else "c4-m1", "READ_HOLDER_ACCESS", wallet["company_id"], wallet["id"])
-    return base
+    return access_model
 
 
 providers.on_callback("wallet-created", accept_wallet_callback)

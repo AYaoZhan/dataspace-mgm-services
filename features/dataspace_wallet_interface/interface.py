@@ -27,7 +27,8 @@ of README 9 under their convention names. Other modules and Process Orchestratio
 lives in `services/`.
 
 Provider: SAP DIV, IdentityHub or the dataspace wallet of the CSP (`managers/providers/`, README 6.1, 6.11). The
-holder access (API key or client secret) is stored encrypted and only returned by the query for C4-M1.
+holder access (API key or client secret) is stored encrypted and only returned by the query for C4-M1. The
+services return the models of `models/api.py`; this contract answers their JSON form (camelCase dicts).
 """
 from __future__ import annotations
 
@@ -36,6 +37,7 @@ from portal_common import standin
 from .managers import crypto, providers
 from .managers.wallet_store import WalletStore
 from .models import MODULE
+from .models.api import to_json
 from .services import account_service, wallet_service
 
 __all__ = [
@@ -59,39 +61,39 @@ def reset() -> None:
 # -- steps for Process Orchestration (README 8): input = JSON body incl. processId and stepRunId ---
 def create_wallet(input: dict) -> dict:
     """Step `create-wallet` (README 8.1)."""
-    return wallet_service.create_wallet(input)
+    return to_json(wallet_service.create_wallet(input), keep_unset=False)
 
 
 def create_wallet_account(input: dict) -> dict:
     """Step `create-wallet-account` (README 8.2)."""
-    return account_service.create_wallet_account(input)
+    return to_json(account_service.create_wallet_account(input), keep_unset=False)
 
 
 def delete_wallet_account(input: dict) -> dict:
     """Step `delete-wallet-account` (README 8.3)."""
-    return account_service.delete_wallet_account(input)
+    return to_json(account_service.delete_wallet_account(input), keep_unset=False)
 
 
 # -- queries for other modules (README 9): parameters by their openapi names ------------------------
 def get_wallet_info(*, companyId: str) -> dict:
     """Query `getWalletInfo` (README 9.1): the wallet without secrets."""
-    return wallet_service.wallet_info(companyId)
+    return to_json(wallet_service.wallet_info(companyId))
 
 
 def wallet_view(*, companyId: str) -> dict:
     """Body of `GET /companies/{companyId}/wallet` (README 7.1, openapi `Wallet`)."""
-    return wallet_service.wallet_view(companyId)
+    return to_json(wallet_service.wallet_view(companyId))
 
 
 def get_holder_access(*, companyId: str, claims: dict | None = None) -> dict:
     """Query `getHolderAccess` (README 9.3), only for C4-M1. `claims` is set by the HTTP route; in the same
     process the audit entry holds the name of the calling module."""
-    return wallet_service.holder_access(companyId, claims)
+    return to_json(wallet_service.holder_access(companyId, claims))
 
 
 def get_wallet_account_internal(*, technicalUserId: str) -> dict:
     """Query `getWalletAccountInternal` (README 9.2)."""
-    return account_service.get_wallet_account_internal(technicalUserId=technicalUserId)
+    return to_json(account_service.get_wallet_account_internal(technicalUserId=technicalUserId))
 
 
 __getattr__ = standin.missing_interface(MODULE)   # steps and queries not implemented yet: stand-in

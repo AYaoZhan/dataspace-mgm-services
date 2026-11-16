@@ -27,12 +27,13 @@ from __future__ import annotations
 
 from features.dataspace_wallet_interface import interface
 from features.dataspace_wallet_interface.models import MODULE
+from features.dataspace_wallet_interface.models.api import Wallet
 from portal_common.routing import Controller, Permission, company_scope
 
 controller = Controller("Dataspace Wallet Interface: Company")
 
 
-@controller.get("", summary="The dataspace wallet of the company")
+@controller.get("", summary="The dataspace wallet of the company", response_model=Wallet)
 def get_wallet(companyId: str, claims: dict = Permission):
     company_scope(MODULE, claims, companyId)
     return interface.wallet_view(companyId=companyId)

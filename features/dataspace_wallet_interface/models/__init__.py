@@ -22,6 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Shared values of the Dataspace Wallet Interface, importable from every layer."""
+"""Models of the Dataspace Wallet Interface, importable from every layer: the spec id, the value sets of the
+openapi.yaml (`value_sets`), the API models (`api`) and the database tables (`tables`)."""
 
 MODULE = "c4-m2"

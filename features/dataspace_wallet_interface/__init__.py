@@ -33,6 +33,7 @@ from __future__ import annotations
 from features.dataspace_wallet_interface import interface
 from features.dataspace_wallet_interface.models import MODULE
 from features.dataspace_wallet_interface.services import wallet_service
+from portal_common import database
 
 NAME = "dataspace_wallet_interface"
 
@@ -40,9 +41,11 @@ __all__ = ["MODULE", "NAME", "on_startup", "reset"]
 
 
 def reset() -> None:
+    """Empty tables (`database.reset_tables` through the store), key cache and provider stand-ins."""
     interface.reset()
 
 
 def on_startup() -> None:
-    """Start the scheduled tasks of README 6.10."""
+    """Create the tables of the feature's database and start the scheduled tasks of README 6.10."""
+    database.create_tables(MODULE)
     wallet_service.start_timer()

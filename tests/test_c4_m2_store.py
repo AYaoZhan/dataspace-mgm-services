@@ -24,8 +24,10 @@
 #################################################################################
 """Store contract of C4-M2 (TEAM3-PLAN 1 "Storage sits behind an abstraction", 12.2).
 
-Every implementation of `store.WalletStore` must pass these tests. A future database store only
-needs its class name added to `STORES` (instantiated without arguments from `features.dataspace_wallet_interface.managers.wallet_store`).
+Every implementation of `store.WalletStore` must pass these tests; its class name is in `STORES` (instantiated
+without arguments from `features.dataspace_wallet_interface.managers.wallet_store`). The store keeps its rows in the
+feature's database, so timestamps go in and come back as timezone-aware datetimes (ISO strings are accepted on
+write) and every instance sees the same tables.
 """
 from __future__ import annotations
 
@@ -38,16 +40,22 @@ import pytest
 
 from test_c4_m2_common import assert_no_secret, osp_factory, seam  # noqa: F401  (osp_factory is a fixture)
 
-STORES = ["InMemoryStore"]
+STORES = ["DatabaseStore"]
 
 BPN_A, BPN_B = "BPNL0000000DIV01", "BPNL00000000IH01"
 DID_A, DID_B = "did:web:div.example.org:did:BPNL0000000DIV01", "did:web:ih.example.org:BPNL00000000IH01"
 JOIN_SECONDS = 5
 
 
+def at(seconds: int = 0, day: int = 6, month: int = 11) -> dt.datetime:
+    """A timestamp as the services store it (`service.now()`: timezone-aware UTC)."""
+    return dt.datetime(2026, month, day, 9, 0, seconds, tzinfo=dt.timezone.utc)
+
+
 @pytest.fixture(params=STORES)
 def store(request):
     st = getattr(seam("features.dataspace_wallet_interface.managers.wallet_store"), request.param)()
+    st.reset()
     yield st
     st.reset()
 
@@ -59,7 +67,7 @@ def wallet(n: int = 1, **changes) -> dict:
            "did_document_location": None, "credential_service_url": None, "provider_ref": None,
            "control_challenge_id": None, "attempt": 1, "provider_ordered_at": None, "validating_since": None,
            "did_validated_at": None, "next_check_at": None, "activated_at": None,
-           "created_at": "2026-11-06T09:00:00Z", "changed_at": "2026-11-06T09:00:00Z"}
+           "created_at": at(), "changed_at": at()}
     return {**row, **changes}
 
 
@@ -225,13 +233,13 @@ def test_delete_secrets_removes_every_kind_of_that_wallet_only(store):
 
 # -------------------------------------------------------------------------------- audit, step log
 def _audit(n: int) -> dict:
-    return {"occurred_at": f"2026-11-06T09:00:{n:02d}Z", "sub": f"sub-{n}", "azp": "svc-c4-m1",
+    return {"occurred_at": at(n), "sub": f"sub-{n}", "azp": "svc-c4-m1",
             "company_id": wallet(1)["company_id"], "operation": "READ_HOLDER_ACCESS", "object_id": wallet(1)["id"]}
 
 
 def _step(n: int) -> dict:
     return {"step_run_id": str(uuid.UUID(int=n)), "process_id": str(uuid.UUID(int=900)), "step": "create-wallet",
-            "object_id": wallet(1)["company_id"], "state": "RUNNING", "occurred_at": f"2026-11-06T09:00:{n:02d}Z"}
+            "object_id": wallet(1)["company_id"], "state": "RUNNING", "occurred_at": at(n)}
 
 
 def test_audit_entries_keep_their_order(store):
@@ -421,11 +429,15 @@ def test_reset_empties_everything(store):
         assert store.get_wallet(w["company_id"]) == w
 
 
-def test_stores_are_independent_instances():
+def test_store_instances_share_the_feature_database():
+    # F17: the rows live in the feature's own database, not in the store object
     mod = seam("features.dataspace_wallet_interface.managers.wallet_store")
     one, two = getattr(mod, STORES[0])(), getattr(mod, STORES[0])()
+    one.reset()
     one.put_wallet(wallet(1))
-    assert two.get_wallet(wallet(1)["company_id"]) is None
+    assert two.get_wallet(wallet(1)["company_id"]) == wallet(1)
+    two.reset()
+    assert one.get_wallet(wallet(1)["company_id"]) is None
 
 
 def test_the_module_store_is_a_wallet_store_and_reset_clears_it(osp_factory):
@@ -448,14 +460,14 @@ def account(n: int = 1, **changes) -> dict:
     row = {"id": str(uuid.UUID(int=0xA000 + n)), "technical_user_id": TU_1, "company_id": wallet(1)["company_id"],
            "wallet_id": wallet(1)["id"], "provider": "CSP", "status": "REQUESTED", "failure_reason": None,
            "provider_name": f"tu-{TU_1}", "provider_ordered_at": None, "deletion_ordered_at": None,
-           "credentials_state": "NONE", "created_at": f"2026-11-06T09:00:0{n}Z", "changed_at": f"2026-11-06T09:00:0{n}Z"}
+           "deletion_failed_at": None, "credentials_state": "NONE", "created_at": at(n), "changed_at": at(n)}
     return {**row, **changes}
 
 
 def creds(ref: str, **changes) -> dict:
     args = {"wallet_account_id": ref, "token_url": "https://sts.example.org/token", "client_id": "sts-client",
             "client_secret_encrypted": bytes(range(30)), "nonce": bytes(range(12)), "key_version": 1,
-            "created_at": "2026-11-06T09:00:00Z", "expires_at": "2026-12-06T09:00:00Z"}
+            "created_at": at(), "expires_at": at(month=12)}
     return {**args, **changes}
 
 
@@ -480,22 +492,22 @@ def test_put_account_with_the_same_id_replaces_the_row(store):
 
 def test_get_account_prefers_the_row_that_is_not_deleted(store):
     # README 7.2 step 2: "the row with a status other than DELETED, otherwise the latest one"
-    old_deleted = account(1, status="DELETED", created_at="2026-11-01T09:00:00Z")
-    current = account(2, status="ACTIVE", created_at="2026-11-02T09:00:00Z")
+    old_deleted = account(1, status="DELETED", created_at=at(day=1))
+    current = account(2, status="ACTIVE", created_at=at(day=2))
     store.put_account(old_deleted)
     store.put_account(current)
     assert store.get_account(TU_1)["id"] == current["id"]
     # the not-deleted row wins even when a deleted one is newer
     store.reset()
-    store.put_account(account(1, status="ACTIVE", created_at="2026-11-01T09:00:00Z"))
-    store.put_account(account(2, status="DELETED", created_at="2026-11-05T09:00:00Z"))
+    store.put_account(account(1, status="ACTIVE", created_at=at(day=1)))
+    store.put_account(account(2, status="DELETED", created_at=at(day=5)))
     assert store.get_account(TU_1)["id"] == account(1)["id"]
 
 
 def test_get_account_returns_the_latest_when_all_are_deleted(store):
-    store.put_account(account(1, status="DELETED", created_at="2026-11-01T09:00:00Z"))
-    store.put_account(account(2, status="DELETED", created_at="2026-11-03T09:00:00Z"))
-    store.put_account(account(3, status="DELETED", created_at="2026-11-02T09:00:00Z"))
+    store.put_account(account(1, status="DELETED", created_at=at(day=1)))
+    store.put_account(account(2, status="DELETED", created_at=at(day=3)))
+    store.put_account(account(3, status="DELETED", created_at=at(day=2)))
     assert store.get_account(TU_1)["id"] == account(2)["id"]
 
 
@@ -540,7 +552,7 @@ def test_put_get_account_credentials_keeps_bytes_and_key_version(store):
     assert row["nonce"] == bytes(range(12)) and isinstance(row["nonce"], bytes)
     assert row["key_version"] == 4
     assert (row["token_url"], row["client_id"]) == ("https://sts.example.org/token", "sts-client")
-    assert (row["created_at"], row["expires_at"]) == ("2026-11-06T09:00:00Z", "2026-12-06T09:00:00Z")
+    assert (row["created_at"], row["expires_at"]) == (at(), at(month=12))
     assert row["wallet_account_id"] == ref
     assert store.get_account_credentials(account(2)["id"]) is None
     assert store.get_account_credentials(ref) is not None           # a read does not consume (only pop does)
