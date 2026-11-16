@@ -33,8 +33,8 @@ import importlib.util
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("modules.c4_m2.providers") is None,
-    reason="not implemented yet: modules.c4_m2.providers (provider adapters)")
+    importlib.util.find_spec("features.dataspace_wallet_interface.managers.providers") is None,
+    reason="not implemented yet: features.dataspace_wallet_interface.managers.providers (provider adapters)")
 
 import json
 import logging
@@ -65,7 +65,7 @@ IDS = [c[1] for c in CASES]
 
 def create(osp, key, provider, n=1):
     cid = COMPANIES[key]["id"]
-    r = osp.post("/api/c4-m2/steps/create-wallet", osp.service("svc-c4-m2"),
+    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet", osp.service("svc-c4-m2"),
                  json=step_input(cid, n, companyId=cid, provider=provider))
     assert r.status_code == 200, r.text
     return r.json()
@@ -74,15 +74,15 @@ def create(osp, key, provider, n=1):
 def activate(osp, key, provider):
     """create-wallet, then let the built-in SAP DIV stand-in call back (the others are ACTIVE in the call)."""
     create(osp, key, provider)
-    seam("modules.c4_m2.providers").flush_stand_in()
-    seam("modules.c4_m2.service").run_timer_once()
-    info = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
+    seam("features.dataspace_wallet_interface.managers.providers").flush_stand_in()
+    seam("features.dataspace_wallet_interface.services.wallet_service").run_timer_once()
+    info = seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
     assert info["status"] == "ACTIVE", info
     return info
 
 
 def holder_http(osp, key, token=None):
-    return osp.get(f"/api/c4-m2/internal/wallets/{COMPANIES[key]['id']}/holder-access",
+    return osp.get(f"/api/dataspace-wallet-interface/internal/wallets/{COMPANIES[key]['id']}/holder-access",
                    token or osp.service("svc-c4-m1"))
 
 
@@ -92,7 +92,7 @@ def test_get_wallet_info_returns_exactly_the_wallet_info_fields(osp_factory, com
     # README 9.1; TEAM3-PLAN 6.3 "13 contract fields"
     osp = osp_factory(env=ENV)
     activate(osp, key, provider)
-    info = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
+    info = seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
     assert set(info) == WALLET_INFO_FIELDS
     assert schema_errors("c4-m2", "WalletInfo", info) == []
     assert not [k for k in info if k.startswith("_")]
@@ -113,13 +113,13 @@ def test_get_wallet_info_provider_ref(osp_factory, companies, key, provider, pro
     # README 5 `provider_ref`: SAP DIV the BPN; IdentityHub the participant context (= BPN, case 9)
     osp = osp_factory(env=ENV)
     activate(osp, key, provider)
-    assert seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])["providerRef"] == providerRef
+    assert seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES[key]["id"])["providerRef"] == providerRef
 
 
 def test_get_wallet_info_provider_ref_of_the_csp_is_the_participant_context(osp_factory, companies):
     osp = osp_factory(env=ENV)
     info = activate(osp, "csp", "CSP")
-    access = seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
+    access = seam("features.dataspace_wallet_interface.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
     assert info["providerRef"] and info["providerRef"] == access["participantContextId"]
 
 
@@ -127,7 +127,7 @@ def test_get_wallet_info_while_requested_has_no_did_and_no_secret(osp_factory, c
     # README 6.2 REQUESTED: SAP DIV order sent, callback pending; schema allows null did, location, activatedAt
     osp = osp_factory(env=ENV)
     create(osp, "div", "SAP_DIV")
-    info = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES["div"]["id"])
+    info = seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES["div"]["id"])
     assert set(info) == WALLET_INFO_FIELDS and schema_errors("c4-m2", "WalletInfo", info) == []
     assert info["status"] == "REQUESTED"
     assert info["did"] is None and info["activatedAt"] is None and info["failureReason"] is None
@@ -139,19 +139,19 @@ def test_get_wallet_info_contains_no_secret_of_any_provider(osp_factory, compani
     secrets = []
     for key, provider, *_ in CASES:
         activate(osp, key, provider)
-        access = seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES[key]["id"])
+        access = seam("features.dataspace_wallet_interface.interface").get_holder_access(companyId=COMPANIES[key]["id"])
         secrets += [access.get("apiKey") or access["clientSecret"]]
-    crypto, store = seam("modules.c4_m2.crypto"), seam("modules.c4_m2.interface").store()
+    crypto, store = seam("features.dataspace_wallet_interface.managers.crypto"), seam("features.dataspace_wallet_interface.interface").store()
     for key, *_ in CASES:
-        wid = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])["walletId"]
+        wid = seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES[key]["id"])["walletId"]
         row = store.get_secret(wid, "STS_ACCESS")
         if row:
             secrets.append(crypto.decrypt(row["secret_encrypted"], row["nonce"], row["key_version"]))
     assert len(secrets) == 4 and all(len(s) >= 8 for s in secrets)
     for key, *_ in CASES:
-        info = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
+        info = seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
         for s in secrets:
-            assert_no_secret(s, info, osp.get(f"/api/c4-m2/internal/wallets/{COMPANIES[key]['id']}",
+            assert_no_secret(s, info, osp.get(f"/api/dataspace-wallet-interface/internal/wallets/{COMPANIES[key]['id']}",
                                               osp.service("svc-c4-m2")).text)
 
 
@@ -159,7 +159,7 @@ def test_get_wallet_info_without_wallet_is_404_not_found(osp_factory, companies)
     # README 9.1 "No wallet: 404"
     osp_factory(env=ENV)
     with pytest.raises(Problem) as err:
-        seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES["div"]["id"])
+        seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES["div"]["id"])
     assert err.value.status == 404 and err.value.name == "not-found"
 
 
@@ -167,16 +167,16 @@ def test_internal_wallet_query_over_http_needs_query_c4_m2(osp_factory, companie
     # README 6.8: `GET /internal/wallets/{companyId}` needs `query_c4_m2`
     osp = osp_factory(env=ENV)
     activate(osp, "ih", "IDENTITY_HUB")
-    path = f"/api/c4-m2/internal/wallets/{COMPANIES['ih']['id']}"
+    path = f"/api/dataspace-wallet-interface/internal/wallets/{COMPANIES['ih']['id']}"
     ok = osp.get(path, osp.service("svc-c4-m2"))
     assert ok.status_code == 200 and schema_errors("c4-m2", "WalletInfo", ok.json()) == []
-    assert ok.json() == seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES["ih"]["id"])
+    assert ok.json() == seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES["ih"]["id"])
     assert osp.get(path, osp.service("sa-only-steps", ["execute_steps_c4_m2"])).status_code == 403
     assert osp.get(path, osp.service("sa-query", ["query_c4_m2"])).status_code == 200
     assert osp.get(path).status_code == 401
     person = osp.person("p-it", ["IT Admin"], company_id=COMPANIES["ih"]["id"])
     assert osp.get(path, person).status_code == 403
-    missing = osp.get(f"/api/c4-m2/internal/wallets/{COMPANIES['div']['id']}", osp.service("svc-c4-m2"))
+    missing = osp.get(f"/api/dataspace-wallet-interface/internal/wallets/{COMPANIES['div']['id']}", osp.service("svc-c4-m2"))
     assert missing.status_code == 404 and missing.json()["type"] == "urn:c4-m2:problem:not-found"
 
 
@@ -188,7 +188,7 @@ def test_own_wallet_view_uses_the_wallet_schema_not_wallet_info(osp_factory, com
     activate(osp, key, provider)
     cid = COMPANIES[key]["id"]
     token = osp.person("p-own", ["IT Admin"], company_id=cid)
-    r = osp.get(f"/api/c4-m2/companies/{cid}/wallet", token)
+    r = osp.get(f"/api/dataspace-wallet-interface/companies/{cid}/wallet", token)
     assert r.status_code == 200, r.text
     body = r.json()
     assert schema_errors("c4-m2", "Wallet", body) == []
@@ -200,14 +200,14 @@ def test_own_wallet_view_uses_the_wallet_schema_not_wallet_info(osp_factory, com
     assert re.match(r"^\d{4}-\d{2}-\d{2}T", body["createdAt"]) and body["activatedAt"]
     assert body.get("stsTokenUrl") == (STS if provider == "IDENTITY_HUB" else None)   # README 7.1: IdentityHub only (property optional)
     assert body["didDocumentLocation"].startswith("https://") and body["credentialServiceUrl"]
-    assert body == seam("modules.c4_m2.interface").wallet_view(companyId=cid)
+    assert body == seam("features.dataspace_wallet_interface.interface").wallet_view(companyId=cid)
 
 
 def test_own_wallet_view_bdrs_url_is_empty_without_configuration(osp_factory, companies):
     osp = osp_factory(env={**ENV, "BDRS_PUBLIC_URL": ""})
     activate(osp, "csp", "CSP")
     cid = COMPANIES["csp"]["id"]
-    body = osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person("p-own", ["IT Admin"], company_id=cid)).json()
+    body = osp.get(f"/api/dataspace-wallet-interface/companies/{cid}/wallet", osp.person("p-own", ["IT Admin"], company_id=cid)).json()
     assert body.get("bdrsUrl") is None and schema_errors("c4-m2", "Wallet", body) == []
 
 
@@ -215,8 +215,8 @@ def test_own_wallet_view_contains_no_secret(osp_factory, companies):
     osp = osp_factory(env=ENV)
     activate(osp, "ih", "IDENTITY_HUB")
     cid = COMPANIES["ih"]["id"]
-    api_key = seam("modules.c4_m2.interface").get_holder_access(companyId=cid)["apiKey"]
-    r = osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person("p-own", ["Company Admin"], company_id=cid))
+    api_key = seam("features.dataspace_wallet_interface.interface").get_holder_access(companyId=cid)["apiKey"]
+    r = osp.get(f"/api/dataspace-wallet-interface/companies/{cid}/wallet", osp.person("p-own", ["Company Admin"], company_id=cid))
     assert r.status_code == 200
     assert_no_secret(api_key, r.text)
 
@@ -226,7 +226,7 @@ def test_own_wallet_view_company_scope_and_permissions(osp_factory, companies):
     osp = osp_factory(env=ENV)
     activate(osp, "csp", "CSP")
     csp_id, ih_id = COMPANIES["csp"]["id"], COMPANIES["ih"]["id"]
-    path = f"/api/c4-m2/companies/{csp_id}/wallet"
+    path = f"/api/dataspace-wallet-interface/companies/{csp_id}/wallet"
     assert osp.get(path, osp.person("p1", ["IT Admin"], company_id=csp_id)).status_code == 200
     assert osp.get(path, osp.person("p1b", ["Company Admin"], company_id=csp_id)).status_code == 200
     other = osp.get(path, osp.person("p2", ["IT Admin"], company_id=ih_id))
@@ -244,7 +244,7 @@ def test_own_wallet_view_company_without_wallet_is_404(osp_factory, companies):
     # README 7.1 step 2
     osp = osp_factory(env=ENV)
     cid = COMPANIES["div"]["id"]
-    r = osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person("p-div", ["IT Admin"], company_id=cid))
+    r = osp.get(f"/api/dataspace-wallet-interface/companies/{cid}/wallet", osp.person("p-div", ["IT Admin"], company_id=cid))
     assert r.status_code == 404 and r.json()["type"] == "urn:c4-m2:problem:not-found"
 
 
@@ -270,17 +270,17 @@ def div_with_callback(osp_factory, companies, tmp_path):
     (tmp_path / "dids" / "div.example.org.json").write_text(json.dumps(body["didDocument"]))
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{bpn}:NO_CALLBACK", "TEST_DID_DOCUMENTS_DIR": str(tmp_path / "dids")})
     create(osp, "div", "SAP_DIV")
-    r = osp.post(f"/api/c4-m2/callbacks/sap-div/wallets/{bpn}", osp.service("sa-div-callback", ["submit_wallet_callback"]), json=body)
+    r = osp.post(f"/api/dataspace-wallet-interface/callbacks/sap-div/wallets/{bpn}", osp.service("sa-div-callback", ["submit_wallet_callback"]), json=body)
     assert r.status_code == 204, r.text
-    seam("modules.c4_m2.service").run_timer_once()
-    assert seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES["div"]["id"])["status"] == "ACTIVE"
+    seam("features.dataspace_wallet_interface.services.wallet_service").run_timer_once()
+    assert seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES["div"]["id"])["status"] == "ACTIVE"
     return osp
 
 
 def test_case_23_holder_access_sap_div_issuer_writes_from_the_wallet_callback(div_with_callback):
     # README 13 case 23; 9.3 table ISSUER_WRITES: holder (= DID document location), walletUrl, clientId, clientSecret
     c = COMPANIES["div"]
-    access = seam("modules.c4_m2.interface").get_holder_access(companyId=c["id"])
+    access = seam("features.dataspace_wallet_interface.interface").get_holder_access(companyId=c["id"])
     assert access == {"issuanceMode": "ISSUER_WRITES", "companyId": c["id"], "bpn": c["bpn"],
                       "did": "did:web:div.example.org:did:BPNL0000000DIV01", "provider": "SAP_DIV",
                       "holder": "https://div.example.org/did/BPNL0000000DIV01/did.json",
@@ -301,7 +301,7 @@ def test_case_23_holder_access_over_http_with_and_without_the_permission(div_wit
         assert denied.status_code == 403, denied.text
         assert denied.json()["type"] == "urn:c4-m2:problem:forbidden"
         assert "div-SECRET-9f8e7d6c5b" not in denied.text
-    unauth = osp.get(f"/api/c4-m2/internal/wallets/{COMPANIES['div']['id']}/holder-access")
+    unauth = osp.get(f"/api/dataspace-wallet-interface/internal/wallets/{COMPANIES['div']['id']}/holder-access")
     assert unauth.status_code == 401
 
 
@@ -316,7 +316,7 @@ def test_holder_access_base_fields_on_every_variant_and_schema(osp_factory, comp
     assert schema_errors("c4-m2", "HolderAccess", access) == []
     assert (access["issuanceMode"], access["companyId"], access["bpn"], access["did"], access["provider"]) == \
            (mode, COMPANIES[key]["id"], COMPANIES[key]["bpn"], did, provider)
-    assert access == seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES[key]["id"])
+    assert access == seam("features.dataspace_wallet_interface.interface").get_holder_access(companyId=COMPANIES[key]["id"])
     if mode == "ISSUER_WRITES":
         assert {"holder", "walletUrl", "clientId", "clientSecret"} <= set(access)
         assert access["holder"] == info["didDocumentLocation"]
@@ -334,7 +334,7 @@ def test_holder_access_wallet_not_active_is_409_for_requested_and_validating(osp
     # README 9.3 "Wallet not ACTIVE: 409 wallet-not-active"
     bpn_ih = COMPANIES["ih"]["bpn"]
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{bpn_ih}:DID_NOT_RESOLVABLE"})
-    interface = seam("modules.c4_m2.interface")
+    interface = seam("features.dataspace_wallet_interface.interface")
     create(osp, "div", "SAP_DIV")                          # REQUESTED: callback pending
     create(osp, "ih", "IDENTITY_HUB")                      # VALIDATING: DID document not resolvable yet
     assert interface.get_wallet_info(companyId=COMPANIES["div"]["id"])["status"] == "REQUESTED"
@@ -352,11 +352,11 @@ def test_holder_access_wallet_not_active_after_failure(osp_factory, companies, m
     from test_c4_m2_common import Clock
     bpn = COMPANIES["ih"]["bpn"]
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{bpn}:DID_NOT_RESOLVABLE", "DID_VALIDATION_MAX_HOURS": "1"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     create(osp, "ih", "IDENTITY_HUB")
     clock.advance(hours=2)
-    seam("modules.c4_m2.service").run_timer_once()
-    assert seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES["ih"]["id"])["status"] == "FAILED"
+    seam("features.dataspace_wallet_interface.services.wallet_service").run_timer_once()
+    assert seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES["ih"]["id"])["status"] == "FAILED"
     r = holder_http(osp, "ih")
     assert r.status_code == 409 and r.json()["type"] == "urn:c4-m2:problem:wallet-not-active"
 
@@ -367,7 +367,7 @@ def test_holder_access_without_wallet_is_404(osp_factory, companies):
     r = holder_http(osp, "csp")
     assert r.status_code == 404 and r.json()["type"] == "urn:c4-m2:problem:not-found"
     with pytest.raises(Problem) as err:
-        seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
+        seam("features.dataspace_wallet_interface.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
     assert err.value.status == 404
 
 
@@ -387,11 +387,11 @@ def test_every_holder_access_retrieval_over_http_writes_an_audit_entry_without_s
     osp = osp_factory(env=ENV)
     for key, provider, *_ in CASES[:2]:
         activate(osp, key, provider)
-    store = seam("modules.c4_m2.interface").store()
+    store = seam("features.dataspace_wallet_interface.interface").store()
     before = len(store.list_audit())
     secrets = []
     for key in ("div", "ih"):
-        wid = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])["walletId"]
+        wid = seam("features.dataspace_wallet_interface.interface").get_wallet_info(companyId=COMPANIES[key]["id"])["walletId"]
         r = holder_http(osp, key)
         assert r.status_code == 200
         secrets.append(r.json().get("apiKey") or r.json()["clientSecret"])
@@ -413,7 +413,7 @@ def test_in_process_holder_access_writes_an_audit_entry_too(osp_factory, compani
     # entry must contain the calling module's name, C4-M1 (README 9.3: only C4-M1 asks), in some field.
     osp = osp_factory(env=ENV)
     activate(osp, "csp", "CSP")
-    interface = seam("modules.c4_m2.interface")
+    interface = seam("features.dataspace_wallet_interface.interface")
     store = interface.store()
     before = len(store.list_audit())
     access = interface.get_holder_access(companyId=COMPANIES["csp"]["id"])
@@ -429,7 +429,7 @@ def test_failed_holder_access_retrieval_does_not_leak_into_the_audit_secret_scan
     osp = osp_factory(env=ENV)
     create(osp, "div", "SAP_DIV")
     assert holder_http(osp, "div").status_code == 409
-    assert_no_secret("clientSecret", seam("modules.c4_m2.interface").store().list_audit())
+    assert_no_secret("clientSecret", seam("features.dataspace_wallet_interface.interface").store().list_audit())
 
 
 # ================================================================= README 7.1: view of REQUESTED and FAILED
@@ -438,13 +438,13 @@ def test_wallet_view_of_a_requested_wallet(osp_factory, companies):
     osp = osp_factory(env=ENV)
     create(osp, "div", "SAP_DIV")
     cid = COMPANIES["div"]["id"]
-    view = seam("modules.c4_m2.interface").wallet_view(companyId=cid)
+    view = seam("features.dataspace_wallet_interface.interface").wallet_view(companyId=cid)
     assert schema_errors("c4-m2", "Wallet", view) == []
     assert view["status"] == "REQUESTED" and view["provider"] == "SAP_DIV" and view["companyId"] == cid
     assert view.get("did") is None and view.get("didDocumentLocation") is None
     assert view["createdAt"] and re.match(r"^\d{4}-\d{2}-\d{2}T", view["createdAt"])
     assert view.get("failureReason") is None and view.get("activatedAt") is None
-    r = osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person("p-req", ["IT Admin"], company_id=cid))
+    r = osp.get(f"/api/dataspace-wallet-interface/companies/{cid}/wallet", osp.person("p-req", ["IT Admin"], company_id=cid))
     assert r.status_code == 200 and r.json() == view
 
 
@@ -453,25 +453,26 @@ def test_wallet_view_of_a_failed_wallet(osp_factory, companies):
     bpn = COMPANIES["fail_did"]["bpn"]
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{bpn}:DID_MISMATCH"})
     create(osp, "fail_did", "SAP_DIV")
-    seam("modules.c4_m2.providers").flush_stand_in()
-    seam("modules.c4_m2.service").run_timer_once()
+    seam("features.dataspace_wallet_interface.managers.providers").flush_stand_in()
+    seam("features.dataspace_wallet_interface.services.wallet_service").run_timer_once()
     cid = COMPANIES["fail_did"]["id"]
-    view = seam("modules.c4_m2.interface").wallet_view(companyId=cid)
+    view = seam("features.dataspace_wallet_interface.interface").wallet_view(companyId=cid)
     assert schema_errors("c4-m2", "Wallet", view) == []
     assert view["status"] == "FAILED"
     assert view["failureReason"] in ("PROVIDER_TIMEOUT", "DID_MISMATCH", "INVALID_DID_DOCUMENT", "DID_NOT_RESOLVABLE")
     assert view["failureReason"] == "DID_MISMATCH" and view["createdAt"]
     assert view.get("activatedAt") is None
-    r = osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person("p-fail", ["IT Admin"], company_id=cid))
+    r = osp.get(f"/api/dataspace-wallet-interface/companies/{cid}/wallet", osp.person("p-fail", ["IT Admin"], company_id=cid))
     assert r.status_code == 200 and r.json() == view
 
 
 def test_swagger_tags_c4_m2_as_implemented_not_as_stand_in():
     """standin.router() tags its routes "<module> (stand-in)"; the implemented C4-M2 must not show so."""
     from fastapi import FastAPI
-    from modules.c4_m2 import router
+    from features.dataspace_wallet_interface import router
     app = FastAPI()
     app.include_router(router.router)
     tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
-    assert tags == {"c4-m2 Dataspace Wallet Interface"}
+    assert tags == {"Dataspace Wallet Interface: Company", "Dataspace Wallet Interface: Provider",
+                    "Dataspace Wallet Interface: Steps", "Dataspace Wallet Interface: Internal"}
 

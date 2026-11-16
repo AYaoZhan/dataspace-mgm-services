@@ -29,24 +29,22 @@ A wallet account is the access of a technical user to the dataspace wallet of it
 complete at the time of the call and the end is reported by an event (README 6.9). Steps and callbacks of one
 technical user never run at the same time (a lock per technical user, README 6.9). Time is read only through
 `service.now()` at call time. The wallet, the company, the clock, the audit log and the encryption belong to the
-core (`service.py`, `crypto.py`); the providers are asked through `providers.get(...)`.
+core (`wallet_service.py`, `managers/crypto.py`); the providers are asked through `providers.get(...)`. The HTTP
+operations are in `controllers/` (steps, `technical_users/`, `internal/`, `callbacks/`).
 """
 from __future__ import annotations
 
 import contextlib
 import datetime as dt
-import os
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Body, Response
-
-from portal_common import events, problems, standin
+from portal_common import events
 from portal_common.problems import Problem
 
-from . import crypto, providers, service
-
-MODULE = "c4-m2"
+from ..managers import config, crypto, providers
+from ..models import MODULE
+from . import wallet_service as service
 REQUESTED, ACTIVE, FAILED, DELETING, DELETED = "REQUESTED", "ACTIVE", "FAILED", "DELETING", "DELETED"
 NONE, AVAILABLE, RETRIEVED, EXPIRED = "NONE", "AVAILABLE", "RETRIEVED", "EXPIRED"
 
@@ -54,31 +52,6 @@ NONE, AVAILABLE, RETRIEVED, EXPIRED = "NONE", "AVAILABLE", "RETRIEVED", "EXPIRED
 # --------------------------------------------------------------------------------------- helpers
 def _problem(status: int, name: str, detail: str | None = None, retryable: bool = False) -> Problem:
     return Problem(MODULE, status, name, detail=detail, retryable=retryable)
-
-
-def _number(name: str, default: float) -> float:
-    """A positive number from the environment at call time; the default for unset or unusable values."""
-    try:
-        value = float(os.environ.get(name, "").strip())
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-def _aware(value: Any) -> dt.datetime | None:
-    if isinstance(value, str):
-        try:
-            value = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if not isinstance(value, dt.datetime):
-        return None
-    return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
-
-
-def _iso(value: Any) -> str | None:
-    moment = _aware(value)
-    return moment.isoformat() if moment else None
 
 
 def _lock(technical_user_id: str) -> contextlib.AbstractContextManager:
@@ -131,12 +104,12 @@ def _view(account: dict) -> dict:
     expires = None
     if account.get("credentials_state") == AVAILABLE:
         row = service.get_store().get_account_credentials(account["id"])
-        expires = _iso(row["expires_at"]) if row else None
+        expires = service.iso(row["expires_at"]) if row else None
     return {"walletAccountRef": account["id"], "technicalUserId": account["technical_user_id"],
             "companyId": account["company_id"], "provider": account["provider"], "status": account["status"],
             "failureReason": account.get("failure_reason"), "credentialsState": account["credentials_state"],
-            "credentialsExpireAt": expires, "createdAt": _iso(account.get("created_at")),
-            "changedAt": _iso(account.get("changed_at"))}
+            "credentialsExpireAt": expires, "createdAt": service.iso(account.get("created_at")),
+            "changedAt": service.iso(account.get("changed_at"))}
 
 
 def _current(technical_user_id: str) -> dict:
@@ -172,7 +145,7 @@ def _activate(account: dict, token_url: str, client_id: str, secret: str) -> dic
     ciphertext, nonce, key_version = crypto.encrypt(secret)
     service.get_store().put_account_credentials(
         account["id"], token_url, client_id, ciphertext, nonce, key_version, moment,
-        moment + dt.timedelta(days=_number("ACCOUNT_CREDENTIALS_RETENTION_DAYS", 30)))
+        moment + dt.timedelta(days=config.account_credentials_retention_days()))
     account.update(status=ACTIVE, credentials_state=AVAILABLE, failure_reason=None,
                    provider_ordered_at=account.get("provider_ordered_at") or moment)
     _save(account)
@@ -381,9 +354,9 @@ def retrieve_credentials(technical_user_id: str, claims: dict) -> dict:
 
 # ------------------------------------------------------------------------------ scheduled tasks
 def _deadline_passed(candidate: dict, field: str, moment: dt.datetime) -> bool:
-    ordered = _aware(candidate.get(field))
+    ordered = service.when(candidate.get(field))
     return ordered is not None and moment - ordered > dt.timedelta(
-        minutes=_number("PROVIDER_CALLBACK_TIMEOUT_MINUTES", 1440))
+        minutes=config.provider_callback_timeout_minutes())
 
 
 def _task_callback_deadline(moment: dt.datetime) -> None:
@@ -411,7 +384,7 @@ def _task_credentials_retention(moment: dt.datetime) -> None:
     store = service.get_store()
     for candidate in store.list_accounts():
         row = store.get_account_credentials(candidate["id"]) if candidate["credentials_state"] == AVAILABLE else None
-        expires = _aware(row["expires_at"]) if row else None
+        expires = service.when(row["expires_at"]) if row else None
         if expires is None or expires > moment:
             continue
         with _lock(candidate["technical_user_id"]):
@@ -428,39 +401,5 @@ def run_tasks() -> None:
     _task_credentials_retention(service.now())
 
 
-# ----------------------------------------------------------------------------------------- routes
-# No prefix: `router.py` of the core includes this router under `/api/c4-m2`.
-router = APIRouter(route_class=problems.route_class(MODULE))
-
-
-@router.post("/steps/create-wallet-account")
-def step_create_wallet_account(body: dict = Body(...),
-                               _: dict = standin.perm(MODULE, "POST", "/steps/create-wallet-account")):
-    return create_wallet_account(body)
-
-
-@router.post("/steps/delete-wallet-account")
-def step_delete_wallet_account(body: dict = Body(...),
-                               _: dict = standin.perm(MODULE, "POST", "/steps/delete-wallet-account")):
-    return delete_wallet_account(body)
-
-
-@router.get("/technical-users/{technicalUserId}/wallet-account")
-def get_wallet_account(technicalUserId: str,
-                       claims: dict = standin.perm(MODULE, "GET", "/technical-users/{technicalUserId}/wallet-account")):
-    return view_wallet_account(technicalUserId, claims)
-
-
-@router.post("/technical-users/{technicalUserId}/wallet-account/credentials")
-def post_wallet_account_credentials(
-        technicalUserId: str, response: Response,
-        claims: dict = standin.perm(MODULE, "POST", "/technical-users/{technicalUserId}/wallet-account/credentials")):
-    response.headers["Cache-Control"] = "no-store"
-    return retrieve_credentials(technicalUserId, claims)
-
-
-@router.get("/internal/technical-users/{technicalUserId}/wallet-account")
-def get_wallet_account_internal_route(
-        technicalUserId: str,
-        _: dict = standin.perm(MODULE, "GET", "/internal/technical-users/{technicalUserId}/wallet-account")):
-    return get_wallet_account_internal(technicalUserId=technicalUserId)
+providers.on_callback("account-created", accept_account_created)
+providers.on_callback("account-deleted", accept_account_deleted)

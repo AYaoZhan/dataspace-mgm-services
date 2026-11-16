@@ -78,7 +78,7 @@ CSP_TOKEN_URL = "https://csp-wallet.example.org/api/sts/token"
 SAP_AUTH = "https://div.example.org/auth"
 CB_SECRET, CB_CLIENT = "div-account-secret-do-not-leak", "div-account-client-do-not-leak"
 _steps = itertools.count(100)
-_VIEW = "/api/c4-m2/technical-users/{}/wallet-account"
+_VIEW = "/api/dataspace-wallet-interface/technical-users/{}/wallet-account"
 
 
 @pytest.fixture(autouse=True)
@@ -90,15 +90,15 @@ def _csp_company_is_active(companies):
 
 # ------------------------------------------------------------------------------------------ helpers
 def m2():
-    return seam("modules.c4_m2.interface")
+    return seam("features.dataspace_wallet_interface.interface")
 
 
 def service():
-    return seam("modules.c4_m2.service")
+    return seam("features.dataspace_wallet_interface.services.wallet_service")
 
 
 def providers():
-    return seam("modules.c4_m2.providers")
+    return seam("features.dataspace_wallet_interface.managers.providers")
 
 
 def tu(n: int) -> str:
@@ -155,7 +155,7 @@ def assert_problem(p, status: int, name: str, retryable: bool = False) -> None:
 
 def plain_secret(n: int) -> str:
     r = creds(n)
-    return seam("modules.c4_m2.crypto").decrypt(r["client_secret_encrypted"], r["nonce"], r["key_version"])
+    return seam("features.dataspace_wallet_interface.managers.crypto").decrypt(r["client_secret_encrypted"], r["nonce"], r["key_version"])
 
 
 def person(osp, uid: str, company: dict | None, roles=("IT Admin",), given="Erika", family="Mustermann") -> str:
@@ -177,13 +177,13 @@ def div_token(osp) -> str:
 
 
 def cb_create(osp, ref: str, token: str | None = "default", secret: str = CB_SECRET):
-    return osp.post(f"/api/c4-m2/callbacks/sap-div/technical-users/{ref}",
+    return osp.post(f"/api/dataspace-wallet-interface/callbacks/sap-div/technical-users/{ref}",
                     div_token(osp) if token == "default" else token,
                     json={"authenticationServiceUrl": SAP_AUTH, "clientID": CB_CLIENT, "clientSecret": secret})
 
 
 def cb_delete(osp, ref: str, token: str | None = "default"):
-    return osp.post(f"/api/c4-m2/callbacks/sap-div/technical-users/{ref}/delete",
+    return osp.post(f"/api/dataspace-wallet-interface/callbacks/sap-div/technical-users/{ref}/delete",
                     div_token(osp) if token == "default" else token)
 
 
@@ -250,10 +250,10 @@ def test_case_14_create_wallet_account_over_http_with_service_token(osp_factory,
     osp = osp_factory(env=ENV)
     make_wallet(DIV, "SAP_DIV")
     body = step_input(DIV["id"], 1, technicalUserId=tu(1))
-    assert osp.post("/api/c4-m2/steps/create-wallet-account", json=body).status_code == 401
-    assert osp.post("/api/c4-m2/steps/create-wallet-account", osp.service("sa-q", ["query_c4_m2"]),
+    assert osp.post("/api/dataspace-wallet-interface/steps/create-wallet-account", json=body).status_code == 401
+    assert osp.post("/api/dataspace-wallet-interface/steps/create-wallet-account", osp.service("sa-q", ["query_c4_m2"]),
                     json=body).status_code == 403
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", osp.service("svc-c4-m2"), json=body)
+    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet-account", osp.service("svc-c4-m2"), json=body)
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["stepRunId"] == uuid_str(1) and out["state"] == "RUNNING"
@@ -281,7 +281,7 @@ def test_case_16_create_account_before_wallet_is_active_is_409_wallet_not_active
     assert store().get_wallet(DIV["id"])["status"] == "REQUESTED"
     assert_problem(step_problem(m2().create_wallet_account, DIV, 1), 409, "wallet-not-active")
     assert acct(1) is None and account_orders() == []
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", osp.service("svc-c4-m2"),
+    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet-account", osp.service("svc-c4-m2"),
                  json=step_input(DIV["id"], 2, technicalUserId=tu(1)))
     assert r.status_code == 409 and ptype(r) == "urn:c4-m2:problem:wallet-not-active"
     assert r.json()["retryable"] is False
@@ -306,7 +306,7 @@ def test_case_17_deactivated_company_gets_no_account_but_can_delete(osp_factory,
 
     assert_problem(step_problem(m2().create_wallet_account, INA, 2), 409, "company-not-active", retryable=False)
     assert acct(2) is None and len(account_orders("account")) == 1
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", osp.service("svc-c4-m2"),
+    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet-account", osp.service("svc-c4-m2"),
                  json=step_input(INA["id"], 3, technicalUserId=tu(2)))
     assert r.status_code == 409 and ptype(r) == "urn:c4-m2:problem:company-not-active"
     assert r.json()["retryable"] is False and acct(2) is None
@@ -473,7 +473,7 @@ def test_case_21_repeat_while_deleting_is_running_without_second_order(osp_facto
 def test_case_21_delete_without_deletion_callback_fails_after_the_deadline(osp_factory, companies, monkeypatch):
     # README 13 case 21 (NO_DELETE_CALLBACK), 6.3 DELETING -> DELETING + WalletAccountDeletionFailed, 6.10
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{tu(1)}:NO_DELETE_CALLBACK"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     create(DIV, 1)
     providers().flush_stand_in()
@@ -498,7 +498,7 @@ def test_case_21_delete_without_deletion_callback_fails_after_the_deadline(osp_f
 def test_case_21_no_callback_on_create_fails_with_provider_timeout(osp_factory, companies, monkeypatch):
     # README 6.3 REQUESTED -> FAILED (PROVIDER_TIMEOUT) + WalletAccountFailed, 6.10, 14.3 `<technicalUserId>:NO_CALLBACK`
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{tu(1)}:NO_CALLBACK"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     create(DIV, 1)
     providers().flush_stand_in()
@@ -531,7 +531,7 @@ def test_case_21_no_callback_on_create_fails_with_provider_timeout(osp_factory, 
 def test_case_22_credentials_not_retrieved_expire_after_the_retention(osp_factory, companies, monkeypatch):
     # README 13 case 22, 6.7, 6.10 "Clean up credentials", 7.3 step 3
     osp = osp_factory(env={**ENV, "ACCOUNT_CREDENTIALS_RETENTION_DAYS": "7"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(CSPC, "CSP")
     create(CSPC, 1)
     ref = acct(1)["id"]
@@ -650,7 +650,7 @@ def test_case_15_store_pop_account_credentials_is_exactly_once(osp_factory, comp
 def test_view_wallet_account_body_matches_openapi_without_secrets(osp_factory, companies, monkeypatch):
     # README 7.2, openapi WalletAccount (credentialsState, credentialsExpireAt)
     osp = osp_factory(env=ENV)
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     create(DIV, 1)
     token = person(osp, "p1-div", DIV)
@@ -707,7 +707,7 @@ def test_current_account_is_the_row_not_deleted_else_the_latest(osp_factory, com
 def test_internal_wallet_account_query_without_company_check(osp_factory, companies):
     # README 9.2, 6.8 `query_c4_m2`; operationId getWalletAccountInternal -> `get_wallet_account_internal`
     osp = csp_account(osp_factory)
-    path = f"/api/c4-m2/internal/technical-users/{tu(1)}/wallet-account"
+    path = f"/api/dataspace-wallet-interface/internal/technical-users/{tu(1)}/wallet-account"
     assert osp.get(path).status_code == 401
     assert osp.get(path, osp.service("sa-none", ["submit_wallet_callback"])).status_code == 403
     r = osp.get(path, osp.service("svc-c4-m2"))
@@ -717,7 +717,7 @@ def test_internal_wallet_account_query_without_company_check(osp_factory, compan
     assert r.json()["walletAccountRef"] == acct(1)["id"] and r.json()["companyId"] == CSPC["id"]
     in_process = m2().get_wallet_account_internal(technicalUserId=tu(1))
     assert in_process == r.json() and schema_errors(MODULE, "WalletAccount", in_process) == []
-    missing = osp.get(f"/api/c4-m2/internal/technical-users/{tu(55)}/wallet-account", osp.service("svc-c4-m2"))
+    missing = osp.get(f"/api/dataspace-wallet-interface/internal/technical-users/{tu(55)}/wallet-account", osp.service("svc-c4-m2"))
     assert missing.status_code == 404
     with pytest.raises(Exception) as e:
         m2().get_wallet_account_internal(technicalUserId=tu(55))
@@ -818,7 +818,7 @@ def test_delete_failed_account_becomes_deleted_with_event(osp_factory, companies
     # README 8.3 step 3, 6.3 `FAILED` -> `DELETED`
     # OPEN-QUESTION (module docstring): 6.9 does not say RUNNING or DONE for this case, so the step state is not asserted
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{tu(1)}:NO_CALLBACK"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     create(DIV, 1)
     clock.advance(minutes=61)
@@ -838,8 +838,8 @@ def test_delete_over_http_with_service_token(osp_factory, companies):
     make_wallet(IH, "IDENTITY_HUB")
     create(IH, 1)
     body = step_input(IH["id"], 9, technicalUserId=tu(1), walletAccountRef=acct(1)["id"])
-    assert osp.post("/api/c4-m2/steps/delete-wallet-account", json=body).status_code == 401
-    r = osp.post("/api/c4-m2/steps/delete-wallet-account", osp.service("svc-c4-m2"), json=body)
+    assert osp.post("/api/dataspace-wallet-interface/steps/delete-wallet-account", json=body).status_code == 401
+    r = osp.post("/api/dataspace-wallet-interface/steps/delete-wallet-account", osp.service("svc-c4-m2"), json=body)
     assert r.status_code == 200, r.text
     assert response_errors(MODULE, "POST", "/steps/delete-wallet-account", 200, r.json()) == []
     assert r.json()["state"] == "RUNNING" and r.json()["result"]["status"] == "DELETED"
@@ -872,7 +872,7 @@ def test_callback_unknown_external_id_is_404(osp_factory, companies):
 def test_create_callback_stores_encrypted_credentials_and_activates(osp_factory, companies, monkeypatch):
     # README 7.6 create step 3, 5 `wallet_account_credentials`, 6.7, 10
     osp = osp_factory(env=ENV)
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     create(DIV, 1)
     ref = acct(1)["id"]
@@ -909,7 +909,7 @@ def test_create_callback_repeated_on_active_is_204_without_change(osp_factory, c
 def accounts_in_other_states(osp_factory, monkeypatch):
     """SAP DIV accounts: 1 FAILED, 2 DELETING (credentials row still there), 3 DELETED."""
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{tu(1)}:NO_CALLBACK"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     create(DIV, 1)                                           # will FAIL
     create(DIV, 2)
@@ -1001,7 +1001,7 @@ def test_case_25_account_secrets_appear_nowhere_in_plaintext(osp_factory, compan
     secrets, client_ids = [plain_secret(1)], [creds(1)["client_id"]]
     if provider == "IDENTITY_HUB":
         sts = store().get_secret(w["id"], "STS_ACCESS")
-        secrets.append(seam("modules.c4_m2.crypto").decrypt(sts["secret_encrypted"], sts["nonce"], sts["key_version"]))
+        secrets.append(seam("features.dataspace_wallet_interface.managers.crypto").decrypt(sts["secret_encrypted"], sts["nonce"], sts["key_version"]))
     for s in secrets + client_ids:
         assert_no_secret(s, outs)
     _secret_scan(osp, caplog, secrets, client_ids)
@@ -1016,7 +1016,7 @@ def test_events_for_notifications_and_c2_m3_carry_technicalUserId_companyId_wall
     # FRAMEWORK 6 (events of wallet accounts, line ~325), C11-M1 rule R14 (reads companyId and technicalUserId),
     # C2-M3 flow apply-wallet-access (walletAccountRef), README 10 table: all four events, source urn:c4-m2
     osp = osp_factory(env={**ENV, "STUB_FAILURES": f"{tu(1)}:NO_CALLBACK,{tu(3)}:NO_DELETE_CALLBACK"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     make_wallet(DIV, "SAP_DIV")
     for n in (1, 2, 3):
         create(DIV, n)
@@ -1233,7 +1233,7 @@ def test_step_input_validation_is_400_validation(osp_factory, companies, step, f
     with pytest.raises(Exception) as e:
         getattr(m2(), step)(body)
     assert_problem(problems.to_problem(MODULE, e.value, True), 400, "validation")
-    r = osp.post("/api/c4-m2/steps/" + step.replace("_", "-"), osp.service("svc-c4-m2"), json=body)
+    r = osp.post("/api/dataspace-wallet-interface/steps/" + step.replace("_", "-"), osp.service("svc-c4-m2"), json=body)
     assert r.status_code == 400 and ptype(r) == "urn:c4-m2:problem:validation", r.text    # never 422
     assert store().list_accounts() == [] and account_orders() == []
 

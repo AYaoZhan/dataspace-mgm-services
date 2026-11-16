@@ -23,16 +23,16 @@
 #  Assisted-By: Claude Code (claude-sonnet-5-5)
 """Business logic of C4-M2: the single clock, the store, the audit log and the step log.
 
-The router stays a thin HTTP layer and `interface.py` the public functions; the rules of the wallet
+The controllers stay a thin HTTP layer and `interface.py` the public functions; the rules of the wallet
 (README 6, 8) live here. Every time read of the module goes through `now()` so that tests can move the
-clock. `providers` and `accounts` (written by another person) are imported only inside functions.
+clock. `account_service` imports this file, so this file loads it by name only inside functions
+(`optional_module`); the provider adapters are `managers/providers/`.
 """
 from __future__ import annotations
 
 import datetime as dt
 import importlib
 import logging
-import os
 import threading
 import uuid
 from types import ModuleType
@@ -41,12 +41,13 @@ from typing import Any
 from portal_common import events, neighbours
 from portal_common.problems import Problem
 
-from . import crypto, did
-from .store import InMemoryStore, WalletStore
+from ..managers import config, crypto, providers
+from ..managers import did_resolver as did
+from ..managers.wallet_store import InMemoryStore, WalletStore
+from ..models import MODULE
 
 log = logging.getLogger(__name__)
 
-MODULE = "c4-m2"
 PROVIDERS = ("SAP_DIV", "IDENTITY_HUB", "CSP")
 HOLDER_ACCESS, STS_ACCESS = "HOLDER_ACCESS", "STS_ACCESS"
 
@@ -69,7 +70,8 @@ def get_store() -> WalletStore:
 
 
 def optional_module(name: str) -> ModuleType | None:
-    """`modules.c4_m2.<name>` if the file exists, else None; a broken import still raises."""
+    """`features.dataspace_wallet_interface.services.<name>` if the file exists, else None; a broken import
+    still raises."""
     full = f"{__package__}.{name}"
     try:
         return importlib.import_module(full)
@@ -103,16 +105,7 @@ def log_step(input: dict, step: str, object_id: str | None, state: str) -> None:
 
 
 # --------------------------------------------------------------------------------------- helpers
-def _number(name: str, default: float) -> float:
-    """A positive number from the environment at call time; the default for unset or unusable values."""
-    try:
-        value = float(os.environ.get(name, "").strip())
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-def _when(value: Any) -> dt.datetime | None:
+def when(value: Any) -> dt.datetime | None:
     """A timezone-aware datetime from a datetime or an ISO string, None if there is none."""
     if isinstance(value, str):
         try:
@@ -124,8 +117,9 @@ def _when(value: Any) -> dt.datetime | None:
     return value if value.tzinfo else value.replace(tzinfo=dt.timezone.utc)
 
 
-def _iso(value: Any) -> str | None:
-    moment = _when(value)
+def iso(value: Any) -> str | None:
+    """ISO 8601 text of a datetime or an ISO string, None if there is none."""
+    moment = when(value)
     return moment.isoformat() if moment else None
 
 
@@ -133,26 +127,19 @@ def _problem(status: int, name: str, detail: str | None = None, retryable: bool 
     return Problem(MODULE, status, name, detail=detail, retryable=retryable)
 
 
-def providers_module() -> ModuleType | None:
-    """The providers file of C4-M2 if it exists (it is written by another person)."""
-    return optional_module("providers")
+def providers_module() -> ModuleType:
+    """The provider adapters of C4-M2 (`managers/providers/`)."""
+    return providers
 
 
 def enabled_providers() -> list[str]:
     """README 4: `ENABLED_PROVIDERS`, empty = `SAP_DIV,IDENTITY_HUB,CSP`."""
-    providers = providers_module()
-    if providers is not None:
-        return list(providers.enabled())
-    names = [n.strip().upper() for n in os.environ.get("ENABLED_PROVIDERS", "").split(",") if n.strip()]
-    return names or list(PROVIDERS)
+    return list(providers.enabled())
 
 
 def default_provider() -> str:
     """README 4: `DEFAULT_PROVIDER`, empty = `CSP`."""
-    providers = providers_module()
-    if providers is not None:
-        return providers.default_provider()
-    return os.environ.get("DEFAULT_PROVIDER", "").strip().upper() or "CSP"
+    return providers.default_provider()
 
 
 def get_company(company_id: str) -> dict | None:
@@ -248,10 +235,10 @@ def check_did(wallet: dict) -> dict:
     document = did.resolve(wallet["did"])
     moment = now()
     if document is None:
-        started = _when(wallet.get("validating_since")) or moment
-        if moment >= started + dt.timedelta(hours=_number("DID_VALIDATION_MAX_HOURS", 168)):
+        started = when(wallet.get("validating_since")) or moment
+        if moment >= started + dt.timedelta(hours=config.did_validation_max_hours()):
             return _fail(wallet, "DID_NOT_RESOLVABLE")
-        wallet["next_check_at"] = moment + dt.timedelta(minutes=_number("DID_VALIDATION_INTERVAL_MINUTES", 10))
+        wallet["next_check_at"] = moment + dt.timedelta(minutes=config.did_validation_interval_minutes())
         return _save(wallet)
     if did.check_document(wallet["provider"], wallet["did"], document):
         return _fail(wallet, did.INVALID_DID_DOCUMENT)
@@ -310,9 +297,6 @@ def _reset_for_new_attempt(wallet: dict, provider: str) -> dict:
 
 def _order(wallet: dict, company: dict) -> dict:
     """README 8.1 step 4: the order to the adapter. `provider_ordered_at` is set only after it accepted."""
-    providers = providers_module()
-    if providers is None:
-        raise _problem(502, "upstream-error", "no provider adapter available", retryable=True)
     answer = providers.get(wallet["provider"]).order_wallet({
         "company_id": wallet["company_id"], "bpn": wallet["bpn"], "company_name": company.get("name"),
         "attempt": wallet["attempt"], "wallet_id": wallet["id"]})
@@ -414,7 +398,7 @@ def _callback_document_valid(document: dict) -> bool:
 
 
 def _sap_div_location(bpn: str, did_value: str) -> str | None:
-    base = os.environ.get("SAP_DIV_DID_DOCUMENT_BASE_URL", "").strip().rstrip("/")
+    base = config.sap_div_did_document_base_url()
     return f"{base}/{bpn}/did.json" if base else did_web_location(did_value)
 
 
@@ -460,15 +444,15 @@ def accept_wallet_callback(bpn: str, body: dict, claims: dict | str | None) -> N
 # -------------------------------------------------------------------------- scheduled tasks
 def _timer_pass_requested(moment: dt.datetime) -> None:
     """README 6.10 callback deadline: `REQUESTED` with an order older than the deadline."""
-    deadline = dt.timedelta(minutes=_number("PROVIDER_CALLBACK_TIMEOUT_MINUTES", 1440))
+    deadline = dt.timedelta(minutes=config.provider_callback_timeout_minutes())
     store = get_store()
     for candidate in store.list_wallets(["REQUESTED"]):
-        ordered = _when(candidate.get("provider_ordered_at"))
+        ordered = when(candidate.get("provider_ordered_at"))
         if ordered is None or moment - ordered <= deadline:
             continue
         with store.transaction(candidate["company_id"]):
             wallet = store.get_wallet(candidate["company_id"])
-            if wallet and wallet["status"] == "REQUESTED" and _when(wallet.get("provider_ordered_at")) == ordered:
+            if wallet and wallet["status"] == "REQUESTED" and when(wallet.get("provider_ordered_at")) == ordered:
                 _fail(wallet, "PROVIDER_TIMEOUT")
 
 
@@ -476,7 +460,7 @@ def _timer_pass_validating(moment: dt.datetime) -> None:
     """README 6.10 DID check: `VALIDATING`, no `did_validated_at`, `next_check_at` reached."""
     store = get_store()
     for candidate in store.list_wallets(["VALIDATING"]):
-        due = _when(candidate.get("next_check_at"))
+        due = when(candidate.get("next_check_at"))
         if candidate.get("did_validated_at") or due is None or due > moment:
             continue
         with store.transaction(candidate["company_id"]):
@@ -491,7 +475,7 @@ def run_timer_once() -> None:
     moment = now()
     _timer_pass_requested(moment)
     _timer_pass_validating(now())
-    accounts = optional_module("accounts")
+    accounts = optional_module("account_service")
     if accounts is not None and hasattr(accounts, "run_tasks"):
         accounts.run_tasks()
 
@@ -501,7 +485,7 @@ _timer_stop = threading.Event()
 
 
 def _timer_loop(stop: threading.Event) -> None:
-    while not stop.wait(_number("TIMER_INTERVAL_SECONDS", 60)):
+    while not stop.wait(config.timer_interval_seconds()):
         try:
             run_timer_once()
         except Exception:  # noqa: BLE001 - a failing pass must not end the timer
@@ -545,7 +529,7 @@ def wallet_info(company_id: str) -> dict:
             "did": wallet.get("did"), "didDocumentLocation": wallet.get("did_document_location"),
             "credentialServiceUrl": wallet.get("credential_service_url"),
             "issuanceMode": _issuance_mode(wallet["provider"]), "supportsWalletAccounts": True,
-            "failureReason": wallet.get("failure_reason"), "activatedAt": _iso(wallet.get("activated_at"))}
+            "failureReason": wallet.get("failure_reason"), "activatedAt": iso(wallet.get("activated_at"))}
 
 
 def wallet_view(company_id: str) -> dict:
@@ -554,11 +538,10 @@ def wallet_view(company_id: str) -> dict:
     return {"companyId": wallet["company_id"], "provider": wallet["provider"], "status": wallet["status"],
             "did": wallet.get("did"), "didDocumentLocation": wallet.get("did_document_location"),
             "credentialServiceUrl": wallet.get("credential_service_url"),
-            "bdrsUrl": os.environ.get("BDRS_PUBLIC_URL", "").strip() or None,
-            "stsTokenUrl": (os.environ.get("IDENTITYHUB_STS_TOKEN_URL", "").strip() or None)
-            if wallet["provider"] == "IDENTITY_HUB" else None,
+            "bdrsUrl": config.bdrs_public_url(),
+            "stsTokenUrl": config.identityhub_sts_token_url() if wallet["provider"] == "IDENTITY_HUB" else None,
             "supportsWalletAccounts": True, "failureReason": wallet.get("failure_reason"),
-            "createdAt": _iso(wallet.get("created_at")), "activatedAt": _iso(wallet.get("activated_at"))}
+            "createdAt": iso(wallet.get("created_at")), "activatedAt": iso(wallet.get("activated_at"))}
 
 
 def holder_access(company_id: str, claims: dict | str | None = None) -> dict:
@@ -580,3 +563,6 @@ def holder_access(company_id: str, claims: dict | str | None = None) -> dict:
                     apiKey=access["secret"], credentialServiceUrl=wallet.get("credential_service_url"))
     audit(claims if claims is not None else "c4-m1", "READ_HOLDER_ACCESS", wallet["company_id"], wallet["id"])
     return base
+
+
+providers.on_callback("wallet-created", accept_wallet_callback)

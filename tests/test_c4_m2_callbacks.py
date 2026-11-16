@@ -24,7 +24,7 @@
 #################################################################################
 """C4-M2 callbacks of SAP DIV (README 7.6, 6.2, 6.4, 6.8, 6.10, 13 cases 5, 6, 7).
 
-`POST /api/c4-m2/callbacks/sap-div/wallets/{bpn}`. Wallets are ordered with `STUB_CALLBACK_DELAY_SECONDS`
+`POST /api/dataspace-wallet-interface/callbacks/sap-div/wallets/{bpn}`. Wallets are ordered with `STUB_CALLBACK_DELAY_SECONDS`
 3600 so that the stand-in does not call back by itself; the tests send the callback over HTTP (or let the
 stand-in do it with `providers.flush_stand_in()`). Time is driven by the kit `Clock` on `service.now`.
 OPEN-QUESTION: the DID check "in the background immediately after the commit" (README 7.6 step 6) is not
@@ -40,8 +40,8 @@ import importlib.util
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("modules.c4_m2.providers") is None,
-    reason="not implemented yet: modules.c4_m2.providers (provider adapters)")
+    importlib.util.find_spec("features.dataspace_wallet_interface.managers.providers") is None,
+    reason="not implemented yet: features.dataspace_wallet_interface.managers.providers (provider adapters)")
 
 import json
 import logging
@@ -63,15 +63,15 @@ X, Y = "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU", "x_FEzRu9m36HLN_tue659LNpX
 
 # ------------------------------------------------------------------------------------------ helpers
 def m2():
-    return seam("modules.c4_m2.interface")
+    return seam("features.dataspace_wallet_interface.interface")
 
 
 def service():
-    return seam("modules.c4_m2.service")
+    return seam("features.dataspace_wallet_interface.services.wallet_service")
 
 
 def providers():
-    return seam("modules.c4_m2.providers")
+    return seam("features.dataspace_wallet_interface.managers.providers")
 
 
 def did_of(company: dict) -> str:
@@ -95,7 +95,7 @@ def body(company: dict, did: str | None = None, document: dict | None = None, se
 
 
 def callback_path(bpn: str) -> str:
-    return f"/api/c4-m2/callbacks/sap-div/wallets/{bpn}"
+    return f"/api/dataspace-wallet-interface/callbacks/sap-div/wallets/{bpn}"
 
 
 def div_token(osp) -> str:
@@ -249,7 +249,7 @@ def test_valid_callback_stores_the_access_encrypted_and_moves_to_validating(osp_
     # OPEN-QUESTION: nonce of 12 bytes is our convention (AES-GCM default), README 5 only says `nonce bytea`
     assert len(secret["nonce"]) == 12 and secret["key_version"] == 1     # AES-GCM nonce, SECRETS_KEY_VERSION
     assert "clientSecret" not in secret and SECRET not in secret.values()
-    assert seam("modules.c4_m2.crypto").decrypt(secret["secret_encrypted"], secret["nonce"],
+    assert seam("features.dataspace_wallet_interface.managers.crypto").decrypt(secret["secret_encrypted"], secret["nonce"],
                                                 secret["key_version"]) == SECRET
     assert ev(osp, "DataspaceWalletCreated") == [] and ev(osp, "DataspaceWalletFailed") == []
     assert_no_secret(SECRET, m2().store().dump(), osp.events(), r.text, caplog.text)
@@ -474,7 +474,7 @@ def test_resolved_document_content_is_checked_by_the_did_check_not_by_the_callba
     (tmp_path / "dids").mkdir()
     (tmp_path / "dids" / "div.example.org.json").write_text(json.dumps(bad))
     osp = start(osp_factory, env={"TEST_DID_DOCUMENTS_DIR": str(tmp_path / "dids")})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     r = send(osp, DIV, body(DIV))                                  # valid body
     assert r.status_code == 204
     assert row(DIV)["status"] in ("VALIDATING", "FAILED")          # the background check may already have run
@@ -504,7 +504,7 @@ def test_case_05_no_callback_fails_with_provider_timeout_from_the_timer(osp_fact
     # README 13 case 5, 6.2, 6.10 "Callback deadline wallet", 14.3 NO_CALLBACK
     osp = start(osp_factory, FAIL02, create=False, env={"STUB_FAILURES": f"{FAIL02['bpn']}:NO_CALLBACK",
                                           "PROVIDER_CALLBACK_TIMEOUT_MINUTES": "1"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")   # before the order: its time is patched time
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")   # before the order: its time is patched time
     order(FAIL02)
     providers().flush_stand_in()                      # the stand-in does not call back (NO_CALLBACK)
     assert row(FAIL02)["status"] == "REQUESTED" and row(FAIL02)["provider_ordered_at"]
@@ -533,7 +533,7 @@ def test_case_05_no_callback_fails_with_provider_timeout_from_the_timer(osp_fact
 def test_case_05_timer_does_not_touch_a_wallet_that_got_its_callback(osp_factory, companies, monkeypatch):
     # README 6.10: the deadline task selects REQUESTED only
     osp = start(osp_factory, create=False, env={"PROVIDER_CALLBACK_TIMEOUT_MINUTES": "1"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     order()
     providers().flush_stand_in()
     assert row(DIV)["status"] == "ACTIVE"
@@ -550,7 +550,7 @@ def test_case_07_did_not_resolvable_stays_validating_then_fails_at_the_deadline(
     osp = start(osp_factory, create=False, env={"STUB_FAILURES": f"{DIV['bpn']}:DID_NOT_RESOLVABLE",
                                                 "DID_VALIDATION_INTERVAL_MINUTES": "10",
                                                 "DID_VALIDATION_MAX_HOURS": "1"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     order()
     providers().flush_stand_in()                      # callback of the stand-in, DID check starts
     w = row(DIV)
@@ -581,7 +581,7 @@ def test_case_07_resolvable_again_before_the_deadline_becomes_active(osp_factory
     osp = start(osp_factory, create=False, env={"STUB_FAILURES": f"{DIV['bpn']}:DID_NOT_RESOLVABLE",
                                                 "DID_VALIDATION_INTERVAL_MINUTES": "10",
                                                 "DID_VALIDATION_MAX_HOURS": "1"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     order()
     providers().flush_stand_in()
     assert row(DIV)["status"] == "VALIDATING"
@@ -601,7 +601,7 @@ def test_case_07_invalid_document_content_fails_at_once_without_further_attempts
     osp = start(osp_factory, create=False, env={"STUB_FAILURES": f"{DIV['bpn']}:INVALID_DID_DOCUMENT",
                                                 "DID_VALIDATION_INTERVAL_MINUTES": "10",
                                                 "DID_VALIDATION_MAX_HOURS": "1"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
     order()
     providers().flush_stand_in()
     w = row(DIV)

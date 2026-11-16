@@ -260,7 +260,7 @@ def _approve(engine):
 
 def test_running_step_completed_by_event_and_withdrawal_after_approval_does_not_end(engine, fake, monkeypatch):
     monkeypatch.setenv("C4_M2_URL", FAKE)
-    fake.answers["/api/c4-m2/steps/create-wallet"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
+    fake.answers["/api/dataspace-wallet-interface/steps/create-wallet"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
     _approve(engine)
     p = proc_of(engine, "onboarding")
     assert step(p, "create-wallet")["state"] == "AWAITING_EVENT" and p["status"] == "RUNNING"
@@ -280,7 +280,7 @@ def test_event_published_before_running_answer_still_completes(engine, fake, mon
         events.publish("c4-m2", "DataspaceWalletCreated", {"companyId": COMPANY, "did": "did:web:early"})
         return 200, {"stepRunId": b["stepRunId"], "state": "RUNNING"}
 
-    fake.answers["/api/c4-m2/steps/create-wallet"] = early
+    fake.answers["/api/dataspace-wallet-interface/steps/create-wallet"] = early
     events.RELAY.subscribe("c12", eng.on_event)
     _approve(engine)
     events.RELAY.drain()

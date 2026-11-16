@@ -597,7 +597,7 @@ def test_readme_11_2_wallet_query_failing_is_502_upstream_error_retryable(osp_fa
     def broken(**_kw):
         raise RuntimeError("C4-M2 is down")
 
-    monkeypatch.setattr("modules.c4_m2.interface.get_wallet_info", broken)
+    monkeypatch.setattr("features.dataspace_wallet_interface.interface.get_wallet_info", broken)
     assert_problem(issue(osp, U1), 502, "upstream-error", retryable=True)
     no_rows_created(U1)
     assert orders() == []

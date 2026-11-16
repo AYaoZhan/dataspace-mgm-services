@@ -40,7 +40,7 @@ import httpx
 
 from portal_common import http
 
-from . import providers_common as common
+from . import common
 
 PROVIDER = "SAP_DIV"
 STANDIN_HOST = "div-stub.invalid"
@@ -99,18 +99,15 @@ def _real(path: str, params: dict | None, body: dict | None) -> None:
 
 # ----------------------------------------------------------------------------------- the callbacks
 def _wallet_callback(bpn: str, body: dict) -> None:
-    from . import service
-    service.accept_wallet_callback(bpn, body, common.MODULE)
+    common.callback("wallet-created", bpn, body, common.MODULE)
 
 
 def _account_created_callback(reference: str, body: dict) -> None:
-    from . import accounts
-    accounts.accept_account_created(reference, body, common.MODULE)
+    common.callback("account-created", reference, body, common.MODULE)
 
 
 def _account_deleted_callback(reference: str) -> None:
-    from . import accounts
-    accounts.accept_account_deleted(reference, common.MODULE)
+    common.callback("account-deleted", reference, common.MODULE)
 
 
 class SapDivAdapter:
@@ -123,10 +120,6 @@ class SapDivAdapter:
         """README 6.4 step 1: `did:web:` + host and path of the DID document base (`/` as `:`) + BPN."""
         parts = urlsplit(_base())
         return f"did:web:{(parts.netloc + parts.path).strip('/').replace('/', ':')}:{bpn}"
-
-    def callback_router(self):
-        from .providers_callbacks import sap_div_router
-        return sap_div_router()
 
     @staticmethod
     def _standin_refuses(bpn: str) -> None:

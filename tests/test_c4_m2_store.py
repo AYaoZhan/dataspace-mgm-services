@@ -25,7 +25,7 @@
 """Store contract of C4-M2 (TEAM3-PLAN 1 "Storage sits behind an abstraction", 12.2).
 
 Every implementation of `store.WalletStore` must pass these tests. A future database store only
-needs its class name added to `STORES` (instantiated without arguments from `modules.c4_m2.store`).
+needs its class name added to `STORES` (instantiated without arguments from `features.dataspace_wallet_interface.managers.wallet_store`).
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ JOIN_SECONDS = 5
 
 @pytest.fixture(params=STORES)
 def store(request):
-    st = getattr(seam("modules.c4_m2.store"), request.param)()
+    st = getattr(seam("features.dataspace_wallet_interface.managers.wallet_store"), request.param)()
     yield st
     st.reset()
 
@@ -422,7 +422,7 @@ def test_reset_empties_everything(store):
 
 
 def test_stores_are_independent_instances():
-    mod = seam("modules.c4_m2.store")
+    mod = seam("features.dataspace_wallet_interface.managers.wallet_store")
     one, two = getattr(mod, STORES[0])(), getattr(mod, STORES[0])()
     one.put_wallet(wallet(1))
     assert two.get_wallet(wallet(1)["company_id"]) is None
@@ -431,7 +431,7 @@ def test_stores_are_independent_instances():
 def test_the_module_store_is_a_wallet_store_and_reset_clears_it(osp_factory):
     # TEAM3-PLAN 12.2: `interface.store()` returns the active store; `interface.reset()` clears it
     osp_factory()
-    interface, store = seam("modules.c4_m2.interface"), seam("modules.c4_m2.store")
+    interface, store = seam("features.dataspace_wallet_interface.interface"), seam("features.dataspace_wallet_interface.managers.wallet_store")
     active = interface.store()
     assert isinstance(active, tuple(getattr(store, name) for name in STORES))
     active.put_wallet(wallet(1))

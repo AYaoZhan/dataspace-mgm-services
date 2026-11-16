@@ -24,19 +24,19 @@
 #################################################################################
 """Provider adapters of C4-M2: the registry, the choice of the provider (README 6.1) and the stand-in helpers.
 
-The adapters (README 6.11) are in `providers_sap_div.py`, `providers_identity_hub.py` and `providers_csp.py`; the
-SAP DIV callback routes in `providers_callbacks.py`. Everything the core (`service.py`) and the tests need is
-reached through this file: `get`, `enabled`, `default_provider`, `callback_routers`, `stand_in_documents`,
-`orders`, `flush_stand_in` and `reset`. Environment variables are read at call time.
+The adapters (README 6.11) are in `sap_div.py`, `identity_hub.py` and `csp.py` of this package; the SAP DIV
+callback routes are the controllers `callbacks/sap_div/`. Everything the services and the tests need is reached
+through this package: `get`, `enabled`, `default_provider`, `on_callback`, `stand_in_documents`, `orders`,
+`flush_stand_in` and `reset`. Environment variables are read at call time.
 """
 from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter
-
-from . import providers_common as common
-from . import providers_csp, providers_identity_hub, providers_sap_div
+from . import common
+from . import csp as providers_csp
+from . import identity_hub as providers_identity_hub
+from . import sap_div as providers_sap_div
 
 PROVIDERS = ("SAP_DIV", "IDENTITY_HUB", "CSP")
 _ADAPTERS = {"SAP_DIV": providers_sap_div.SapDivAdapter(), "IDENTITY_HUB": providers_identity_hub.IdentityHubAdapter(),
@@ -63,10 +63,11 @@ def default_provider() -> str:
     return os.environ.get("DEFAULT_PROVIDER", "").strip().upper() or "CSP"
 
 
-def callback_routers() -> list[APIRouter]:
-    """The routers of the adapters that get callbacks (README 7.6), without prefix."""
-    routers = [adapter.callback_router() for adapter in _ADAPTERS.values()]
-    return [router for router in routers if router is not None]
+def on_callback(name: str, handler) -> None:
+    """Register the service function a built-in stand-in calls back (README 7.6): `wallet-created`,
+    `account-created` or `account-deleted`. The services register themselves when they are imported, so the
+    adapters never import the layer above them."""
+    common.on_callback(name, handler)
 
 
 def stand_in_documents() -> dict[str, dict]:

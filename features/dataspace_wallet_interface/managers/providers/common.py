@@ -39,7 +39,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 from portal_common.problems import Problem
 
-MODULE = "c4-m2"
+from ...models import MODULE
 log = logging.getLogger(__name__)
 
 _lock = threading.RLock()
@@ -146,6 +146,20 @@ def did_location(did: str) -> str:
 
 def random_secret() -> str:
     return uuid.uuid4().hex + uuid.uuid4().hex
+
+
+# ------------------------------------------------------------------------- callbacks of the stand-ins
+_callbacks: dict[str, Callable[..., None]] = {}
+
+
+def on_callback(name: str, handler: Callable[..., None]) -> None:
+    """The service function behind a stand-in callback; kept across `reset()`."""
+    _callbacks[name] = handler
+
+
+def callback(name: str, *args) -> None:
+    """Call the registered service function `name` as the provider would over HTTP."""
+    _callbacks[name](*args)
 
 
 # ---------------------------------------------------------------------------- delayed stand-in tasks

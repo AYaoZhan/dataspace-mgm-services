@@ -22,3 +22,18 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""The credentials of a wallet account, retrieved once (README 7.3)."""
+from __future__ import annotations
+
+from fastapi import Response
+
+from features.dataspace_wallet_interface.services import account_service
+from portal_common.routing import Controller, Permission
+
+controller = Controller("Dataspace Wallet Interface: Company")
+
+
+@controller.post("", summary="Retrieve the credentials of a wallet account")
+def retrieve_wallet_account_credentials(technicalUserId: str, response: Response, claims: dict = Permission):
+    response.headers["Cache-Control"] = "no-store"
+    return account_service.retrieve_credentials(technicalUserId, claims)

@@ -48,7 +48,7 @@ Where the spec is unclear, contradicts itself or is silent, the module follows t
 | 13 | Defaults for unset configuration variables (the shipped config sets none). | 4 | `DID_VALIDATION_INTERVAL_MINUTES` 10, `DID_VALIDATION_MAX_HOURS` 168, `PROVIDER_CALLBACK_TIMEOUT_MINUTES` 1440, `TIMER_INTERVAL_SECONDS` 60, `DEFAULT_PROVIDER` CSP, `ENABLED_PROVIDERS` all three (the example values of README 4). | Spec authors |
 | 14 | The openapi `didDocument` of `SapDivWalletCallback` lists inner `required` fields, but 7.6 step 4 wants 204 and `FAILED`/`INVALID_DID_DOCUMENT` for an invalid document. | 7.6, openapi | README 7.6: the route does not enforce the inner `required` list; the service checks the schema of Portal 2.6.0 and fails the wallet. A body without `did`, `didDocument` or the three `authenticationDetails` fields is 400 `validation`. | Spec authors |
 | 15 | `TEST_DID_DOCUMENTS_DIR` is listed under the built-in resolution in 11.4 but "used before any resolution" in 4. | 4, 11.4 | Section 4: the files are used first, even before `DID_RESOLVER_URL`. Otherwise `DID_RESOLVER_URL` takes priority over the stand-in documents. | Spec authors |
-| 16 | `provider_name` of an account: README 5 says SAP DIV and CSP, 8.2 step 3 says every account. | 5, 8.2 | `tu-` + `technicalUserId` for every account (8.2). Done in `accounts.py`. | Spec authors |
+| 16 | `provider_name` of an account: README 5 says SAP DIV and CSP, 8.2 step 3 says every account. | 5, 8.2 | `tu-` + `technicalUserId` for every account (8.2). Done in `services/account_service.py`. | Spec authors |
 | 17 | Which module name does the audit entry of `getHolderAccess` hold for an in-process call? The function has no caller argument. | 5, 9.3 | `c4-m1` (README 9.3: only C4-M1 asks). Over HTTP the claims of the token are used (`claims` argument of the route). | Spec authors |
 | 18 | The check of the DID form compares case-insensitively for SAP DIV and IdentityHub; the CSP only has to start with `did:web:`. `id` of the document must equal the DID exactly. | 6.4 | As described. | Spec authors |
 | 19 | A callback with a `didDocument` whose lists are empty (`service: []`, `verificationMethod: []`). | 7.6 step 4 | Accepted by the callback schema (lists are present); step 3 of 6.4 then fails the wallet with `INVALID_DID_DOCUMENT` at the first DID check. | Spec authors |
@@ -56,18 +56,17 @@ Where the spec is unclear, contradicts itself or is silent, the module follows t
 
 ## Implementation choices that are not spec questions
 
-- `interface.py` uses the new implementation only when `providers.py` exists in the module. Until then the
-  old stand-in answers (so that `demo.py` keeps working with the CSP stand-in flow). When the providers
-  file is merged, the new code takes over without a further change.
-- Imports across the line between `service.py` and `providers.py` / `accounts.py` happen inside functions
-  (`service.optional_module`), so there are no import cycles.
-- The background timer thread starts in `on_startup()` of the router and is stopped by `interface.reset()`.
+- Imports between `services/wallet_service.py` and `services/account_service.py` happen inside functions
+  (`wallet_service.optional_module`), so there are no import cycles. The built-in SAP DIV stand-in calls the
+  services back through `providers.on_callback()`, which the services register when they are imported, so
+  `managers/` never imports `services/`.
+- The background timer thread starts in `on_startup()` of the index and is stopped by `interface.reset()`.
 
 ## Wallet accounts and providers
 
 | # | Question | Spec | Reading implemented | Who could decide |
 |---|---|---|---|---|
-| 21 | Account callback deadline variable: README 6.10 says only "the deadline". | 6.3, 6.10 | `PROVIDER_CALLBACK_TIMEOUT_MINUTES` (default 1440), as for wallets (`accounts.py`). | Spec authors |
+| 21 | Account callback deadline variable: README 6.10 says only "the deadline". | 6.3, 6.10 | `PROVIDER_CALLBACK_TIMEOUT_MINUTES` (default 1440), as for wallets (`services/account_service.py`). | Spec authors |
 | 22 | `WalletAccountDeletionFailed` after the deadline: repeated or only once? | 6.3 | Published once: the first timer pass past the deadline sets `deletion_failed_at`, later passes skip the account. A REQUESTED account past the deadline fails with `PROVIDER_TIMEOUT`. | Spec authors |
 | 23 | Wallet account for a company with no wallet row at all. | 8.2 | 409 `wallet-not-active`; 404 is also conceivable. | Spec authors |
 | 24 | `provider_name` of an account: README 5 names SAP DIV and CSP, 8.2 step 3 says every account. | 5, 8.2 | `tu-` + `technicalUserId` for every provider, IdentityHub included. | Spec authors |
@@ -78,5 +77,6 @@ Where the spec is unclear, contradicts itself or is silent, the module follows t
 | 29 | Defaults for unset provider and timing variables (the shipped config sets none). | 4, 11.1, 11.2 | `IDENTITYHUB_DID_BASE` `ih.example.org`; SAP DIV stand-in DID base `https://div-stub.invalid/did` (when `SAP_DIV_DID_DOCUMENT_BASE_URL` is empty); `SAP_DIV_CALLBACK_CLIENT_ID` `sa-div-callback`; `STUB_CALLBACK_DELAY_SECONDS` 1; `ACCOUNT_CREDENTIALS_RETENTION_DAYS` 30; IdentityHub credential service, identity API and STS token URL default to `https://ih.example.org/api/...`. | Spec authors, operations |
 | 30 | Request building against a real SAP DIV middleware or IdentityHub (paths, bodies, headers). | 11.1, 11.2 | Built from the README text (`/setup-dim`, `/technical-user/{bpn}`, `/technical-user/{bpn}/delete`; `x-api-key` for the IdentityHub). Only the stand-ins are tested; no real endpoint was available. | Spec authors, SAP / IdentityHub operators |
 | 31 | What `providers.orders()` records (README only says "no second order to the stand-in"). | 13, 14.3 | Every order a stand-in received, including repeats and an order that the stand-in then answers with 409 or 404. Not recorded: orders refused by an injected `ORDER_ERROR` (all stand-ins) or `CSP_REJECTED` (CSP wallet order). | Team |
-| 32 | CSP answer 403 on a wallet account order. | 11.3 | 403 on a wallet or account creation maps to `provider-rejected` (409, not retryable) in `providers_csp.py`. The built-in CSP stand-in only injects `CSP_REJECTED` for the wallet order, not for the account order. | Spec authors |
+| 32 | CSP answer 403 on a wallet account order. | 11.3 | 403 on a wallet or account creation maps to `provider-rejected` (409, not retryable) in `managers/providers/csp.py`. The built-in CSP stand-in only injects `CSP_REJECTED` for the wallet order, not for the account order. | Spec authors |
 | 33 | The test kit lists company `c0000001-...` twice: as `csp` (ACTIVE) and as `u1` (REQUESTED). | 7a, testdata | Account tests use the later entry as the CSP company and start it ACTIVE (see the comment in `tests/test_c4_m2_accounts.py`). | Kit owners |
+| 34 | FRAMEWORK 4.1, base path `/api/c4-m2` "until the common path convention is settled". | FRAMEWORK 4.1 | Served under the readable feature name `/api/dataspace-wallet-interface` (ADR-0003, decision 2), the SAP DIV callbacks included; `/api/c4-m2` answers 404. Problem types, event sources, permissions and the service account `svc-c4-m2` keep the spec id. | Spec authors, maintainers |

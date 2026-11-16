@@ -38,7 +38,7 @@ import httpx
 from portal_common import http
 from portal_common.problems import Problem
 
-from . import providers_common as common
+from . import common
 
 PROVIDER = "IDENTITY_HUB"
 DEFAULT_DID_BASE = "ih.example.org"
@@ -118,9 +118,6 @@ class IdentityHubAdapter:
 
     def did_for(self, bpn: str) -> str:
         return f"did:web:{_did_base()}:{bpn}"
-
-    def callback_router(self):
-        return None
 
     def _call(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict | None]:
         if os.environ.get("IDENTITYHUB_URL", "").strip():
