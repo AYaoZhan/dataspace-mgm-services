@@ -28,16 +28,15 @@ from __future__ import annotations
 from fastapi import Body
 from fastapi.responses import Response
 
-from features.credentials import interface
+from features.credentials.services import credential_service
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Credentials: Issuer Callbacks")
 
 
 @controller.post("/{credentialKind}", status_code=204, response_class=Response, summary="Status report of an issuer")
-def issuer_callback(credentialKind: str, body: dict = Body(...), claims: dict = Permission):
-    """README 7.4: token and permission (dependency), kind, body, row handling, audit entry, 204 without body."""
-    bpn, status, message = interface.validate_report(credentialKind, body)
-    interface.report_status(credentialKind, bpn, status, message)
-    interface.audit(claims, "REPORT_CREDENTIAL_STATUS", None, f"{bpn}:{credentialKind.upper()}", 204)
+def issuer_callback(credentialKind: str, body: object = Body(...), claims: dict = Permission):
+    """README 7.4: token and permission (dependency), kind, then the body (`IssuerResponse`), so the body is
+    validated in the service after the kind; row handling, audit entry, 204 without body."""
+    credential_service.receive_report(credentialKind, body, claims)
     return Response(status_code=204)

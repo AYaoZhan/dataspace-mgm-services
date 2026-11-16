@@ -22,26 +22,31 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-sonnet-5-5)
 #################################################################################
-"""Storage of C4-M1 Credentials (README 5) behind a small interface.
+"""Storage of the credentials (README 5): the `CredentialStore` contract and its SQLModel repository.
 
-`CredentialStore` is the only thing the services talk to (through `store()`); `InMemoryStore` is the
-implementation of this repository (everything is in memory, see the repo README "Where is the data
-stored?"). A PostgreSQL store (README 4, own database `c4_m1`) can be added later without touching the
-business logic: rows and keys use the table and column names of README 5 (`credential`,
-`credential_history`, `issuance_run`, `audit_entry`), and `transaction(company_id)` is the single place
-for the per-company advisory lock of README 6.6.
+`CredentialStore` is the only thing the services talk to (through `store()`). `SqlCredentialStore` keeps the rows
+in the tables of `models/tables.py`, in the feature's own database (`portal_common.database`: the variables
+`CREDENTIALS_DATABASE_URL`, `C4_M1_DATABASE_URL`, `DATABASE_URL`, else a private in-memory SQLite database).
+It is the only code that opens a session of that database. `transaction(company_id)` is the single place for the
+per-company lock of README 6.6.
 
-Rows are plain dicts. Timestamps are timezone-aware `datetime` objects; `dump()` turns them into ISO
-strings. Rows returned by the store are copies: a change reaches the store only through a `put_*` call.
+Rows are plain dicts with the column names of README 5. Timestamps are timezone-aware `datetime` objects; `dump()`
+turns them into ISO strings. Rows returned by the store are copies: a change reaches the store only through a
+`put_*` call.
 """
 from __future__ import annotations
 
 import contextlib
-import copy
 import datetime as dt
 import threading
 from collections.abc import Iterator
 from typing import Any, Protocol
+
+from sqlmodel import col, func, select
+
+from features.credentials.models.problems import MODULE
+from features.credentials.models.tables import AuditEntryRow, CredentialHistoryRow, CredentialRow, IssuanceRunRow
+from portal_common import database
 
 
 class CredentialStore(Protocol):
@@ -93,99 +98,124 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-class InMemoryStore:
-    """`CredentialStore` in process memory."""
+def _as_dict(row) -> dict | None:
+    """A table row as the plain dict the services use (README 5 column names, without the write order `seq`)."""
+    return None if row is None else row.model_dump(exclude={"seq"})
+
+
+def _fields(table, data: dict) -> dict:
+    return {name: data.get(name) for name in table.model_fields if name != "seq" and name in data}
+
+
+class SqlCredentialStore:
+    """`CredentialStore` on the SQLModel tables of the feature's own database."""
 
     def __init__(self) -> None:
-        self._data = threading.Lock()                       # guards the dicts below
-        self._lock_table = threading.Lock()                 # guards `_locks`
+        self._data = threading.RLock()                     # one unit of work at a time on the shared connection
+        self._lock_table = threading.Lock()                # guards `_locks`
         self._locks: dict[str, threading.RLock] = {}
-        self._credentials: dict[tuple[str, str], dict] = {}  # (company_id, credential_type) -> row
-        self._runs: dict[str, dict] = {}
-        self._history: list[dict] = []
-        self._audit: list[dict] = []
+        self._ready: set[str] = set()                      # database URLs whose tables exist
+
+    @contextlib.contextmanager
+    def _session(self):
+        with self._data:
+            url = database.url(MODULE)
+            if url not in self._ready:
+                database.create_tables(MODULE)
+                self._ready.add(url)
+            with database.session(MODULE) as session:
+                yield session
 
     # --- credential ---------------------------------------------------------------------------
     def get_credential(self, company_id: str, credential_type: str) -> dict | None:
-        with self._data:
-            return copy.deepcopy(self._credentials.get((company_id, credential_type)))
+        with self._session() as s:
+            return _as_dict(s.get(CredentialRow, (company_id, credential_type)))
 
     def get_credential_by_id(self, credential_id: str) -> dict | None:
-        with self._data:
-            return copy.deepcopy(next((r for r in self._credentials.values() if r["id"] == credential_id), None))
+        with self._session() as s:
+            return _as_dict(s.exec(select(CredentialRow).where(CredentialRow.id == credential_id)).first())
 
     def find_credential(self, bpn: str, credential_type: str) -> dict | None:
         """README 5 index (`bpn`, `credential_type`); the BPN is compared in upper case (7.4 step 3)."""
-        wanted = (bpn or "").upper()
-        with self._data:
-            return copy.deepcopy(next((r for r in self._credentials.values()
-                                       if r["bpn"] == wanted and r["credential_type"] == credential_type), None))
+        query = select(CredentialRow).where(CredentialRow.bpn == (bpn or "").upper(),
+                                            CredentialRow.credential_type == credential_type)
+        with self._session() as s:
+            return _as_dict(s.exec(query).first())
 
     def put_credential(self, row: dict) -> None:
         """One row per (`company_id`, `credential_type`): a put replaces the row of the key. The BPN is stored
         in upper case (README 5)."""
-        stored = copy.deepcopy(row)
-        if stored.get("bpn"):
-            stored["bpn"] = stored["bpn"].upper()
-        with self._data:
-            self._credentials[(stored["company_id"], stored["credential_type"])] = stored
+        data = _fields(CredentialRow, row)
+        if data.get("bpn"):
+            data["bpn"] = data["bpn"].upper()
+        with self._session() as s:
+            s.merge(CredentialRow(**data))
 
-    def _matching(self, company_id, statuses, credential_type, route, requested_before) -> list[dict]:
-        out = []
-        for r in self._credentials.values():
-            if company_id and r["company_id"] != company_id:
-                continue
-            if statuses and r["status"] not in statuses:
-                continue
-            if credential_type and r["credential_type"] != credential_type:
-                continue
-            if route and r.get("route") != route:
-                continue
-            if requested_before is not None and not (r.get("requested_at") and r["requested_at"] < requested_before):
-                continue
-            out.append(r)
-        out.sort(key=lambda r: r["changed_at"], reverse=True)   # README 7.2: `changedAt` descending
-        return out
+    @staticmethod
+    def _filtered(query, company_id, statuses, credential_type, route, requested_before):
+        if company_id:
+            query = query.where(CredentialRow.company_id == company_id)
+        if statuses:
+            query = query.where(col(CredentialRow.status).in_(statuses))
+        if credential_type:
+            query = query.where(CredentialRow.credential_type == credential_type)
+        if route:
+            query = query.where(CredentialRow.route == route)
+        if requested_before is not None:
+            query = query.where(col(CredentialRow.requested_at).is_not(None),
+                                col(CredentialRow.requested_at) < requested_before)
+        return query
 
     def list_credentials(self, company_id: str | None = None, statuses: list[str] | None = None,
                          credential_type: str | None = None, route: str | None = None,
                          requested_before: dt.datetime | None = None, page: int = 0,
                          size: int = 50) -> list[dict]:
-        with self._data:
-            rows = self._matching(company_id, statuses, credential_type, route, requested_before)
-            return copy.deepcopy(rows[page * size:(page + 1) * size])
+        """README 7.2: sorted by `changedAt` descending, one page."""
+        query = self._filtered(select(CredentialRow), company_id, statuses, credential_type, route, requested_before)
+        query = query.order_by(col(CredentialRow.changed_at).desc()).offset(page * size).limit(size)
+        with self._session() as s:
+            return [_as_dict(r) for r in s.exec(query)]
 
     def count_credentials(self, company_id: str | None = None, statuses: list[str] | None = None,
                           credential_type: str | None = None, route: str | None = None,
                           requested_before: dt.datetime | None = None) -> int:
-        with self._data:
-            return len(self._matching(company_id, statuses, credential_type, route, requested_before))
+        query = self._filtered(select(func.count()).select_from(CredentialRow), company_id, statuses,
+                               credential_type, route, requested_before)
+        with self._session() as s:
+            return s.exec(query).one()
 
     # --- issuance_run -------------------------------------------------------------------------
     def get_run(self, company_id: str) -> dict | None:
-        with self._data:
-            return copy.deepcopy(self._runs.get(company_id))
+        with self._session() as s:
+            run = _as_dict(s.get(IssuanceRunRow, company_id))
+        if run is not None:
+            run["credential_types"] = list(run["credential_types"])
+        return run
 
     def put_run(self, run: dict) -> None:
-        with self._data:
-            self._runs[run["company_id"]] = copy.deepcopy(run)
+        data = _fields(IssuanceRunRow, run)
+        data["credential_types"] = [str(t) for t in data.get("credential_types") or []]
+        with self._session() as s:
+            s.merge(IssuanceRunRow(**data))
 
     # --- credential_history, audit_entry ------------------------------------------------------
     def append_history(self, entry: dict) -> None:
-        with self._data:
-            self._history.append(copy.deepcopy(entry))
+        with self._session() as s:
+            s.add(CredentialHistoryRow(**_fields(CredentialHistoryRow, entry)))
 
     def list_history(self, credential_id: str) -> list[dict]:
-        with self._data:
-            return copy.deepcopy([e for e in self._history if e["credential_id"] == credential_id])
+        query = (select(CredentialHistoryRow).where(CredentialHistoryRow.credential_id == credential_id)
+                 .order_by(col(CredentialHistoryRow.seq)))
+        with self._session() as s:
+            return [_as_dict(r) for r in s.exec(query)]
 
     def append_audit(self, entry: dict) -> None:
-        with self._data:
-            self._audit.append(copy.deepcopy(entry))
+        with self._session() as s:
+            s.add(AuditEntryRow(**_fields(AuditEntryRow, entry)))
 
     def list_audit(self) -> list[dict]:
-        with self._data:
-            return copy.deepcopy(self._audit)
+        with self._session() as s:
+            return [_as_dict(r) for r in s.exec(select(AuditEntryRow).order_by(col(AuditEntryRow.seq)))]
 
     # --- transaction --------------------------------------------------------------------------
     @contextlib.contextmanager
@@ -200,17 +230,16 @@ class InMemoryStore:
     # --- test support -------------------------------------------------------------------------
     def dump(self) -> dict:
         """The whole state as JSON-serialisable data (for secret scans in tests)."""
-        with self._data:
-            return _jsonable({"credential": list(self._credentials.values()), "issuance_run": list(self._runs.values()),
-                              "credential_history": self._history, "audit_entry": self._audit})
+        tables = {"credential": CredentialRow, "issuance_run": IssuanceRunRow,
+                  "credential_history": CredentialHistoryRow, "audit_entry": AuditEntryRow}
+        with self._session() as s:
+            return _jsonable({name: [_as_dict(r) for r in s.exec(select(table))] for name, table in tables.items()})
 
     def reset(self) -> None:
         """Empties all tables. The locks stay, so that a transaction that is still open stays valid."""
         with self._data:
-            self._credentials.clear()
-            self._runs.clear()
-            self._history.clear()
-            self._audit.clear()
+            database.reset_tables(MODULE)
+            self._ready.add(database.url(MODULE))
 
 
 _store: CredentialStore | None = None
@@ -220,5 +249,5 @@ def store() -> CredentialStore:
     """The active `CredentialStore` of the process."""
     global _store
     if _store is None:
-        _store = InMemoryStore()
+        _store = SqlCredentialStore()
     return _store

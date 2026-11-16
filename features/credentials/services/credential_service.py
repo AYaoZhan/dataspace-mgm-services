@@ -32,19 +32,26 @@ writes `credential_history` (README 6.1); every operation for one company runs i
 from __future__ import annotations
 
 import datetime as dt
-import logging
 import uuid
 
 from features.credentials.managers import config, neighbour_client
 from features.credentials.managers.credential_store import store
-from features.credentials.models.problems import MODULE, validation as _validation
-from features.credentials.models.values import BPN_RE, CREDENTIAL_ISSUER, TYPES
+from features.credentials.models.credentials import (
+    ConfirmRevocation,
+    CredentialDetail,
+    CredentialOutcome,
+    IssueCredentials,
+    IssueResult,
+    IssuerReport,
+    RevocationResult,
+    RevokeCredentials,
+)
+from features.credentials.models.problems import MODULE, parse
+from features.credentials.models.values import CREDENTIAL_ISSUER, CREDENTIAL_KINDS, CredentialType
 from features.credentials.services import issuer_routes as routes
-from features.credentials.services.credential_views import detail_view as _detail_view
-from portal_common import events, standin
+from portal_common import events
+from portal_common.models import StepResult
 from portal_common.problems import Problem
-
-log = logging.getLogger("c4-m1")
 
 
 def now() -> dt.datetime:
@@ -64,25 +71,6 @@ def flush_timers() -> None:
 
 
 # ------------------------------------------------------------------------------------------ helpers
-def valid_uuid(value: object, name: str) -> str:
-    try:
-        if not isinstance(value, str):
-            raise ValueError(name)
-        return str(uuid.UUID(value))
-    except ValueError:
-        raise _validation(f"{name} must be a UUID") from None
-
-
-def valid_types(value: object, default: list[str]) -> list[str]:
-    """`credentialTypes` of a step: absent = `default`; else a non-empty list of unique known types."""
-    if value is None:
-        return list(default)
-    if not isinstance(value, list) or not value or len(set(map(str, value))) != len(value) \
-            or any(t not in TYPES for t in value):
-        raise _validation("credentialTypes must be a non-empty list of unique values from BPN, MEMBERSHIP")
-    return list(value)
-
-
 def _truncate(text: str | None, n: int) -> str | None:
     return None if text is None else text[:n]
 
@@ -138,10 +126,10 @@ def _preconditions(cid: str) -> tuple[dict, dict, str]:
 
 
 # ---------------------------------------------------------------------------------- issue-credentials
-def issue_credentials(input: dict) -> dict:
+def issue_credentials(request: IssueCredentials) -> StepResult[IssueResult]:
     """README 8.1."""
-    cid = valid_uuid(input.get("companyId"), "companyId")
-    types = valid_types(input.get("credentialTypes"), config.onboarding_types())
+    cid = request.company_id
+    types = list(request.credential_types or config.onboarding_types())
     with store().transaction(cid):
         company, wallet, route_name = _preconditions(cid)
         rows = {t: store().get_credential(cid, t) for t in types}
@@ -164,12 +152,13 @@ def issue_credentials(input: dict) -> dict:
         if all_issued:
             started = run["started_at"] if run else now()
             finished = run["finished_at"] if run and run["status"] == "DONE" and run["finished_at"] else now()
-            _put_run(cid, types, "DONE", input.get("processId"), input.get("stepRunId"), started, finished)
+            _put_run(cid, types, "DONE", request.process_id, request.step_run_id, started, finished)
         else:
             started = run["started_at"] if run and run["status"] == "RUNNING" else now()
-            _put_run(cid, types, "RUNNING", input.get("processId"), input.get("stepRunId"), started)
-        result = {"companyId": cid, "credentials": [{"credentialType": t, "status": rows[t]["status"]} for t in types]}
-        return standin.step_reply(input, result, "DONE" if all_issued else "RUNNING")
+            _put_run(cid, types, "RUNNING", request.process_id, request.step_run_id, started)
+        result = IssueResult(company_id=cid, credentials=[
+            CredentialOutcome(credential_type=t, status=rows[t]["status"]) for t in types])
+        return (StepResult.done if all_issued else StepResult.running)(request, result)
 
 
 def _order(ctx: dict, route, row: dict | None, ctype: str) -> None:
@@ -188,14 +177,11 @@ def _order(ctx: dict, route, row: dict | None, ctype: str) -> None:
 
 
 # ------------------------------------------------------------------------------------ revoke-credentials
-def revoke_credentials(input: dict) -> dict:
+def revoke_credentials(request: RevokeCredentials) -> StepResult[RevocationResult]:
     """README 8.2. No precondition on company or wallet; per given type (default MEMBERSHIP): `ISSUED` is revoked
     through the route of the order (or waits for OSP staff), `REQUESTED`/`FAILED` become `CANCELLED`."""
-    cid = valid_uuid(input.get("companyId"), "companyId")
-    reason = input.get("reason")
-    if reason not in ("COMPANY_DEACTIVATED", "OTHER"):
-        raise _validation("reason must be COMPANY_DEACTIVATED or OTHER")
-    types = valid_types(input.get("credentialTypes"), ["MEMBERSHIP"])
+    cid, reason = request.company_id, request.reason
+    types = list(request.credential_types or [CredentialType.MEMBERSHIP])
     revoked: list[str] = []
     cancelled: list[str] = []
     manual: list[str] = []
@@ -223,8 +209,8 @@ def revoke_credentials(input: dict) -> dict:
         if run and run["status"] == "RUNNING" and set(run["credential_types"]) & set(types):
             run.update(status="CANCELLED", finished_at=now())
             store().put_run(run)
-    return standin.step_reply(input, {"companyId": cid, "revoked": revoked, "cancelled": cancelled,
-                                      "manualRevocation": manual})
+    return StepResult.done(request, RevocationResult(company_id=cid, revoked=revoked, cancelled=cancelled,
+                                                     manual_revocation=manual))
 
 
 # -------------------------------------------------------------------------------------- status report
@@ -258,21 +244,21 @@ def report_status(kind: str, bpn: str, status: str, message: str | None = None) 
         # REVOCATION_PENDING, REVOKED, and the remaining combinations: nothing
 
 
-def validate_report(kind: str, body: object) -> tuple[str, str, str | None]:
-    """README 7.4 step 2: unknown kind 404 `not-found`; invalid `bpn` or `status` 400 `validation`.
-    Returns (BPN in upper case, status, message)."""
-    if kind not in ("bpn", "membership"):
+def validate_report(kind: str, body: object) -> IssuerReport:
+    """README 7.4 step 2: an unknown kind is 404 `not-found` before the body is looked at; an invalid body is
+    400 `validation`. The BPN comes back in upper case."""
+    if kind not in CREDENTIAL_KINDS:
         raise Problem(MODULE, 404, "not-found", detail="credentialKind must be bpn or membership")
-    if not isinstance(body, dict):
-        raise _validation("the body must be an object")
-    bpn, status, message = body.get("bpn"), body.get("status"), body.get("message")
-    if not isinstance(bpn, str) or not BPN_RE.match(bpn):
-        raise _validation("bpn must be BPNL followed by 12 letters or digits")
-    if status not in ("SUCCESSFUL", "UNSUCCESSFUL"):
-        raise _validation("status must be SUCCESSFUL or UNSUCCESSFUL")
-    if message is not None and not isinstance(message, str):
-        raise _validation("message must be a string")
-    return bpn.upper(), status, message
+    report = parse(IssuerReport, body)
+    report.bpn = report.bpn.upper()
+    return report
+
+
+def receive_report(kind: str, body: object, claims: dict) -> None:
+    """README 7.4 steps 2 to 4 for a report over HTTP: check the kind and the body, process, write the audit entry."""
+    report = validate_report(kind, body)
+    report_status(kind, report.bpn, report.status, report.message)
+    audit(claims, "REPORT_CREDENTIAL_STATUS", None, f"{report.bpn}:{kind.upper()}", 204)
 
 
 def audit(claims: dict, operation: str, company_id: str | None, object_ref: str, result: int) -> None:
@@ -305,19 +291,17 @@ def _revoke_now(row: dict) -> None:
 
 
 # ---------------------------------------------------------------------------------- confirm-revocation
-def confirm_revocation(credential_id: str, body: object, claims: dict) -> dict:
+def confirm_revocation(credential_id: str, request: ConfirmRevocation, claims: dict) -> CredentialDetail:
     """README 7.3: `REVOCATION_PENDING` becomes `REVOKED` (history with the note, audit entry with `sub` of the
     person, `CredentialRevoked`); `REVOKED` stays as it is (200); any other status is 409 `invalid-state`."""
-    note = body.get("note") if isinstance(body, dict) else None
-    if not isinstance(note, str) or not 1 <= len(note) <= 500:
-        raise _validation("note must be a string of 1 to 500 characters")
+    note = request.note
     found = store().get_credential_by_id(credential_id)
     if found is None:
         raise Problem(MODULE, 404, "not-found", detail="unknown credential")
     with store().transaction(found["company_id"]):
         row = store().get_credential_by_id(credential_id)
         if row["status"] == "REVOKED":
-            return _detail_view(row)
+            return CredentialDetail.model_validate(row)
         if row["status"] != "REVOCATION_PENDING":
             raise Problem(MODULE, 409, "invalid-state", detail=f"credential is {row['status']}, not REVOCATION_PENDING")
         _change(row, "REVOKED", note, revoked_at=now())
@@ -325,4 +309,4 @@ def confirm_revocation(credential_id: str, body: object, claims: dict) -> dict:
         events.publish(MODULE, "CredentialRevoked", {
             "companyId": row["company_id"], "credentialType": row["credential_type"],
             "revocationReason": row.get("revocation_reason") or "OTHER"})
-        return _detail_view(row)
+        return CredentialDetail.model_validate(row)

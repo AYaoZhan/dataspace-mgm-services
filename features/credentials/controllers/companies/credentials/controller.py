@@ -25,15 +25,16 @@
 """The credentials of the own company (README 7.1), scope `company`."""
 from __future__ import annotations
 
-from features.credentials import interface
+from features.credentials.models.credentials import CredentialStatusView
 from features.credentials.models.problems import MODULE
+from features.credentials.services import credential_views
 from portal_common.routing import Controller, Permission, company_scope
 
 controller = Controller("Credentials: Company Credentials")
 
 
-@controller.get("", summary="Credentials of the own company")
+@controller.get("", response_model=list[CredentialStatusView], summary="Credentials of the own company")
 def own_credentials(companyId: str, claims: dict = Permission):
     """README 7.1; order of checks per 6.5: token, permission, then `company_id` of the token = `companyId`."""
     company_scope(MODULE, claims, companyId)
-    return interface.list_company_credentials(companyId)
+    return credential_views.list_company_credentials(companyId)

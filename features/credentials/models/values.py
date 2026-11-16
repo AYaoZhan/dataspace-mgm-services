@@ -22,14 +22,57 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets of the credentials: credential types and the issuer routes of README 6.3."""
+"""Value sets of the credentials (openapi.yaml `components/schemas`): credential types, statuses, routes."""
 from __future__ import annotations
 
-import re
+from enum import StrEnum
 
-TYPES = ("BPN", "MEMBERSHIP")
-BPN_RE = re.compile(r"^BPNL[A-Za-z0-9]{12}$", re.IGNORECASE)
 
-CREDENTIAL_ISSUER, ISSUER_SERVICE, CSP_ISSUER, STUB = "CREDENTIAL_ISSUER", "ISSUER_SERVICE", "CSP_ISSUER", "STUB"
+class CredentialType(StrEnum):
+    BPN = "BPN"
+    MEMBERSHIP = "MEMBERSHIP"
+
+
+class CredentialStatus(StrEnum):
+    REQUESTED = "REQUESTED"
+    ISSUED = "ISSUED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    REVOCATION_PENDING = "REVOCATION_PENDING"
+    REVOKED = "REVOKED"
+
+
+class Route(StrEnum):
+    """README 6.3: own issuer of the OSP (`CREDENTIAL_ISSUER`, `ISSUER_SERVICE`), CSP issuer, built-in stand-in."""
+    CREDENTIAL_ISSUER = "CREDENTIAL_ISSUER"
+    ISSUER_SERVICE = "ISSUER_SERVICE"
+    CSP_ISSUER = "CSP_ISSUER"
+    STUB = "STUB"
+
+
+class RunStatus(StrEnum):
+    RUNNING = "RUNNING"
+    DONE = "DONE"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class RevocationReason(StrEnum):
+    COMPANY_DEACTIVATED = "COMPANY_DEACTIVATED"
+    OTHER = "OTHER"
+
+
+class ReportStatus(StrEnum):
+    """`status` of a status report of an issuer (README 7.4)."""
+    SUCCESSFUL = "SUCCESSFUL"
+    UNSUCCESSFUL = "UNSUCCESSFUL"
+
+
+TYPES = tuple(CredentialType)                       # in the order of the spec, also the order of the views
+CREDENTIAL_KINDS = ("bpn", "membership")            # `credentialKind` of the callback path
+BPN_PATTERN = r"^[Bb][Pp][Nn][Ll][A-Za-z0-9]{12}$"  # openapi.yaml `Bpn` (any case; stored in upper case)
+
+CREDENTIAL_ISSUER, ISSUER_SERVICE, CSP_ISSUER, STUB = (Route.CREDENTIAL_ISSUER, Route.ISSUER_SERVICE,
+                                                       Route.CSP_ISSUER, Route.STUB)
 # README 6.3 rule 4: the issuance mode of the wallet each route fits
 FITS = {CREDENTIAL_ISSUER: "ISSUER_WRITES", ISSUER_SERVICE: "HOLDER_REQUESTS", CSP_ISSUER: "HOLDER_REQUESTS"}

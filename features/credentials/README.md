@@ -80,18 +80,19 @@ once. Every change writes a history row. All operations for one company run unde
 | `services/credential_views.py` | the read views of README 7.1, 7.2 and 9.1 |
 | `services/issuer_routes.py` | the choice of the route (README 6.3) and the route objects |
 | `services/stub_issuer.py` | the built-in stand-in issuer `STUB` (README 11.6): reports in process after a delay |
-| `managers/credential_store.py` | `CredentialStore` and `InMemoryStore` (tables of README 5) and `store()` |
+| `managers/credential_store.py` | `CredentialStore` and its repository `SqlCredentialStore` on the tables, and `store()` |
 | `managers/issuer_clients.py` | clients of the Credential Issuer, the IssuerService and the CSP issuer (README 11.3 to 11.5) |
 | `managers/neighbour_client.py` | C3-M1 `query_company`, C4-M2 `get_wallet_info` and `get_holder_access` |
 | `managers/config.py` | every variable of README 4, read at call time |
-| `models/` | the spec id and the Problem factories (`problems.py`), the value sets (`values.py`) |
+| `models/` | pydantic API models of `openapi.yaml` (`credentials.py`: step inputs and results, `IssuerResponse`, the views, `CredentialPage`), SQLModel tables of README 5 (`tables.py`), value sets (`values.py`), spec id, Problem factories and `parse()` (`problems.py`) |
 
 ### In-process interface
 
-`interface.py` holds the call convention: the steps `issue_credentials(input)` and `revoke_credentials(input)`
-(input and answer as the step bodies of `openapi.yaml`), the query `query_company_credentials(companyId=...)`, and
-the operations the controllers call (`list_company_credentials`, `list_credentials`, `confirm_revocation`,
-`validate_report`, `report_status`, `audit`), plus `store()` and `reset()` for tests.
+`interface.py` holds the call convention: the steps `issue_credentials(input)` and `revoke_credentials(input)` and
+the query `query_company_credentials(companyId=...)`, with the JSON of `openapi.yaml` as input and answer (validated
+with the models, an invalid input is 400 `validation`), `report_status()` for an issuer in the same process, and
+`store()` and `reset()` for tests. The controllers call the services with the parsed models; the services return
+the API models (`StepResult[IssueResult]`, `CredentialPage`, ...).
 
 ### Events
 
@@ -113,8 +114,11 @@ The callback address handed to the issuers is `{CALLBACK_BASE_URL}/api/credentia
 
 ### Persistence
 
-In memory (`InMemoryStore`); the store uses the table and column names of README 5, so a PostgreSQL store can
-replace it behind `CredentialStore` without touching the services.
+The feature's own database through SQLModel (`portal_common.database`): the tables `credential`,
+`credential_history`, `issuance_run` and `audit_entry` of README 5 in `models/tables.py`, with one `MetaData` for
+the feature. `on_startup()` creates them, `reset()` empties them. The URL is `CREDENTIALS_DATABASE_URL`, then
+`C4_M1_DATABASE_URL`, then `DATABASE_URL`; without one the feature runs on a private in-memory SQLite database, so
+the tests and `demo.py` need no server. `SqlCredentialStore` is the only code that opens a session.
 
 ### Run and test
 

@@ -22,67 +22,56 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Read views of the credentials (README 7.1, 7.2, 9.1): rows of the store as the API shows them."""
+"""Read views of the credentials (README 7.1, 7.2, 9.1): rows of the store as the API models of `openapi.yaml`."""
 from __future__ import annotations
 
 import datetime as dt
 
 from features.credentials.managers import config
 from features.credentials.managers.credential_store import store
+from features.credentials.models.credentials import (
+    CompanyCredentials,
+    CredentialDetail,
+    CredentialPage,
+    CredentialStatusView,
+    IssuanceRunView,
+)
 from features.credentials.models.values import TYPES
 
 
-def _iso(value: dt.datetime | None) -> str | None:
-    return value.isoformat() if value else None
+def _type_order(credential_type: str) -> int:
+    """Position in the spec's order of the types; unknown types (from the configuration) last."""
+    return TYPES.index(credential_type) if credential_type in TYPES else len(TYPES)
 
 
-def _status_view(row: dict) -> dict:
-    return {"credentialType": row["credential_type"], "status": row["status"], "requestedAt": _iso(row.get("requested_at")),
-            "issuedAt": _iso(row.get("issued_at")), "revokedAt": _iso(row.get("revoked_at"))}
+def _rows_of(company_id: str) -> list[dict]:
+    rows = store().list_credentials(company_id=company_id, size=1000)
+    return sorted(rows, key=lambda r: _type_order(r["credential_type"]))
 
 
-def _rows_of(cid: str) -> list[dict]:
-    rows = store().list_credentials(company_id=cid, size=1000)
-    return sorted(rows, key=lambda r: TYPES.index(r["credential_type"]) if r["credential_type"] in TYPES else len(TYPES))
-
-
-def query_company_credentials(*, companyId: str) -> dict:
+def query_company_credentials(*, companyId: str) -> CompanyCredentials:
     """README 9.1: status per credential type and the last round; an unknown company gives an empty list."""
     run = store().get_run(companyId)
-    return {"companyId": companyId, "credentials": [_status_view(r) for r in _rows_of(companyId)],
-            "run": None if run is None else {
-                "status": run["status"], "credentialTypes": list(run["credential_types"]),
-                "startedAt": _iso(run["started_at"]), "finishedAt": _iso(run.get("finished_at"))}}
+    return CompanyCredentials(company_id=companyId,
+                              credentials=[CredentialStatusView.model_validate(r) for r in _rows_of(companyId)],
+                              run=None if run is None else IssuanceRunView.model_validate(run))
 
 
-def list_company_credentials(company_id: str) -> list[dict]:
+def list_company_credentials(company_id: str) -> list[CredentialStatusView]:
     """README 7.1: no messages of the issuer, no routes; onboarding types without a row show `NONE`."""
-    views = {r["credential_type"]: _status_view(r) for r in _rows_of(company_id)}
+    views = {r["credential_type"]: CredentialStatusView.model_validate(r) for r in _rows_of(company_id)}
     for t in config.onboarding_types():
-        views.setdefault(t, {"credentialType": t, "status": "NONE", "requestedAt": None, "issuedAt": None,
-                             "revokedAt": None})
-    return [views[t] for t in sorted(views, key=lambda t: TYPES.index(t) if t in TYPES else len(TYPES))]
-
-
-def detail_view(row: dict) -> dict:
-    """OSP view (README 7.2): every field except secrets (`CredentialDetail`)."""
-    return {"id": row["id"], "companyId": row["company_id"], "credentialType": row["credential_type"],
-            "status": row["status"], "route": row["route"], "issuerDid": row.get("issuer_did") or None,
-            "walletProvider": row.get("wallet_provider"), "bpn": row.get("bpn"), "holderDid": row.get("holder_did"),
-            "requestRef": row.get("request_ref") or None, "attempt": row["attempt"],
-            "requestedAt": _iso(row.get("requested_at")), "issuedAt": _iso(row.get("issued_at")),
-            "failedAt": _iso(row.get("failed_at")), "revokedAt": _iso(row.get("revoked_at")),
-            "failureReason": row.get("failure_reason"), "revocationReason": row.get("revocation_reason"),
-            "createdAt": _iso(row["created_at"]), "changedAt": _iso(row["changed_at"])}
+        views.setdefault(t, CredentialStatusView(credential_type=t, status="NONE"))
+    return [views[t] for t in sorted(views, key=_type_order)]
 
 
 def list_credentials(statuses=None, credential_type=None, company_id=None, route=None, requested_before=None,
-                     page: int = 0, size: int = 20) -> dict:
-    """README 7.2: filters, sorted by `changedAt` descending, paged."""
+                     page: int = 0, size: int = 20) -> CredentialPage:
+    """README 7.2: filters, sorted by `changedAt` descending, paged in the store."""
     if requested_before is not None and requested_before.tzinfo is None:
         requested_before = requested_before.replace(tzinfo=dt.UTC)
     filters = dict(company_id=company_id, statuses=statuses, credential_type=credential_type, route=route,
                    requested_before=requested_before)
     rows = store().list_credentials(page=page, size=size, **filters)
-    return {"items": [detail_view(r) for r in rows], "page": page, "size": size,
-            "total": store().count_credentials(**filters)}
+    return CredentialPage(items=[CredentialDetail.model_validate(r) for r in rows], page=page, size=size,
+                          total=store().count_credentials(**filters))

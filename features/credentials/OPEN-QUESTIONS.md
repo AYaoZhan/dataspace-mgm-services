@@ -29,10 +29,11 @@ Each entry names the reading that is implemented (AGENTS.md rule 10).
 
 ## Decisions (spec against repo)
 
-1. **Storage is in memory** (repo README "Where is the data stored?"; no module uses a database). `store.py` defines
-   `CredentialStore` and `InMemoryStore` with the table and column names of README 5 and a `transaction(company_id)`
-   seam (per-company `RLock`, stands in for the advisory lock of README 6.6). A PostgreSQL store can replace it
-   without touching `services/`. No `DATABASE_URL` handling.
+1. **Storage is the feature's own database** (ADR-0003, F17). `managers/credential_store.py` defines `CredentialStore`
+   and `SqlCredentialStore` on the SQLModel tables of `models/tables.py` (table and column names of README 5) and a
+   `transaction(company_id)` seam (per-company `RLock`, stands in for the advisory lock of README 6.6). The URL is
+   `CREDENTIALS_DATABASE_URL`, then `C4_M1_DATABASE_URL`, then `DATABASE_URL`; without one a private in-memory
+   SQLite database (`portal_common.database`). No migrations yet: the index creates missing tables at start-up.
 2. **Outbox is `events.publish`** (the shared relay of the repo).
 3. **Defaults in code** (config files are not ours): `ISSUER_MODE=OWN`, `ONBOARDING_CREDENTIAL_TYPES=BPN,MEMBERSHIP`,
    `RESEND_AFTER_HOURS=24`, `STUB_ISSUER_DELAY_SECONDS=1` (spec example 5; well below the 60 s demo timeout),

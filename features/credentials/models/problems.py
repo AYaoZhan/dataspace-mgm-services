@@ -22,16 +22,16 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The spec id of the credentials and the Problem Details of README 6.7 (types `urn:c4-m1:problem:...`)."""
+"""The spec id of the credentials and the Problem Details of README 12 (types `urn:c4-m1:problem:...`)."""
 from __future__ import annotations
+
+from typing import TypeVar
+
+from pydantic import BaseModel, ValidationError
 
 from portal_common.problems import Problem
 
 MODULE = "c4-m1"
-
-
-def validation(detail: str) -> Problem:
-    return Problem(MODULE, 400, "validation", detail=detail, retryable=False)
 
 
 def upstream(detail: str) -> Problem:
@@ -40,3 +40,15 @@ def upstream(detail: str) -> Problem:
 
 def no_route(detail: str) -> Problem:
     return Problem(MODULE, 409, "no-issuer-route", detail=detail, retryable=False)
+
+
+M = TypeVar("M", bound=BaseModel)
+
+
+def parse(model: type[M], data: object) -> M:
+    """`data` as `model`, or 400 `validation` with the fields at fault, as the HTTP layer answers (README 12)."""
+    try:
+        return model.model_validate(data)
+    except ValidationError as e:
+        errors = [{"field": ".".join(str(x) for x in err["loc"]), "message": err["msg"]} for err in e.errors()]
+        raise Problem(MODULE, 400, "validation", retryable=False, errors=errors) from None

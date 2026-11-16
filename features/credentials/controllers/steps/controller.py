@@ -25,19 +25,21 @@
 """The steps of the credentials in the flows of Process Orchestration (README 8)."""
 from __future__ import annotations
 
-from fastapi import Body
-
-from features.credentials import interface
+from features.credentials.models.credentials import IssueCredentials, IssueResult, RevocationResult, RevokeCredentials
+from features.credentials.services import credential_service
+from portal_common.models import StepResult
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Credentials: Process Steps and Queries")
 
 
-@controller.post("/issue-credentials", summary="Step: issue-credentials")
-def issue(body: dict = Body(...), _: dict = Permission):
-    return interface.issue_credentials(body)
+@controller.post("/issue-credentials", response_model=StepResult[IssueResult], response_model_exclude_none=True,
+                 summary="Step: issue-credentials")
+def issue(body: IssueCredentials, _: dict = Permission):
+    return credential_service.issue_credentials(body)
 
 
-@controller.post("/revoke-credentials", summary="Step: revoke-credentials")
-def revoke(body: dict = Body(...), _: dict = Permission):
-    return interface.revoke_credentials(body)
+@controller.post("/revoke-credentials", response_model=StepResult[RevocationResult],
+                 response_model_exclude_none=True, summary="Step: revoke-credentials")
+def revoke(body: RevokeCredentials, _: dict = Permission):
+    return credential_service.revoke_credentials(body)

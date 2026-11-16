@@ -25,19 +25,26 @@
 """Credentials (spec C4-M1): the BPN and membership credentials of a company, triggered at an issuer through
 one of the routes of README 6.3, and their revocation.
 
-Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hook a runtime
-calls, `reset()`. The HTTP API is `features.credentials.router.router`.
+Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
+calls, `on_startup()` (creates the tables) and `reset()` (empties them). The HTTP API is
+`features.credentials.router.router`.
 """
 from __future__ import annotations
 
 from features.credentials.models.problems import MODULE
 from features.credentials.services import credential_service
+from portal_common import database
 
 NAME = "credentials"
 
-__all__ = ["MODULE", "NAME", "reset"]
+__all__ = ["MODULE", "NAME", "on_startup", "reset"]
+
+
+def on_startup() -> None:
+    """Creates the tables of README 5 in the feature's database when they do not exist yet."""
+    database.create_tables(MODULE)
 
 
 def reset() -> None:
-    """Clears the store, cancels pending STUB timers, clears the routes state."""
+    """Empties the tables, cancels pending STUB timers, clears the routes state."""
     credential_service.reset()

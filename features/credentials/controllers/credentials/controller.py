@@ -27,32 +27,29 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Literal
 
-from fastapi import Body, Query
+from fastapi import Query
 
-from features.credentials import interface
-from portal_common.routing import Controller, Permission
+from features.credentials.models.credentials import ConfirmRevocation, CredentialDetail, CredentialPage
+from features.credentials.models.values import CredentialStatus, CredentialType, Route
+from features.credentials.services import credential_service, credential_views
+from portal_common.routing import Controller, Page, Permission, Size
 
 controller = Controller("Credentials: OSP Credentials")
 
 
-@controller.get("", summary="List the credentials")
-def list_credentials(page: int = Query(0, ge=0), size: int = Query(20, ge=1, le=100),
-                     status: list[Literal["REQUESTED", "ISSUED", "FAILED", "CANCELLED", "REVOCATION_PENDING",
-                                          "REVOKED"]] | None = Query(None),
-                     credentialType: Literal["BPN", "MEMBERSHIP"] | None = None,
-                     companyId: uuid.UUID | None = None,
-                     route: Literal["CREDENTIAL_ISSUER", "ISSUER_SERVICE", "CSP_ISSUER", "STUB"] | None = None,
-                     requestedBefore: dt.datetime | None = None,
-                     _: dict = Permission):
+@controller.get("", response_model=CredentialPage, summary="List the credentials")
+def list_credentials(page: int = Page, size: int = Size, status: list[CredentialStatus] | None = Query(None),
+                     credentialType: CredentialType | None = None, companyId: uuid.UUID | None = None,
+                     route: Route | None = None, requestedBefore: dt.datetime | None = None, _: dict = Permission):
     """README 7.2 (OSP staff, `manage_credentials`)."""
-    return interface.list_credentials(statuses=status, credential_type=credentialType,
-                                      company_id=str(companyId) if companyId else None, route=route,
-                                      requested_before=requestedBefore, page=page, size=size)
+    return credential_views.list_credentials(statuses=status, credential_type=credentialType,
+                                             company_id=str(companyId) if companyId else None, route=route,
+                                             requested_before=requestedBefore, page=page, size=size)
 
 
-@controller.post("/{credentialId}/confirm-revocation", summary="Confirm a revocation done by hand")
-def confirm_revocation(credentialId: str, body: dict = Body(...), claims: dict = Permission):
+@controller.post("/{credentialId}/confirm-revocation", response_model=CredentialDetail,
+                 summary="Confirm a revocation done by hand")
+def confirm_revocation(credentialId: str, body: ConfirmRevocation, claims: dict = Permission):
     """README 7.3 (OSP staff, `manage_credentials`)."""
-    return interface.confirm_revocation(credentialId, body, claims)
+    return credential_service.confirm_revocation(credentialId, body, claims)
