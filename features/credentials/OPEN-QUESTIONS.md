@@ -32,7 +32,7 @@ Each entry names the reading that is implemented (AGENTS.md rule 10).
 1. **Storage is in memory** (repo README "Where is the data stored?"; no module uses a database). `store.py` defines
    `CredentialStore` and `InMemoryStore` with the table and column names of README 5 and a `transaction(company_id)`
    seam (per-company `RLock`, stands in for the advisory lock of README 6.6). A PostgreSQL store can replace it
-   without touching `service.py`. No `DATABASE_URL` handling.
+   without touching `services/`. No `DATABASE_URL` handling.
 2. **Outbox is `events.publish`** (the shared relay of the repo).
 3. **Defaults in code** (config files are not ours): `ISSUER_MODE=OWN`, `ONBOARDING_CREDENTIAL_TYPES=BPN,MEMBERSHIP`,
    `RESEND_AFTER_HOURS=24`, `STUB_ISSUER_DELAY_SECONDS=1` (spec example 5; well below the 60 s demo timeout),
@@ -78,3 +78,7 @@ Each entry names the reading that is implemented (AGENTS.md rule 10).
 22. `tests/test_c4_m2_flow.py` needs the real C4-M2 (Tasks A and B). Resolved: C4-M2 is merged and the flow tests pass.
     The stand-in issuer reports under the per-company lock and `flush()` waits for timers that already fired,
     so a delay of 0 no longer loses the report.
+
+## Base path
+
+23. **FRAMEWORK 4.1, base path `/api/c4-m1`** "until the common path convention is settled". Implemented: served under the readable feature name `/api/credentials` (ADR-0003, decision 2); `/api/c4-m1` answers 404. The callback address handed to the issuers is `{CALLBACK_BASE_URL}/api/credentials/issuer-callbacks/{credentialKind}`. Problem types, event sources, permissions and the service account `svc-c4-m1` keep the spec id.

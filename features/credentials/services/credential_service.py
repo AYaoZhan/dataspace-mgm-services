@@ -22,44 +22,34 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-sonnet-5-5)
 #################################################################################
-"""Business rules of C4-M1 Credentials (README 6, 7.4, 8).
+"""Business rules of the credentials (spec C4-M1, README 6, 7.3, 7.4, 8).
 
 Talks only to the `CredentialStore` interface (`store()`), never to dicts. Every change of a row
 writes `credential_history` (README 6.1); every operation for one company runs inside
-`store().transaction(company_id)` (README 6.6). All time reads go through `now()`.
+`store().transaction(company_id)` (README 6.6). All time reads go through `now()`. The read views
+(README 7.1, 7.2, 9.1) are in `credential_views.py`.
 """
 from __future__ import annotations
 
 import datetime as dt
 import logging
-import os
-import re
 import uuid
 
-from portal_common import events, neighbours
+from features.credentials.managers import config
+from features.credentials.managers.credential_store import store
+from features.credentials.models.problems import MODULE, validation as _validation
+from features.credentials.models.values import BPN_RE, CREDENTIAL_ISSUER, TYPES
+from features.credentials.services import issuer_routes as routes
+from features.credentials.services.credential_views import detail_view as _detail_view
+from portal_common import events, neighbours, standin
 from portal_common.problems import Problem
 
-from . import routes
-from .store import CredentialStore, InMemoryStore
-
-MODULE = "c4-m1"
 log = logging.getLogger("c4-m1")
-TYPES = ("BPN", "MEMBERSHIP")
-BPN_RE = re.compile(r"^BPNL[A-Za-z0-9]{12}$", re.IGNORECASE)
-
-_store: CredentialStore | None = None
 
 
 def now() -> dt.datetime:
     """The single clock of the module (timezone-aware UTC); tests patch it."""
     return dt.datetime.now(dt.UTC)
-
-
-def store() -> CredentialStore:
-    global _store
-    if _store is None:
-        _store = InMemoryStore()
-    return _store
 
 
 def reset() -> None:
@@ -70,27 +60,10 @@ def reset() -> None:
 
 def flush_timers() -> None:
     """Fires every pending STUB issuer timer now, through the code path of the HTTP callback (tests)."""
-    routes._stub.flush()
-
-
-# ------------------------------------------------------------------------------------- configuration
-def onboarding_types() -> list[str]:
-    raw = os.environ.get("ONBOARDING_CREDENTIAL_TYPES") or "BPN,MEMBERSHIP"
-    return [t.strip().upper() for t in raw.split(",") if t.strip()]
-
-
-def resend_after() -> dt.timedelta:
-    try:
-        return dt.timedelta(hours=float(os.environ.get("RESEND_AFTER_HOURS") or 24))
-    except ValueError:
-        return dt.timedelta(hours=24)
+    routes.flush_stub()
 
 
 # ------------------------------------------------------------------------------------------ helpers
-def _validation(detail: str) -> Problem:
-    return Problem(MODULE, 400, "validation", detail=detail, retryable=False)
-
-
 def valid_uuid(value: object, name: str) -> str:
     try:
         if not isinstance(value, str):
@@ -167,7 +140,7 @@ def _preconditions(cid: str) -> tuple[dict, dict, str]:
         raise Problem(MODULE, 409, "wallet-not-ready", detail="dataspace wallet not ACTIVE or without DID",
                       retryable=False)
     route = routes.select_route(wallet)
-    if route == routes.CREDENTIAL_ISSUER and not wallet.get("didDocumentLocation"):
+    if route == CREDENTIAL_ISSUER and not wallet.get("didDocumentLocation"):
         raise Problem(MODULE, 409, "wallet-not-ready", detail="wallet without location of the DID document",
                       retryable=False)
     return company, wallet, route
@@ -176,9 +149,8 @@ def _preconditions(cid: str) -> tuple[dict, dict, str]:
 # ---------------------------------------------------------------------------------- issue-credentials
 def issue_credentials(input: dict) -> dict:
     """README 8.1."""
-    from portal_common import standin
     cid = valid_uuid(input.get("companyId"), "companyId")
-    types = valid_types(input.get("credentialTypes"), onboarding_types())
+    types = valid_types(input.get("credentialTypes"), config.onboarding_types())
     with store().transaction(cid):
         company, wallet, route_name = _preconditions(cid)
         rows = {t: store().get_credential(cid, t) for t in types}
@@ -188,7 +160,7 @@ def issue_credentials(input: dict) -> dict:
         t_now = now()
         to_order = [t for t in types if not (rows[t] and (
             rows[t]["status"] == "ISSUED"
-            or (rows[t]["status"] == "REQUESTED" and t_now - rows[t]["requested_at"] < resend_after())))]
+            or (rows[t]["status"] == "REQUESTED" and t_now - rows[t]["requested_at"] < config.resend_after())))]
         if to_order:
             route = routes.get(route_name)
             ctx = {"company": company, "wallet": wallet, "route": route_name}
@@ -228,7 +200,6 @@ def _order(ctx: dict, route, row: dict | None, ctype: str) -> None:
 def revoke_credentials(input: dict) -> dict:
     """README 8.2. No precondition on company or wallet; per given type (default MEMBERSHIP): `ISSUED` is revoked
     through the route of the order (or waits for OSP staff), `REQUESTED`/`FAILED` become `CANCELLED`."""
-    from portal_common import standin
     cid = valid_uuid(input.get("companyId"), "companyId")
     reason = input.get("reason")
     if reason not in ("COMPANY_DEACTIVATED", "OTHER"):
@@ -340,63 +311,6 @@ def _revoke_now(row: dict) -> None:
             "revocationReason": row.get("revocation_reason") or "OTHER"})
     else:
         _change(row, "REVOCATION_PENDING")
-
-
-# ------------------------------------------------------------------------------------------------ reads
-def _iso(value: dt.datetime | None) -> str | None:
-    return value.isoformat() if value else None
-
-
-def _status_view(row: dict) -> dict:
-    return {"credentialType": row["credential_type"], "status": row["status"], "requestedAt": _iso(row.get("requested_at")),
-            "issuedAt": _iso(row.get("issued_at")), "revokedAt": _iso(row.get("revoked_at"))}
-
-
-def _rows_of(cid: str) -> list[dict]:
-    rows = store().list_credentials(company_id=cid, size=1000)
-    return sorted(rows, key=lambda r: TYPES.index(r["credential_type"]) if r["credential_type"] in TYPES else len(TYPES))
-
-
-def query_company_credentials(*, companyId: str) -> dict:
-    """README 9.1: status per credential type and the last round; an unknown company gives an empty list."""
-    run = store().get_run(companyId)
-    return {"companyId": companyId, "credentials": [_status_view(r) for r in _rows_of(companyId)],
-            "run": None if run is None else {
-                "status": run["status"], "credentialTypes": list(run["credential_types"]),
-                "startedAt": _iso(run["started_at"]), "finishedAt": _iso(run.get("finished_at"))}}
-
-
-def list_company_credentials(company_id: str) -> list[dict]:
-    """README 7.1: no messages of the issuer, no routes; onboarding types without a row show `NONE`."""
-    views = {r["credential_type"]: _status_view(r) for r in _rows_of(company_id)}
-    for t in onboarding_types():
-        views.setdefault(t, {"credentialType": t, "status": "NONE", "requestedAt": None, "issuedAt": None,
-                             "revokedAt": None})
-    return [views[t] for t in sorted(views, key=lambda t: TYPES.index(t) if t in TYPES else len(TYPES))]
-
-
-def _detail_view(row: dict) -> dict:
-    """OSP view (README 7.2): every field except secrets (`CredentialDetail`)."""
-    return {"id": row["id"], "companyId": row["company_id"], "credentialType": row["credential_type"],
-            "status": row["status"], "route": row["route"], "issuerDid": row.get("issuer_did") or None,
-            "walletProvider": row.get("wallet_provider"), "bpn": row.get("bpn"), "holderDid": row.get("holder_did"),
-            "requestRef": row.get("request_ref") or None, "attempt": row["attempt"],
-            "requestedAt": _iso(row.get("requested_at")), "issuedAt": _iso(row.get("issued_at")),
-            "failedAt": _iso(row.get("failed_at")), "revokedAt": _iso(row.get("revoked_at")),
-            "failureReason": row.get("failure_reason"), "revocationReason": row.get("revocation_reason"),
-            "createdAt": _iso(row["created_at"]), "changedAt": _iso(row["changed_at"])}
-
-
-def list_credentials(statuses=None, credential_type=None, company_id=None, route=None, requested_before=None,
-                     page: int = 0, size: int = 20) -> dict:
-    """README 7.2: filters, sorted by `changedAt` descending, paged."""
-    if requested_before is not None and requested_before.tzinfo is None:
-        requested_before = requested_before.replace(tzinfo=dt.UTC)
-    filters = dict(company_id=company_id, statuses=statuses, credential_type=credential_type, route=route,
-                   requested_before=requested_before)
-    rows = store().list_credentials(page=page, size=size, **filters)
-    return {"items": [_detail_view(r) for r in rows], "page": page, "size": size,
-            "total": store().count_credentials(**filters)}
 
 
 # ---------------------------------------------------------------------------------- confirm-revocation

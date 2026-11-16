@@ -53,7 +53,7 @@ BPN1, BPN2, BPN3 = "BPNLIUK2REMLK3F4", "BPNL0000000000U4", "BPNL0000000000U6"
 
 @pytest.fixture(params=STORES)
 def store(request):
-    return getattr(seam("modules.c4_m1.store"), request.param)()
+    return getattr(seam("features.credentials.managers.credential_store"), request.param)()
 
 
 def t(h: float) -> dt.datetime:

@@ -52,7 +52,7 @@ from portal_common import tokens
 
 U1 = COMPANIES["u1"]["id"]
 U1_BPN = "BPNLIUK2REMLK3F4"
-STEP = "/api/c4-m1/steps/issue-credentials"
+STEP = "/api/credentials/steps/issue-credentials"
 TYPES = ["BPN", "MEMBERSHIP"]
 
 
@@ -67,7 +67,7 @@ def issue(osp, company_id: str, n: int = 1, **extra):
 
 
 def store():
-    return seam("modules.c4_m1.interface").store()
+    return seam("features.credentials.interface").store()
 
 
 def status_of(company_id: str, ctype: str) -> str | None:
@@ -87,11 +87,11 @@ def history(company_id: str, ctype: str) -> list[tuple[str, int]]:
 
 
 def orders() -> list[dict]:
-    return seam("modules.c4_m1.routes").stub_orders()
+    return seam("features.credentials.services.issuer_routes").stub_orders()
 
 
 def flush() -> None:
-    seam("modules.c4_m1.service").flush_timers()
+    seam("features.credentials.services.credential_service").flush_timers()
 
 
 def assert_problem(r, status: int, name: str, retryable: bool | None = None) -> dict:
@@ -282,7 +282,7 @@ def test_case_03_young_requested_row_is_not_resent_before_the_resend_age(osp_fac
                                                                          monkeypatch):
     # README 8.1 step 2: "younger than RESEND_AFTER_HOURS: nothing"; 23 h < 24 h
     osp = osp_factory()
-    clock = Clock().install(monkeypatch, "modules.c4_m1.service")
+    clock = Clock().install(monkeypatch, "features.credentials.services.credential_service")
     issue(osp, U1, 1)
     clock.advance(hours=23)
     assert issue(osp, U1, 2).json()["state"] == "RUNNING"
@@ -292,7 +292,7 @@ def test_case_03_young_requested_row_is_not_resent_before_the_resend_age(osp_fac
 def test_case_03_old_requested_row_is_resent_after_the_resend_age(osp_factory, companies, wallet_fake, monkeypatch):
     # README 8.1 step 2: "REQUESTED and older: send the order again, attempt + 1"; 25 h > 24 h
     osp = osp_factory()
-    clock = Clock().install(monkeypatch, "modules.c4_m1.service")
+    clock = Clock().install(monkeypatch, "features.credentials.services.credential_service")
     issue(osp, U1, 1)
     clock.advance(hours=25)
     r = issue(osp, U1, 2)
@@ -481,7 +481,7 @@ def test_case_17_reactivation_orders_only_membership(osp_factory, companies, wal
     osp = osp_factory()
     issue(osp, U1, 1)
     flush()
-    revoke = osp.post("/api/c4-m1/steps/revoke-credentials", osp.service("svc-c4-m1"),
+    revoke = osp.post("/api/credentials/steps/revoke-credentials", osp.service("svc-c4-m1"),
                       json=step_input(U1, 2, reason="COMPANY_DEACTIVATED"))
     assert revoke.status_code == 200, revoke.text
     assert [status_of(U1, t) for t in TYPES] == ["ISSUED", "REVOKED"]
@@ -641,7 +641,7 @@ def test_interface_reset_cancels_pending_stub_timers_and_empties_the_store(osp_f
     osp = osp_factory()
     issue(osp, U1)
     assert len(orders()) == 2                                       # two timers are pending
-    seam("modules.c4_m1.interface").reset()
+    seam("features.credentials.interface").reset()
     flush()                                                         # nothing is left to fire
     assert store().list_credentials() == [] and store().get_run(U1) is None
     assert orders() == []
@@ -665,7 +665,7 @@ def test_readme_8_1_revocation_pending_blocks_issuing_before_anything_is_sent(os
 def test_readme_6_6_concurrent_calls_for_one_company_produce_one_order_set(osp_factory, companies, wallet_fake):
     # README 6.6 / 8.1 step 1: steps for the same company run one after the other (advisory lock)
     osp = osp_factory()
-    interface = seam("modules.c4_m1.interface")
+    interface = seam("features.credentials.interface")
     barrier = threading.Barrier(4)
     results: list[dict] = []
     errors: list[BaseException] = []

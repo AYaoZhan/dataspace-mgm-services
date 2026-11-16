@@ -3,6 +3,7 @@
 **Status:** proposed (9 Nov 2026, updated 13 Nov 2026), proof of concept with the onboarding: the features `registration` (C1-M2) and
 `company_profile` (C3-M1), migrated from the hackathon folders `modules/c1_m2/` and `modules/c3_m1/`; then
 `technical_user` (C2-M3) from `modules/c2_m3/`.
+Also migrated: `credentials` (C4-M1) from `modules/c4_m1/`.
 **Builds on:** [ADR-0002](ADR-0002-runtime-per-module.md) (one image, many runtimes), the call convention of
 `AGENTS.md`, and the layered backend of the Eclipse Tractus-X Industry Core Hub (`controllers/`, `services/`,
 `managers/`, `models/`, `runtimes/`).
@@ -117,6 +118,7 @@ adapters, models, and runtimes that assemble the app.
      - `company_profile` has a PostgreSQL transport (`managers/postgres_backend.py`) that reads the interim
        variable `C3_M1_DATABASE_URL`, with the plain `DATABASE_URL` as fallback for a single-feature runtime (#54);
      - `registration` and `technical_user` keep their data in memory;
+     - `credentials` keeps its data in memory (`managers/credential_store.py`);
      - C2-M2 (not migrated) reads `C2_M2_DATABASE_URL`, so in today's monolith the two no longer share one
        database as long as the plain `DATABASE_URL` stays unset.
 

@@ -226,7 +226,7 @@ def onboarding(t: Target, base: str, applicant: str, reviewer: str, admin: str, 
             claims.get("company_id") == cid and claims.get("bpn") == c.get("bpn")
             and "manage_company_users" in claims["resource_access"]["portal-core"]["roles"],
             json.dumps({k: claims.get(k) for k in ("company_id", "bpn")}))
-    r = t.call("GET", f"{base}/api/c4-m1/companies/{cid}/credentials", tok)
+    r = t.call("GET", f"{base}/api/credentials/companies/{cid}/credentials", tok)
     creds = r.json() if r.status_code == 200 else []
     t.check("C4-M1: credentials BPN and MEMBERSHIP ISSUED",
             {x["credentialType"]: x["status"] for x in creds} == {"BPN": "ISSUED", "MEMBERSHIP": "ISSUED"}, json.dumps(creds))

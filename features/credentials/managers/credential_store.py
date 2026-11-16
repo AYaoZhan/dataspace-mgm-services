@@ -24,7 +24,7 @@
 #################################################################################
 """Storage of C4-M1 Credentials (README 5) behind a small interface.
 
-`CredentialStore` is the only thing `service.py` and `interface.py` talk to; `InMemoryStore` is the
+`CredentialStore` is the only thing the services talk to (through `store()`); `InMemoryStore` is the
 implementation of this repository (everything is in memory, see the repo README "Where is the data
 stored?"). A PostgreSQL store (README 4, own database `c4_m1`) can be added later without touching the
 business logic: rows and keys use the table and column names of README 5 (`credential`,
@@ -211,3 +211,14 @@ class InMemoryStore:
             self._runs.clear()
             self._history.clear()
             self._audit.clear()
+
+
+_store: CredentialStore | None = None
+
+
+def store() -> CredentialStore:
+    """The active `CredentialStore` of the process."""
+    global _store
+    if _store is None:
+        _store = InMemoryStore()
+    return _store
