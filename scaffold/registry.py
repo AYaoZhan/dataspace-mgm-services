@@ -38,12 +38,16 @@ Every operation of the spec that a module does not implement is added from the f
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 import importlib
 import importlib.util
+import pkgutil
 from dataclasses import dataclass
 from types import ModuleType
+from collections.abc import Iterable
 
 from portal_common import spec
+import features
 
 LAST = ("c11-m1", "c12-m1")   # subscribers that react to the events of all others
 
@@ -55,13 +59,74 @@ class Entry:
     kind: str                   # "stand-in", "provided", "team" or "fallback"
 
 
-def load() -> list[Entry]:
+def _legacy_module(mid: str) -> ModuleType | None:
+    name = f"modules.{mid.replace('-', '_')}.router"
+    package = name.rsplit(".", 1)[0]
+    if importlib.util.find_spec(package) and importlib.util.find_spec(name):
+        return importlib.import_module(name)
+    return None
+
+
+def _discover_features() -> dict[str, ModuleType]:
+    feature_modules = {}
+    for package in pkgutil.iter_modules(features.__path__):
+        module = importlib.import_module(f"features.{package.name}")
+        mid = getattr(module, "MODULE", None)
+        if mid:
+            if mid in feature_modules:
+                raise ValueError(f"multiple features declare module {mid}")
+            feature_modules[mid] = module
+    return feature_modules
+
+
+def _resolve_selected(selected: ModuleType | str, known_modules: dict) -> tuple[str | None, ModuleType | None]:
+    if isinstance(selected, ModuleType):
+        module = selected
+        mid = getattr(module, "MODULE", None)
+    elif selected in known_modules:
+        module = _legacy_module(selected)
+        mid = selected
+    else:
+        module = importlib.import_module(f"features.{selected}")
+        mid = getattr(module, "MODULE", None)
+    return mid, module
+
+
+def _select_features(selected_features: Iterable[ModuleType | str], known_modules: dict) -> dict[str, ModuleType]:
+    selected_modules = {}
+    for selected in selected_features:
+        mid, module = _resolve_selected(selected, known_modules)
+        if mid not in known_modules or module is None:
+            raise ValueError(f"unknown feature or module: {selected}")
+        if mid in selected_modules:
+            raise ValueError(f"multiple selected features declare module {mid}")
+        selected_modules[mid] = module
+    return selected_modules
+
+
+def _entry_module(mid: str, discovered: dict[str, ModuleType], selected: dict[str, ModuleType] | None):
+    if selected is not None:
+        return selected.get(mid)
+    return discovered.get(mid) or _legacy_module(mid)
+
+
+def _kind(module: ModuleType | None) -> str:
+    if module is None:
+        return "fallback"
+    if getattr(module, "STANDIN", False):
+        return "stand-in"
+    if getattr(module, "PROVIDED", False):
+        return "provided"
+    return "team"
+
+
+def load(selected_features: Iterable[ModuleType | str] | None = None) -> list[Entry]:
+    known_modules = spec.modules()
+    discovered = _discover_features()
+    selected = _select_features(selected_features, known_modules) if selected_features is not None else None
     entries = []
-    for mid in spec.modules():
-        name = f"modules.{mid.replace('-', '_')}.router"
-        mod = importlib.import_module(name) if importlib.util.find_spec(name.rsplit(".", 1)[0]) and \
-            importlib.util.find_spec(name) else None
-        kind = ("fallback" if mod is None else "stand-in" if getattr(mod, "STANDIN", False)
-                else "provided" if getattr(mod, "PROVIDED", False) else "team")
+    for mid in known_modules:
+        mod = _entry_module(mid, discovered, selected)
+        kind = _kind(mod)
         entries.append(Entry(mid, mod, kind))
     return sorted(entries, key=lambda e: (e.id in LAST, LAST.index(e.id) if e.id in LAST else 0, e.id))

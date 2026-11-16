@@ -38,6 +38,8 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+from collections.abc import Iterable
+from types import ModuleType
 from typing import Annotated
 
 from fastapi import FastAPI, Query
@@ -81,10 +83,10 @@ def reset_all(entries) -> None:
     _ = ebw_signer  # the signing key stays, so attestations issued before a reset stay valid
 
 
-def create_app() -> FastAPI:
+def create_app(features: Iterable[ModuleType | str] | None = None) -> FastAPI:
     settings.load()
     _defaults()
-    entries = registry.load()
+    entries = registry.load(features)
     events.RELAY.clear_subscribers()
 
     @contextlib.asynccontextmanager

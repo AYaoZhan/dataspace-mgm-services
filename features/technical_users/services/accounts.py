@@ -27,12 +27,11 @@ from __future__ import annotations
 
 import uuid
 
-from portal_common.problems import Problem
-
-from modules.c2_m3 import config
-from modules.c2_m3.config import MODULE
-from modules.c2_m3.models import Origin, Status, SubscriptionParty, TechnicalUserRecord, Viewer, WalletAccess
-from modules.c2_m3.repository import repository
+from ..errors import problem
+from ..managers import config
+from ..managers.config import MODULE
+from ..models import Origin, Status, SubscriptionParty, TechnicalUserRecord, Viewer, WalletAccess
+from ..managers.technical_user_repository import repository
 from . import audit, iam_access, state
 from .audit import Actor
 
@@ -40,7 +39,7 @@ from .audit import Actor
 def find(user_id: str | None) -> TechnicalUserRecord:
     row = repository.get(user_id) if user_id else None
     if row is None:
-        raise Problem(MODULE, 404, "not-found", retryable=False)
+        raise problem(404, "not-found")
     return row
 
 
@@ -50,12 +49,12 @@ def viewer_of(row: TechnicalUserRecord, company_id: str | None) -> Viewer:
         return Viewer.OWNER
     if company_id and row["co_viewer_company_id"] == company_id:
         return Viewer.CO_VIEWER
-    raise Problem(MODULE, 404, "not-found", retryable=False)
+    raise problem(404, "not-found")
 
 
 def require_owner(row: TechnicalUserRecord, company_id: str | None) -> None:
     if viewer_of(row, company_id) != Viewer.OWNER:
-        raise Problem(MODULE, 403, "not-owner", retryable=False)
+        raise problem(403, "not-owner")
 
 
 def draw_client_id() -> str:
@@ -65,7 +64,7 @@ def draw_client_id() -> str:
         candidate = repository.next_client_id(config.client_id_prefix())
         if iam_access.call(iam_access.iam().client, candidate) is None:
             return candidate
-    raise Problem(MODULE, 502, "iam-error", detail="no free client ID in the Portal IAM", retryable=True)
+    raise problem(502, "iam-error", detail="no free client ID in the Portal IAM", retryable=True)
 
 
 def new_row(*, company_id: str, name: str, description: str | None, origin: Origin, client_id: str | None = None,

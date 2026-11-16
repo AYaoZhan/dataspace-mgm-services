@@ -27,13 +27,12 @@ from __future__ import annotations
 
 import contextlib
 
-from portal_common.problems import Problem
-
-from modules.c2_m3 import config, gateways
-from modules.c2_m3.config import MODULE
-from modules.c2_m3.models import Origin, TechnicalUserRecord, Viewer
-from modules.c2_m3.repository import repository
-from modules.c2_m3.schemas import SubscriptionCredentialsRequest, TechnicalUserCreate, TechnicalUserUpdate
+from ..errors import Problem, problem
+from ..managers import config, neighbour_client as gateways
+from ..managers.config import MODULE
+from ..models import Origin, TechnicalUserRecord, Viewer
+from ..managers.technical_user_repository import repository
+from ..models.schemas import SubscriptionCredentialsRequest, TechnicalUserCreate, TechnicalUserUpdate
 from . import accounts, audit, iam_access, projections, roles, state, validation
 from .audit import Actor
 
@@ -76,7 +75,7 @@ def _update_roles(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> tuple[
     current = set(iam_access.call(iam_access.iam().roles_for, row["iam_client_id"]))
     has_wallet = bool(current & config.wallet_roles()) or row["wallet_access"] != "NONE"
     if has_wallet != wallet_requested:
-        raise Problem(MODULE, 409, "wallet-role-change", retryable=False)
+        raise problem(409, "wallet-role-change")
     return iam_access.call(iam_access.iam().set_roles, row["iam_client_id"], assigned)
 
 
@@ -120,9 +119,9 @@ def delete_technical_user(*, id: str, company_id: str, actor_sub: str) -> tuple[
         viewer = accounts.viewer_of(row, company_id)
         state.require_deletable(row)
         if gateways.connector_uses(id):
-            raise Problem(MODULE, 409, "in-use", retryable=False)
+            raise problem(409, "in-use")
         if row["origin"] == Origin.SUBSCRIPTION and gateways.subscription_is_active(row["offer_subscription_id"]):
-            raise Problem(MODULE, 409, "in-use", retryable=False)
+            raise problem(409, "in-use")
         if state.needs_wallet_removal(row):
             state.request_removal(row)
             with repository.transaction():
@@ -151,7 +150,7 @@ def rotate_subscription_credentials(*, id: str, offer_subscription_id: str | Non
     with repository.locked(f"technical-user:{id}"):
         row = repository.get(id)
         if row is None or row["origin"] != Origin.SUBSCRIPTION or row["offer_subscription_id"] != subscription_id:
-            raise Problem(MODULE, 404, "not-found", retryable=False)
+            raise problem(404, "not-found")
         state.require_rotatable(row)
         secret = iam_access.call(iam_access.iam().rotate_secret, row["iam_client_id"])
         audit.record(row, "rotateSubscriptionCredentials", Actor.process())

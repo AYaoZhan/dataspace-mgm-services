@@ -28,10 +28,10 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from modules.c2_m3.iam import keycloak
-from modules.c2_m3.iam.port import IamError
-from modules.c2_m3.models import Origin, Status, SubscriptionParty, WalletAccess
-from modules.c2_m3.services import state
+from features.technical_users.managers.iam import keycloak
+from features.technical_users.managers.iam.port import IamError
+from features.technical_users.models import Origin, Status, SubscriptionParty, WalletAccess
+from features.technical_users.services import state
 from portal_common.problems import Problem
 
 

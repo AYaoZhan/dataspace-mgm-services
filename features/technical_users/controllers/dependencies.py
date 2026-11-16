@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from portal_common import standin
 
-from .config import MODULE
+from ..managers.config import MODULE
 
 
 def perm(method: str, path: str):

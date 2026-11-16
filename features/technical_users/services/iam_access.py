@@ -22,35 +22,29 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
 #################################################################################
-"""Input checks of the operations and steps (README 7 and 8): every failure is 400 `validation`."""
+"""Calls to the Portal IAM with the public error shape of the module (README 12)."""
 from __future__ import annotations
 
-from typing import TypeVar
+import httpx
 
-from pydantic import BaseModel, ValidationError
-
-from portal_common.problems import Problem
-
-from modules.c2_m3.config import MODULE
-
-Model = TypeVar("Model", bound=BaseModel)
-_MAX_ISSUES = 5
+from ..errors import problem
+from ..managers import iam as iam_package
+from ..managers.config import MODULE
+from ..managers.iam import IamConflict, IamError, TechnicalUserIam, UnknownRole
 
 
-def invalid(detail: str) -> Problem:
-    return Problem(MODULE, 400, "validation", detail=detail, retryable=False)
+def iam() -> TechnicalUserIam:
+    return iam_package.get()
 
 
-def parse(model: type[Model], data: object) -> Model:
-    """Checks `data` against the pydantic model of an `openapi.yaml` schema (`schemas.py`)."""
+def call(function, *args, **kwargs):
+    """Runs one IAM call: unknown role -> 400 `role-not-assignable`, IAM trouble -> 502 `iam-error`."""
     try:
-        return model.model_validate(data)
-    except ValidationError as exc:
-        issues = exc.errors(include_url=False, include_input=False, include_context=False)   # no input values
-        raise invalid("; ".join(f"{'.'.join(str(part) for part in issue['loc']) or 'body'}: {issue['msg']}"
-                                for issue in issues[:_MAX_ISSUES])) from exc
-
-
-def validate_page(page: int, size: int) -> None:
-    if page < 0 or not 1 <= size <= 100:
-        raise invalid("page must be >= 0 and size must be 1..100")
+        return function(*args, **kwargs)
+    except UnknownRole as exc:
+        raise problem(400, "role-not-assignable", detail=str(exc)) from exc
+    except IamConflict as exc:   # a retry would meet the same foreign client again
+        raise problem(502, "iam-error", detail=str(exc), retryable=False) from exc
+    except (IamError, httpx.HTTPError) as exc:
+        raise problem(502, "iam-error", detail=f"Portal IAM request failed: {type(exc).__name__}",
+                  retryable=True) from exc

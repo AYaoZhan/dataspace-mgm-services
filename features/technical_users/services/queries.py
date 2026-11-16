@@ -25,8 +25,8 @@
 """Reading operations (README 7.1, 7.3, 7.9, 7.10 and 9.1); they change nothing."""
 from __future__ import annotations
 
-from modules.c2_m3.models import DEFAULT_LIST_STATUSES, TechnicalUserRecord, Viewer
-from modules.c2_m3.repository import repository
+from ..models import DEFAULT_LIST_STATUSES, TechnicalUserRecord, Viewer
+from ..managers.technical_user_repository import repository
 from . import accounts, projections, state, validation
 
 
