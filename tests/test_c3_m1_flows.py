@@ -32,6 +32,7 @@ README 11.1); every other module is the built-in stand-in of the engine."""
 import datetime as dt
 
 import pytest
+from test_c3_m1_api import wired
 
 from features import company_profile
 from features.company_profile import interface
@@ -39,6 +40,8 @@ from features.company_profile.managers import company_repository
 from features.company_profile.services import company_lifecycle_service
 from modules.c12_m1 import engine as eng
 from portal_common import events
+
+company_lifecycle_service = wired(company_lifecycle_service)
 
 U1, U2 = "c0000001-0000-4000-8000-000000000001", "c0000002-0000-4000-8000-000000000002"   # FRAMEWORK 7a
 A1, A2 = "a0000001-0000-4000-8000-000000000001", "a0000002-0000-4000-8000-000000000002"   # README 14

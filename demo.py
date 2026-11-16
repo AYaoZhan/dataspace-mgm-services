@@ -230,7 +230,7 @@ def onboarding(t: Target, base: str, applicant: str, reviewer: str, admin: str, 
     creds = r.json() if r.status_code == 200 else []
     t.check("C4-M1: credentials BPN and MEMBERSHIP ISSUED",
             {x["credentialType"]: x["status"] for x in creds} == {"BPN": "ISSUED", "MEMBERSHIP": "ISSUED"}, json.dumps(creds))
-    inbox = [n["type"] for n in t.call("GET", f"{base}/api/c11-m1/notifications", tok).json().get("items", [])]
+    inbox = [n["type"] for n in t.call("GET", f"{base}/api/notifications/notifications", tok).json().get("items", [])]
     t.check("C11: applicant sees APPLICATION_SUBMITTED and APPLICATION_COMPLETED",
             {"APPLICATION_SUBMITTED", "APPLICATION_COMPLETED"} <= set(inbox), str(inbox))
     return True
