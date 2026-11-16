@@ -31,15 +31,14 @@ Findings carry no names of people and no values of the application's identifiers
 from __future__ import annotations
 
 import datetime as dt
-import os
 
 from portal_common import settings
 from portal_common.problems import Problem
 
-from . import calls
+from ..managers import config, neighbour_client
+from ..models.value_sets import CHECK_ORDER
 
-ORDER = ["ATTESTATION_VALID", "REPRESENTATION_CONFIRMED", "COMPANY_DATA_MATCH", "NO_DUPLICATE",
-         "CSP_MATCH_EXPECTED", "CONSENTS_COMPLETE"]
+ORDER = CHECK_ORDER
 ATTESTATION_CHECKS = {"ATTESTATION_VALID", "REPRESENTATION_CONFIRMED", "COMPANY_DATA_MATCH"}
 DUPLICATE_STATUSES = ["REQUESTED", "ACTIVE", "INACTIVE"]
 MATCH_ORDER = ["EBWOID", "EUID", "NAME"]
@@ -87,13 +86,12 @@ def _neighbour_failed(name: str, problem: Problem) -> tuple[str, dict]:
 
 
 def no_duplicate(app: dict) -> tuple[str, dict]:
-    types = [t.strip() for t in os.environ.get("DUPLICATE_CHECK_IDENTIFIER_TYPES", "EUID,EBWOID,VAT_ID,LEI_CODE")
-             .split(",") if t.strip()]
+    types = config.duplicate_check_identifier_types()
     ids = [{"type": t, "value": v} for t, v in _identifiers(app).items() if t in types]
     if not ids:
         return "PASSED", {"duplicates": []}
     try:
-        found = calls.identifier_matches(ids, app["companyId"], DUPLICATE_STATUSES)
+        found = neighbour_client.identifier_matches(ids, app["companyId"], DUPLICATE_STATUSES)
     except Problem as p:
         return _neighbour_failed("C3-M1", p)
     dups = [{"companyId": m["companyId"], "companyStatus": m["status"], "matchedOn": m["matchedOn"]} for m in found]
@@ -150,7 +148,7 @@ def csp_match_expected(app: dict) -> tuple[str, dict]:
     ids, data = _identifiers(app), app.get("companyData") or {}
     kind, existing = app["kind"], bool(app.get("existingCompany"))
     try:
-        found = calls.find_companies(ids.get("EBWOID"), ids.get("EUID"), data.get("legalName"),
+        found = neighbour_client.find_companies(ids.get("EBWOID"), ids.get("EUID"), data.get("legalName"),
                                      (data.get("address") or {}).get("countryCode"))
     except Problem as p:
         return _neighbour_failed("C3-M2", p)
@@ -158,7 +156,7 @@ def csp_match_expected(app: dict) -> tuple[str, dict]:
     company_bpn = None
     if matches and (kind == "REACTIVATION" or (kind == "TRANSFER" and existing)):
         try:
-            company = calls.get_company(app["companyId"])
+            company = neighbour_client.get_company(app["companyId"])
         except Problem as p:
             return _neighbour_failed("C3-M1", p)
         company_bpn = (company or {}).get("bpn")

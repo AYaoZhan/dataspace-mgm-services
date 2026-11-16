@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Calls of C1-M3 to its neighbours (README 11) with the built-in stand-ins.
+"""Neighbour client of C1-M3: the calls to its neighbours (README 11) with the built-in stand-ins.
 
 Address per FRAMEWORK 4.7 through `portal_common.neighbours`: `in-process` or a URL calls the
 neighbour, an empty address answers from the stand-in files `STUB_APPLICATIONS_FILE`,
@@ -32,19 +32,19 @@ JSON string "unavailable" instead of a list means "not reachable" (502 `upstream
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
 from portal_common import neighbours
 from portal_common.problems import Problem
 
-MODULE = "c1-m3"
+from ..models.value_sets import MODULE
+from . import config
 C1_M2, C3_M1, C3_M2 = "c1-m2", "c3-m1", "c3-m2"
 
 
 def _stub(var: str, target: str) -> list[dict]:
-    path = os.environ.get(var, "")
+    path = config.stub_file(var)
     if not path:
         raise Problem(MODULE, 502, "upstream-error", detail=f"{target} stand-in: {var} not set", retryable=True)
     data = json.loads(Path(path).read_text(encoding="utf-8"))

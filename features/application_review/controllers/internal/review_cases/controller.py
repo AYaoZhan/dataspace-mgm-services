@@ -22,3 +22,15 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Status of the review case of an application (README 9)."""
+from __future__ import annotations
+
+from features.application_review import interface
+from portal_common.routing import Controller, Permission
+
+controller = Controller("Application Review: Process Steps and Queries")
+
+
+@controller.get("")
+def get_review_status_by_application(applicationId: str, _: dict = Permission):
+    return interface.get_review_status_by_application(applicationId=applicationId)

@@ -22,64 +22,30 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Public interface of C1-M3 Application Review: the steps `open-review` and `close-review`, the
-query `getReviewStatusByApplication`, and the decisions of OSP staff that `router.py` calls.
+"""Review cases of C1-M3 Application Review: the steps `open-review` and `close-review`, the query
+`getReviewStatusByApplication`, and the decisions of OSP staff (README 7, 8, 9).
 
-Review cases, checks and the audit log are kept in memory (README 5); one lock stands for the
-row lock of 6.8, so two reviewers deciding at the same time produce exactly one decision.
+The cases live in `managers/review_case_repository.py`; its lock stands for the row lock of 6.8.
 """
 from __future__ import annotations
 
 import datetime as dt
-import itertools
-import os
-import threading
 import uuid
 
 from portal_common import events
 from portal_common.problems import Problem
 
-from . import calls, checks
-
-MODULE = "c1-m3"
-FOUR_EYES = {"CHECK_FAILED", "DOCUMENTS", "ALWAYS"}
-AUTO_KINDS = {"ONBOARDING", "TRANSFER"}
-IN_REVIEW = ("OPEN", "AWAITING_SECOND_APPROVAL")
-
-cases: dict[str, dict] = {}
-by_application: dict[str, str] = {}
-audit_log: list[dict] = []
-_lock = threading.RLock()
-_seq = itertools.count()
-
-
-def reset() -> None:
-    with _lock:
-        cases.clear()
-        by_application.clear()
-        audit_log.clear()
+from ..managers import neighbour_client
+from ..managers.config import config
+from ..managers.review_case_repository import audit_log, by_application, cases
+from ..managers.review_case_repository import lock as _lock
+from ..managers.review_case_repository import seq as _seq
+from ..models.value_sets import IN_REVIEW, MODULE
+from . import checks
 
 
 def _now() -> str:
     return dt.datetime.now(dt.UTC).isoformat()
-
-
-def _list(var: str, default: str) -> list[str]:
-    return [v.strip() for v in os.environ.get(var, default).split(",") if v.strip()]
-
-
-def config() -> dict:
-    """Configuration of README 4, read at call time; invalid values raise ValueError (6.6)."""
-    enabled = _list("ENABLED_CHECKS", ",".join(checks.ORDER))
-    four_eyes = _list("FOUR_EYES_CASES", "CHECK_FAILED,DOCUMENTS")
-    auto = _list("AUTO_APPROVE_KINDS", "")
-    if bad := set(enabled) - set(checks.ORDER):
-        raise ValueError(f"ENABLED_CHECKS: unknown checks {sorted(bad)}")
-    if bad := set(four_eyes) - FOUR_EYES:
-        raise ValueError(f"FOUR_EYES_CASES: unknown cases {sorted(bad)}")
-    if bad := set(auto) - AUTO_KINDS:
-        raise ValueError(f"AUTO_APPROVE_KINDS: not allowed {sorted(bad)} (REACTIVATION never, 6.6)")
-    return {"enabled": enabled, "fourEyes": four_eyes, "auto": auto}
 
 
 def required_checks(case: dict, cfg: dict) -> list[str]:
@@ -132,7 +98,7 @@ def _new_case(app: dict, status: str) -> dict:
 
 
 def _application(application_id: str) -> dict:
-    app = calls.get_application(application_id)
+    app = neighbour_client.get_application(application_id)
     if app is None:
         raise Problem(MODULE, 404, "not-found", detail="application unknown", retryable=False)
     return app
@@ -254,7 +220,7 @@ def list_cases(status: list[str] | None, kind: list[str] | None, verification: l
                     and (not verification or c["verification"] in verification)
                     and (not application_id or c["applicationId"] == application_id)), key=lambda c: c["_seq"])
     chunk = found[page * size:(page + 1) * size]
-    apps = {a["id"]: a for a in calls.list_applications([c["applicationId"] for c in chunk])}
+    apps = {a["id"]: a for a in neighbour_client.list_applications([c["applicationId"] for c in chunk])}
     counts = {"passed": "PASSED", "failed": "FAILED", "notApplicable": "NOT_APPLICABLE", "error": "ERROR"}
     items = []
     for c in chunk:
@@ -270,11 +236,11 @@ def list_cases(status: list[str] | None, kind: list[str] | None, verification: l
 
 def get_case(case_id: str) -> dict:
     case = _case(case_id)
-    return view(case, calls.get_application(case["applicationId"]) or {})
+    return view(case, neighbour_client.get_application(case["applicationId"]) or {})
 
 
 def _decision_allowed(case: dict) -> None:
-    if calls.application_status(case["applicationId"]) == "WITHDRAWN":
+    if neighbour_client.application_status(case["applicationId"]) == "WITHDRAWN":
         raise Problem(MODULE, 409, "application-withdrawn")
 
 

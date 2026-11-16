@@ -11,7 +11,7 @@ between modules in the same process. The module specifications (until they are m
 | Module | Base path |
 |---|---|
 | C1-M2 Registration | `/api/registration` (migrated feature, ADR-0003) |
-| C1-M3 Application Review | `/api/c1-m3` |
+| C1-M3 Application Review | `/api/application-review` (migrated feature, ADR-0003) |
 | C2-M2 Users and App Access | `/api/c2-m2` |
 | C2-M3 Technical Users | `/api/technical-user` (migrated feature, ADR-0003) |
 | C3-M1 Company Profile | `/api/company-profile` (migrated feature, ADR-0003) |
