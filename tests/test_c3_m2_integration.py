@@ -55,7 +55,7 @@ def csp_operator(csp, stop: threading.Event) -> None:
     """Finishes every operation the CSP started for C3-M2, once C3-M2 waits for it (status PENDING)."""
     done: set[str] = set()
     while not stop.is_set():
-        for row in list(store.registrations.values()):
+        for row in store.registrations():
             operation = row.pending_operation_id
             if row.status == "PENDING" and operation and operation not in done:
                 done.add(operation)
@@ -106,7 +106,7 @@ def test_onboarding_completes_through_the_csp_callback(tmp_path, monkeypatch):
         assert ok and not failed, failed
 
         # 1. the CSP answered register-company with 202: the operation was long-running
-        registered = [a for a in store.audit if a.operation == "register-company"]
+        registered = [a for a in store.audit_entries() if a.operation == "register-company"]
         assert [a.http_status for a in registered] == [202], registered
 
         # 2. the CSP itself called back, authenticated as sa-csp through the Portal IAM, and C3-M2 took it
@@ -119,7 +119,7 @@ def test_onboarding_completes_through_the_csp_callback(tmp_path, monkeypatch):
         # 3. C3-M2 holds the company as REGISTERED with the BPN of the callback, nothing left aside
         row = store.find_by_bpn(bpn)
         assert row is not None and (row.status, row.membership) == ("REGISTERED", "REGISTERED")
-        assert row.pending_operation_id is None and store.early_completions == {}
+        assert row.pending_operation_id is None and store.early_completions() == []
 
         # 4. C12: register-company first answered RUNNING, the completing event finished it with that
         #    BPN, and the rest of the onboarding ran after it

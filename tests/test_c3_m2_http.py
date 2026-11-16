@@ -110,7 +110,8 @@ def published(type_: str) -> list[dict]:
 # ---------------------------------------------------------------- tokens and permissions
 def test_steps_over_http_need_execute_steps(api):
     assert api.post("/api/csp-connection/steps/register-company", json=maschinenbau()).status_code == 401
-    r = api.post("/api/csp-connection/steps/register-company", json=maschinenbau(), headers=bearer(person_token("lieschen")))
+    r = api.post("/api/csp-connection/steps/register-company", json=maschinenbau(),
+                 headers=bearer(person_token("lieschen")))
     assert r.status_code == 403 and r.json()["type"] == "urn:c3-m2:problem:forbidden"
     r = api.post("/api/csp-connection/steps/register-company", json=maschinenbau(), headers=service("svc-c12-m1"))
     assert r.status_code == 200 and r.json()["result"]["bpn"] == derive_bpn(EBWOID)
@@ -135,7 +136,8 @@ def test_status_for_osp_admin(api):
     r = api.get(f"/api/csp-connection/companies/{OSP_COMPANY}", headers=bearer(person_token("otto")))
     assert r.status_code == 200 and r.json()["bpn"] == OSP_COMPANY_BPN and r.json()["status"] == "REGISTERED"
     assert api.get(f"/api/csp-connection/companies/{COMPANY}", headers=bearer(person_token("otto"))).status_code == 404
-    assert api.get(f"/api/csp-connection/companies/{OSP_COMPANY}", headers=bearer(person_token("lieschen"))).status_code == 403
+    lieschen = bearer(person_token("lieschen"))
+    assert api.get(f"/api/csp-connection/companies/{OSP_COMPANY}", headers=lieschen).status_code == 403
 
 
 def test_9_notification_needs_report_csp_notification(api):
@@ -143,7 +145,8 @@ def test_9_notification_needs_report_csp_notification(api):
     r = api.post("/api/csp-connection/csp-notifications", json=note, headers=service("svc-c12-m1"))
     assert r.status_code == 403
     assert interface.get_csp_registration(companyId=OSP_COMPANY)["status"] == "REGISTERED"
-    r = api.post("/api/csp-connection/csp-notifications", json={"type": "CompanyTransferredAway"}, headers=service("sa-csp"))
+    r = api.post("/api/csp-connection/csp-notifications", json={"type": "CompanyTransferredAway"},
+                 headers=service("sa-csp"))
     assert r.status_code == 400
 
 
@@ -154,8 +157,8 @@ def test_4_running_then_callback_completes_once(api, shared_csp):
     assert r.status_code == 200 and r.json()["state"] == "RUNNING"
     again = api.post("/api/csp-connection/steps/register-company", json=maschinenbau(), headers=service("svc-c12-m1"))
     assert again.json()["state"] == "RUNNING"
-    assert sum(1 for a in store.audit if a.operation == "register-company") == 1   # no second operation
-    operation = store.registrations[COMPANY].pending_operation_id
+    assert sum(1 for a in store.audit_entries() if a.operation == "register-company") == 1   # no second operation
+    operation = store.get_registration(COMPANY).pending_operation_id
     bpn = derive_bpn(EBWOID)
     note = {"notificationId": str(uuid.uuid4()), "type": "OperationCompleted", "operationId": operation,
             "outcome": "SUCCEEDED", "bpn": bpn}
@@ -169,7 +172,7 @@ def test_4_running_then_callback_completes_once(api, shared_csp):
 def test_operation_failed_by_callback(api, shared_csp):
     shared_csp["client"].put("/admin/config", json={"asyncOperations": True})
     api.post("/api/csp-connection/steps/register-company", json=maschinenbau(), headers=service("svc-c12-m1"))
-    operation = store.registrations[COMPANY].pending_operation_id
+    operation = store.get_registration(COMPANY).pending_operation_id
     note = {"notificationId": "n-failed", "type": "OperationCompleted", "operationId": operation, "outcome": "FAILED",
             "reason": "REJECTED_BY_CSP"}
     assert api.post("/api/csp-connection/csp-notifications", json=note, headers=service("sa-csp")).status_code == 200
@@ -196,7 +199,7 @@ def test_9_csp_not_reachable_is_retryable(api, monkeypatch, tmp_path):
         phttp.unregister_local("http://csp-down.test")
     assert r.status_code == 502
     assert r.json()["type"] == "urn:c3-m2:problem:upstream-error" and r.json()["retryable"] is True
-    assert COMPANY not in store.registrations or store.registrations[COMPANY].status is None
+    assert (store.get_registration(COMPANY) is None or store.get_registration(COMPANY).status is None)
 
 
 def test_missing_signing_key_is_retryable_upstream_error(api, monkeypatch):
@@ -229,7 +232,8 @@ def test_13_osp_company_connector_at_the_shared_csp(shared_csp):
 
 # ---------------------------------------------------------------- API contract (schemas.py = openapi.yaml)
 def test_body_schema_errors_are_400_problems_with_the_field(api):
-    r = api.post("/api/csp-connection/steps/register-company", json=maschinenbau(country="de"), headers=service("svc-c12-m1"))
+    r = api.post("/api/csp-connection/steps/register-company", json=maschinenbau(country="de"),
+                 headers=service("svc-c12-m1"))
     assert r.status_code == 400
     body = r.json()
     assert body["type"] == "urn:c3-m2:problem:validation" and body["retryable"] is False

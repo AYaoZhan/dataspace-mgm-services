@@ -27,8 +27,9 @@
 Registers companies with the CSP (BPN, home OSP), checks for duplicates, keeps the membership, the directory
 BPN -> DID and the connectors in the discovery of the CSP, and receives the notifications of the CSP.
 
-Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hook a runtime
-calls, `reset()` (empty state plus seed data, README 4). The HTTP API is `features.csp_connection.router.router`.
+Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
+calls, `on_startup()` (tables and seed data) and `reset()` (empty tables plus seed data, README 4). The HTTP
+API is `features.csp_connection.router.router`.
 """
 from __future__ import annotations
 
@@ -37,8 +38,12 @@ from features.csp_connection.models.errors import MODULE
 
 NAME = "csp_connection"
 
-__all__ = ["MODULE", "NAME", "reset"]
+__all__ = ["MODULE", "NAME", "on_startup", "reset"]
 
 
 def reset() -> None:
     services.reset()
+
+
+def on_startup() -> None:
+    services.start()

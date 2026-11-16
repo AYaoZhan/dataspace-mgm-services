@@ -23,125 +23,77 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Own data of C3-M2 (README 5), in memory for the hackathon.
+"""Repository of the own data of C3-M2 (README 5): the SQLModel tables of `models/tables.py` in the feature's
+own database (`portal_common.database`; in-memory SQLite without a database URL).
 
-One dataclass per table (`csp_registration`, `csp_connector`, `csp_notification`, `audit_entry`),
-with the column names of README 5. `services.queries.registration_view` maps a registration to the
-camelCase of the API. Nothing here holds company data beyond the BPN, and the audit log holds no
-response content and no tokens (README 5).
+Services read and change rows only through these functions. A row is returned detached: a service changes
+its fields and hands it back with `save()`.
 
-Concurrency: steps run in the worker thread of C12, HTTP requests (the CSP's callbacks) in FastAPI's
-thread pool. `lock` serialises every check-then-change of the tables together with the event it
-publishes, so a repeated step racing a callback changes a row once and publishes once (FRAMEWORK
-4.4). Calls to the CSP are made outside the lock; two concurrent calls of the same step may both
-call the CSP (its calls are idempotent), but only the first changes the row and publishes. A
-database with transactions (README 4 `DATABASE_URL`, OPEN-QUESTIONS 13) replaces this module after
-the hackathon. The audit list is capped at `AUDIT_MAX` entries (oldest dropped) until it moves to
-the table `audit_entry`.
+Concurrency: steps run in the worker thread of C12, HTTP requests (the CSP's callbacks) in FastAPI's thread
+pool. `lock` serialises every check-then-change of the tables together with the event it publishes, so a
+repeated step racing a callback changes a row once and publishes once (FRAMEWORK 4.4). Every function here
+takes the lock as well, so a service that holds it reads the rows another thread committed before. Calls to
+the CSP are made outside the lock; two concurrent calls of the same step may both call the CSP (its calls are
+idempotent), but only the first changes the row and publishes. The audit table keeps the newest `AUDIT_MAX`
+entries, the early completions the newest `EARLY_COMPLETIONS_MAX`.
 """
 from __future__ import annotations
 
-import datetime as dt
 import json
 import threading
-from dataclasses import dataclass, field
-from typing import Literal
+from collections.abc import Iterator
+from contextlib import contextmanager
 
-from portal_common import settings
+from sqlmodel import Session, col, delete, func, select
 
-RegistrationStatus = Literal["PENDING", "REGISTERED", "FAILED", "TRANSFERRED_AWAY"]   # README 6.1
-Membership = Literal["NONE", "REGISTERED", "DEREGISTERED"]
-ConnectorStatus = Literal["REGISTERED", "DEREGISTERED"]
-NotificationType = Literal["OperationCompleted", "CompanyTransferredAway"]
+from features.csp_connection.models.errors import MODULE
+from features.csp_connection.models.tables import (
+    AuditEntry,
+    Connector,
+    EarlyCompletion,
+    Notification,
+    Registration,
+    Table,
+    now,
+)
+from portal_common import database, settings
 
+__all__ = [
+    "AuditEntry", "Connector", "EarlyCompletion", "Notification", "Registration", "audit_entries",
+    "create_tables", "early_completions", "find_by_bpn", "find_by_operation", "get_connector",
+    "get_registration", "has_notification", "keep_early_completion", "lock", "now", "pop_early_completion",
+    "record_audit", "registered_connectors_of", "registration_row", "registrations", "reset", "save", "seed",
+]
 
-def now() -> str:
-    return dt.datetime.now(dt.UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-@dataclass(slots=True)
-class Registration:
-    """Row of `csp_registration`: one company of the installation at the CSP."""
-    company_id: str
-    bpn: str | None = None
-    status: RegistrationStatus | None = None    # None: row exists, but the CSP has not answered yet
-    failure_reason: str | None = None
-    pending_operation_id: str | None = None
-    did: str | None = None
-    membership: Membership = "NONE"
-    registered_at: str | None = None
-    updated_at: str = field(default_factory=now)
-    last_update_step_run: str | None = None     # repetition of update-company (OPEN-QUESTIONS 5)
-    returning: bool = False                     # a transfer-company back from TRANSFERRED_AWAY is running
-
-
-    def touch(self) -> None:
-        self.updated_at = now()
-
-
-@dataclass(slots=True)
-class Connector:
-    """Row of `csp_connector`: one connector entered in the discovery of the CSP."""
-    connector_id: str
-    company_id: str
-    bpn: str
-    endpoint_url: str
-    status: ConnectorStatus
-    registered_at: str
-    updated_at: str
-
-
-@dataclass(slots=True, frozen=True)
-class Notification:
-    """Row of `csp_notification`: one accepted notification of the CSP."""
-    notification_id: str
-    type: NotificationType
-    bpn: str | None
-    received_at: str
-
-
-@dataclass(slots=True, frozen=True)
-class AuditEntry:
-    """Row of `audit_entry`: one call to the CSP or one notification. No content, no tokens."""
-    time: str
-    operation: str
-    company_id: str | None
-    bpn: str | None
-    http_status: int | None
-    error_type: str | None
-
-
-@dataclass(slots=True, frozen=True)
-class EarlyCompletion:
-    """An `OperationCompleted` that arrived before the 202 answer of its operation was stored
-    (OPEN-QUESTIONS 15). Applied as soon as the step stores that operation id."""
-    notification_id: str
-    operation_id: str
-    outcome: Literal["SUCCEEDED", "FAILED"]
-    bpn: str | None
-    reason: str | None
-    received_at: str
-
-
-EARLY_COMPLETIONS_MAX = 100   # bound, so unknown operation ids from the CSP cannot grow memory without limit
-AUDIT_MAX = 10_000            # bound of the in-memory audit list (README 5 `audit_entry`), oldest dropped first
+EARLY_COMPLETIONS_MAX = 100   # bound, so unknown operation ids from the CSP cannot grow the table without limit
+AUDIT_MAX = 10_000            # bound of the audit table (README 5 `audit_entry`), oldest dropped first
 
 lock = threading.RLock()      # see the module docstring: check-then-change of the tables plus its event
+_created: set[str] = set()    # database URLs whose tables exist
 
-registrations: dict[str, Registration] = {}    # company_id -> row
-connectors: dict[str, Connector] = {}          # connector_id -> row
-notifications: dict[str, Notification] = {}    # notification_id -> row
-audit: list[AuditEntry] = []
-early_completions: dict[str, EarlyCompletion] = {}   # operation_id -> notification, oldest first
+
+@contextmanager
+def _session() -> Iterator[Session]:
+    """A unit of work under `lock`; creates the tables on the first use of a database."""
+    with lock:
+        if database.url(MODULE) not in _created:
+            create_tables()
+        with database.session(MODULE) as session:
+            yield session
+
+
+def create_tables() -> None:
+    """The tables of README 5 in the feature's database, if they do not exist yet (start-up)."""
+    with lock:
+        database.create_tables(MODULE)
+        _created.add(database.url(MODULE))
 
 
 def reset() -> None:
-    with lock:   # a request in flight never sees half-emptied tables
-        registrations.clear()
-        connectors.clear()
-        notifications.clear()
-        audit.clear()
-        early_completions.clear()
+    """Empty tables, then the seed data of README 4; a request in flight never sees half-emptied tables."""
+    with lock:
+        database.reset_tables(MODULE)
+        _created.add(database.url(MODULE))
         seed()
 
 
@@ -155,44 +107,119 @@ def seed() -> None:
     if not isinstance(company, dict):
         return
     company_id, bpn = company.get("companyId"), company.get("bpn")
-    if not isinstance(company_id, str) or not isinstance(bpn, str) or company_id in registrations:
+    if not isinstance(company_id, str) or not isinstance(bpn, str):
         return
-    stamp = now()
-    registrations[company_id] = Registration(company_id, bpn=bpn, status="REGISTERED", membership="REGISTERED",
-                                             registered_at=stamp, updated_at=stamp)
+    with _session() as session:
+        if session.get(Registration, company_id) is None:
+            stamp = now()
+            session.add(Registration(company_id=company_id, bpn=bpn, status="REGISTERED", membership="REGISTERED",
+                                     registered_at=stamp, updated_at=stamp))
+
+
+def save(*rows: Table) -> None:
+    """Store changed or new rows."""
+    with _session() as session:
+        for row in rows:
+            session.merge(row)
+
+
+# ---------------------------------------------------------------- csp_registration
+def get_registration(company_id: str) -> Registration | None:
+    with _session() as session:
+        return session.get(Registration, company_id)
+
+
+def registrations() -> list[Registration]:
+    with _session() as session:
+        return list(session.exec(select(Registration)))
 
 
 def registration_row(company_id: str) -> Registration:
     """The row of the company; created (without status) if there is none yet."""
-    row = registrations.get(company_id)
-    if row is None:
-        row = registrations[company_id] = Registration(company_id)
-    return row
+    with _session() as session:
+        row = session.get(Registration, company_id)
+        if row is None:
+            row = Registration(company_id=company_id)
+            session.add(row)
+        return row
 
 
 def find_by_operation(operation_id: str) -> Registration | None:
-    return next((r for r in registrations.values() if r.pending_operation_id == operation_id), None)
+    with _session() as session:
+        return session.exec(select(Registration).where(Registration.pending_operation_id == operation_id)).first()
 
 
-def find_by_bpn(bpn: str, *, exclude: str | None = None,
-                status: RegistrationStatus | None = None) -> Registration | None:
-    """First registration with this BPN, optionally of another company or in one status."""
-    return next((r for r in registrations.values()
-                 if r.bpn == bpn and r.company_id != exclude and (status is None or r.status == status)), None)
+def find_by_bpn(bpn: str, *, exclude: str | None = None, status: str | None = None) -> Registration | None:
+    """A registration with this BPN, optionally of another company or in one status."""
+    query = select(Registration).where(Registration.bpn == bpn)
+    if exclude is not None:
+        query = query.where(Registration.company_id != exclude)
+    if status is not None:
+        query = query.where(Registration.status == status)
+    with _session() as session:
+        return session.exec(query.order_by(Registration.company_id)).first()
 
 
+# ---------------------------------------------------------------- csp_connector
+def get_connector(connector_id: str) -> Connector | None:
+    with _session() as session:
+        return session.get(Connector, connector_id)
+
+
+def registered_connectors_of(company_id: str) -> list[Connector]:
+    with _session() as session:
+        return list(session.exec(select(Connector).where(Connector.company_id == company_id,
+                                                         Connector.status == "REGISTERED")))
+
+
+# ---------------------------------------------------------------- csp_notification
+def has_notification(notification_id: str) -> bool:
+    with _session() as session:
+        return session.get(Notification, notification_id) is not None
+
+
+# ---------------------------------------------------------------- early completions (OPEN-QUESTIONS 15)
 def keep_early_completion(early: EarlyCompletion) -> None:
     """Remember a completion for an operation id that is not known yet; drops the oldest beyond the bound."""
-    early_completions.pop(early.operation_id, None)
-    early_completions[early.operation_id] = early
-    while len(early_completions) > EARLY_COMPLETIONS_MAX:
-        early_completions.pop(next(iter(early_completions)))
+    with _session() as session:
+        session.exec(delete(EarlyCompletion).where(col(EarlyCompletion.operation_id) == early.operation_id))
+        session.add(early)
+        session.flush()
+        _keep_newest(session, EarlyCompletion, EARLY_COMPLETIONS_MAX)
 
 
+def pop_early_completion(operation_id: str) -> EarlyCompletion | None:
+    with _session() as session:
+        early = session.exec(select(EarlyCompletion).where(EarlyCompletion.operation_id == operation_id)).first()
+        if early is not None:
+            session.delete(early)
+        return early
+
+
+def early_completions() -> list[EarlyCompletion]:
+    with _session() as session:
+        return list(session.exec(select(EarlyCompletion).order_by(col(EarlyCompletion.id))))
+
+
+# ---------------------------------------------------------------- audit_entry
 def record_audit(operation: str, company_id: str | None, bpn: str | None, http_status: int | None,
                  error_type: str | None = None) -> None:
     """One `audit_entry` (README 5): only status and error type, never the body or a token."""
-    with lock:
-        audit.append(AuditEntry(now(), operation, company_id, bpn, http_status, error_type))
-        if len(audit) > AUDIT_MAX:
-            del audit[:len(audit) - AUDIT_MAX]
+    with _session() as session:
+        session.add(AuditEntry(operation=operation, company_id=company_id, bpn=bpn, http_status=http_status,
+                               error_type=error_type))
+        session.flush()
+        _keep_newest(session, AuditEntry, AUDIT_MAX)
+
+
+def audit_entries() -> list[AuditEntry]:
+    with _session() as session:
+        return list(session.exec(select(AuditEntry).order_by(col(AuditEntry.id))))
+
+
+def _keep_newest(session: Session, table: type[AuditEntry] | type[EarlyCompletion], limit: int) -> None:
+    """Drop the oldest rows beyond `limit` (by `id`): one count, and one delete only when over the bound."""
+    count = session.exec(select(func.count()).select_from(table)).one()
+    if count > limit:
+        oldest = select(table.id).order_by(col(table.id)).limit(count - limit)
+        session.exec(delete(table).where(col(table.id).in_(oldest)))

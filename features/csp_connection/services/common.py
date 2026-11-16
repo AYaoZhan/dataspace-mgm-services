@@ -91,7 +91,7 @@ def identifier_list(value: object) -> list[IdentifierJson]:
 
 def registered_row(company_id: str) -> Registration:
     """Precondition of most steps: status `REGISTERED` (otherwise 409 `invalid-state`)."""
-    row = store.registrations.get(company_id)
+    row = store.get_registration(company_id)
     if row is None or row.status != "REGISTERED" or row.bpn is None:
         status = row.status if row else "no registration"
         raise errors.invalid_state(f"company {company_id} is not REGISTERED at the CSP ({status})")

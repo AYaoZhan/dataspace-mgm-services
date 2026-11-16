@@ -27,12 +27,14 @@
 answer = `StepReply` (FRAMEWORK 4.4)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from features.csp_connection.managers import csp_client, store
-from features.csp_connection.managers.store import Membership
 from features.csp_connection.models import errors
 from features.csp_connection.models.errors import MODULE
+from features.csp_connection.managers.store import Registration
+from features.csp_connection.models.schemas import Membership
 from features.csp_connection.services.common import (
     COUNTRY,
     StepInputJson,
@@ -65,7 +67,7 @@ def register_company(input: StepInputJson) -> StepReply:
     # operation, so it calls the CSP again like a new one (OPEN-QUESTIONS 19). From
     # TRANSFERRED_AWAY the only way back is transfer-company (README 6.1, OPEN-QUESTIONS 6).
     # New or FAILED: call the CSP (again).
-    row = store.registrations.get(company_id)
+    row = store.get_registration(company_id)
     if row is not None and row.status == "REGISTERED" and row.bpn:
         return step_reply(input, {"bpn": row.bpn})
     if row is not None and row.status == "PENDING" and row.pending_operation_id:
@@ -88,7 +90,7 @@ def transfer_company(input: StepInputJson) -> StepReply:
     ebwoid, euid = optional_text(input, "ebwoid"), optional_text(input, "euid")
     identifiers = identifier_list(input.get("identifiers"))
 
-    row = store.registrations.get(company_id)
+    row = store.get_registration(company_id)
     if row is not None and row.status == "REGISTERED":
         if row.bpn != bpn:
             raise errors.invalid_state(f"company {company_id} is registered with another BPN")
@@ -98,6 +100,7 @@ def transfer_company(input: StepInputJson) -> StepReply:
 
     if row is not None and row.status == "TRANSFERRED_AWAY":
         row.returning = True   # a rejection keeps TRANSFERRED_AWAY (mark_rejected)
+        store.save(row)
     payload: dict[str, Any] = {k: v for k, v in (("ebwoid", ebwoid), ("euid", euid)) if v}
     if identifiers:
         payload["identifiers"] = identifiers
@@ -116,11 +119,9 @@ def register_did(input: StepInputJson) -> StepReply:
         status, answer = csp_client.call("register-did", "PUT", f"/companies/{bpn}/did", {"did": did},
                                          company_id=company_id, bpn=bpn)
         csp_client.raise_for(status, answer)
-        with store.lock:
-            if row.did != did:   # a concurrent call may have stored it meanwhile: one event only
-                row.did = did
-                row.touch()
-                events.publish(MODULE, "CompanyDidRegistered", {"companyId": company_id, "bpn": bpn, "did": did})
+        # a concurrent call may have stored it meanwhile: one event only
+        _change_once(company_id, lambda r: r.did == did, lambda r: setattr(r, "did", did),
+                     "CompanyDidRegistered", {"companyId": company_id, "bpn": bpn, "did": did})
     return step_reply(input, {"bpn": bpn, "did": did})
 
 
@@ -143,23 +144,23 @@ def update_company(input: StepInputJson) -> StepReply:
     status, answer = csp_client.call("update-company", "PATCH", f"/companies/{bpn}", payload,
                                      company_id=company_id, bpn=bpn)
     csp_client.raise_for(status, answer)
-    with store.lock:
-        if not (step_run and row.last_update_step_run == step_run):   # one event per stepRunId
-            row.last_update_step_run = step_run
-            row.touch()
-            events.publish(MODULE, "CompanyUpdatedAtCsp", {"companyId": company_id, "bpn": bpn})
+    # one event per stepRunId, also with a concurrent repetition
+    _change_once(company_id, lambda r: bool(step_run) and r.last_update_step_run == step_run,
+                 lambda r: setattr(r, "last_update_step_run", step_run),
+                 "CompanyUpdatedAtCsp", {"companyId": company_id, "bpn": bpn})
     return step_reply(input)
 
 
 def _membership(input: StepInputJson, member: bool) -> StepReply:
     """Steps register-membership and deregister-membership (README 8.5)."""
     company_id = require_text(input, "companyId")
-    current = store.registrations.get(company_id)
+    current = store.get_registration(company_id)
     if not member and current is not None and current.status == "TRANSFERRED_AWAY":
         # the new home OSP owns the membership now (FRAMEWORK 5.6 step 3): no call, no event
         if current.membership != "NONE":
             current.membership = "NONE"
             current.touch()
+            store.save(current)
         return step_reply(input)
     row = registered_row(company_id)
     bpn = row_bpn(row)
@@ -169,12 +170,10 @@ def _membership(input: StepInputJson, member: bool) -> StepReply:
         status, answer = csp_client.call(operation, "PUT", f"/companies/{bpn}/membership", {"member": member},
                                          company_id=company_id, bpn=bpn)
         csp_client.raise_for(status, answer)
-        with store.lock:
-            if row.membership != target:   # one event only, also with a concurrent call
-                row.membership = target
-                row.touch()
-                events.publish(MODULE, "MembershipRegistered" if member else "MembershipDeregistered",
-                               {"companyId": company_id, "bpn": bpn})
+        # one event only, also with a concurrent call
+        _change_once(company_id, lambda r: r.membership == target, lambda r: setattr(r, "membership", target),
+                     "MembershipRegistered" if member else "MembershipDeregistered",
+                     {"companyId": company_id, "bpn": bpn})
     return step_reply(input)
 
 
@@ -198,7 +197,7 @@ def register_connector(input: StepInputJson) -> StepReply:
     bpn = row_bpn(registered_row(company_id))
     # Call the CSP only for a new connector or a new address (README 6.4); the same call again
     # answers DONE without a call and without an event.
-    con = store.connectors.get(connector_id)
+    con = store.get_connector(connector_id)
     if con is not None and con.status == "REGISTERED" and con.company_id != company_id:
         # Entering it under the new BPN would leave it listed under the old one as well (README 6.6;
         # OPEN-QUESTIONS 17): C6-M1 deregisters it first.
@@ -211,13 +210,13 @@ def register_connector(input: StepInputJson) -> StepReply:
                                          {"endpointUrl": endpoint}, company_id=company_id, bpn=bpn)
         csp_client.raise_for(status, answer)
         with store.lock:
-            now = store.connectors.get(connector_id)
+            now = store.get_connector(connector_id)
             if not (now is not None and now.status == "REGISTERED" and now.endpoint_url == endpoint
                     and now.company_id == company_id and now.bpn == bpn):   # one event only
                 stamp = store.now()
-                store.connectors[connector_id] = store.Connector(
+                store.save(store.Connector(
                     connector_id=connector_id, company_id=company_id, bpn=bpn, endpoint_url=endpoint,
-                    status="REGISTERED", registered_at=now.registered_at if now else stamp, updated_at=stamp)
+                    status="REGISTERED", registered_at=now.registered_at if now else stamp, updated_at=stamp))
                 events.publish(MODULE, "ConnectorRegisteredAtCsp",
                                {"companyId": company_id, "bpn": bpn, "connectorId": connector_id})
     return step_reply(input, {"bpn": bpn, "connectorId": connector_id})
@@ -231,9 +230,9 @@ def deregister_connector(input: StepInputJson) -> StepReply:
     # when it is known (OPEN-QUESTIONS 8). A known connector needs a REGISTERED company
     # (OPEN-QUESTIONS 7), and it must be the connector's host company (README 8.6), otherwise the
     # event would pair one company's id with another's BPN (OPEN-QUESTIONS 17).
-    con = store.connectors.get(connector_id)
+    con = store.get_connector(connector_id)
     if con is None or con.status == "DEREGISTERED":
-        row = store.registrations.get(company_id)
+        row = store.get_registration(company_id)
         bpn = con.bpn if con else (row.bpn if row else None)
         return step_reply(input, {"connectorId": connector_id} | ({"bpn": bpn} if bpn else {}))
     if con.company_id != company_id:
@@ -245,9 +244,24 @@ def deregister_connector(input: StepInputJson) -> StepReply:
                                      company_id=company_id, bpn=con.bpn)
     csp_client.raise_for(status, answer)
     with store.lock:
-        current = store.connectors.get(connector_id)   # read again: a concurrent call may have removed it
+        current = store.get_connector(connector_id)   # read again: a concurrent call may have removed it
         if current is not None and current.status == "REGISTERED":   # one event only
             current.status, current.updated_at = "DEREGISTERED", store.now()
+            store.save(current)
             events.publish(MODULE, "ConnectorDeregisteredAtCsp",
                            {"companyId": company_id, "bpn": con.bpn, "connectorId": connector_id})
     return step_reply(input, {"bpn": con.bpn, "connectorId": connector_id})
+
+
+def _change_once(company_id: str, done: Callable[[Registration], bool], change: Callable[[Registration], None],
+                 event: str, data: dict[str, str]) -> None:
+    """Applies `change` to the stored row and publishes `event`, unless `done` says another call already did:
+    read, check, change and event under `store.lock`, so concurrent repetitions publish once (FRAMEWORK 4.4)."""
+    with store.lock:
+        row = store.get_registration(company_id)
+        if row is None or done(row):
+            return
+        change(row)
+        row.touch()
+        store.save(row)
+        events.publish(MODULE, event, data)

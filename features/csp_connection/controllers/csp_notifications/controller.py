@@ -27,7 +27,7 @@
 from __future__ import annotations
 
 from features.csp_connection import interface
-from features.csp_connection.models.schemas import CspNotification, plain
+from features.csp_connection.models.schemas import CspNotification
 from portal_common.routing import Controller, Permission
 
 controller = Controller("CSP Connection: CSP")
@@ -37,4 +37,4 @@ controller = Controller("CSP Connection: CSP")
 def receive_csp_notification(body: CspNotification, _: dict = Permission) -> dict[str, str | bool]:
     """README 7.2, called by the CSP's service account (`report_csp_notification`).
     A known `notificationId` answers 200 and is not processed again."""
-    return interface.receive_csp_notification(plain(body))
+    return interface.receive_csp_notification(body.to_json())

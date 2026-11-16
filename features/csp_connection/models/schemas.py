@@ -23,52 +23,56 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The API contract of C3-M2 as Pydantic models: one class per schema in `components.schemas` of
-`spec/C3-M2-CSPConnection/openapi.yaml`, with the same names and fields (camelCase, as on the wire).
+"""The API contract of C3-M2 as pydantic models: one class per schema in `components.schemas` of
+`spec/C3-M2-CSPConnection/openapi.yaml`, with the same names. Attributes are snake_case in Python, the
+JSON fields camelCase as on the wire (`portal_common.models.ApiModel`).
 
 The controllers use them so that FastAPI validates every HTTP request (400 `validation` as Problem
-Details, never 422) and Swagger UI at `/docs` shows the real fields. `interface.py` keeps plain
-dicts: Process Orchestration calls the interface functions in-process with dicts (call convention
-of AGENTS.md), and the interface checks its input itself.
+Details, never 422) and Swagger UI at `/docs` shows the real fields; a controller passes the body on
+with `to_json()`. `interface.py` keeps plain dicts: Process Orchestration calls the interface functions
+in-process with dicts (call convention of AGENTS.md), and the interface checks its input itself.
 """
 from __future__ import annotations
 
-from typing import Any, Literal
-from uuid import UUID
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-COUNTRY = r"^[A-Z]{2}$"
+from portal_common import models
+from portal_common.models import ApiModel, CountryCode, StepRequest, Uuid
+
+RegistrationStatus = Literal["PENDING", "REGISTERED", "FAILED", "TRANSFERRED_AWAY"]   # README 6.1
+Membership = Literal["NONE", "REGISTERED", "DEREGISTERED"]
+NotificationType = Literal["OperationCompleted", "CompanyTransferredAway"]
+Outcome = Literal["SUCCEEDED", "FAILED"]
 
 
 # ---------------------------------------------------------------- shared parts
-class Identifier(BaseModel):
+class Identifier(ApiModel):
     """Identifier of a company, such as `VAT_ID` or `COMMERCIAL_REG_NUMBER` (README 2, 6.5)."""
     type: str = Field(min_length=1, description="identifier type from the reference data, such as VAT_ID")
     value: str = Field(min_length=1)
 
 
-class Address(BaseModel):
+class Address(ApiModel):
     """Address as the CSP takes it; C12 maps it from the C3-M1 address (flows.yaml, company-core-data)."""
-    streetAddress: str | None = None
-    postalCode: str | None = None
+    street_address: str | None = None
+    postal_code: str | None = None
     locality: str | None = None
     country: str | None = None
 
 
 # ---------------------------------------------------------------- step inputs (README 8)
-class StepInput(BaseModel):
-    """Every step input (FRAMEWORK 4.4)."""
-    processId: UUID
-    stepRunId: UUID
-    companyId: UUID
+class StepInput(StepRequest):
+    """Every step input of C3-M2 (FRAMEWORK 4.4): `processId`, `stepRunId` and the company."""
+    company_id: Uuid
 
 
 class RegisterCompanyInput(StepInput):
     """README 8.1. At least `ebwoid`, `euid` or an entry in `identifiers` (README 6.5); the step
     checks this and answers 400 `validation`."""
-    legalName: str = Field(min_length=1)
-    country: str = Field(pattern=COUNTRY, examples=["DE"])
+    legal_name: str = Field(min_length=1)
+    country: CountryCode = Field(examples=["DE"])
     ebwoid: str | None = Field(default=None, examples=["EBWOID-DE-0000000001"])
     euid: str | None = Field(default=None, examples=["DEXX001T.HRB100001"])
     identifiers: list[Identifier] | None = None
@@ -90,72 +94,64 @@ class RegisterDidInput(StepInput):
 
 class UpdateCompanyInput(StepInput):
     """README 8.4."""
-    legalName: str = Field(min_length=1)
+    legal_name: str = Field(min_length=1)
     euid: str | None = None
     address: Address | None = None
 
 
 class ConnectorInput(StepInput):
     """README 8.6, `deregister-connector`. `companyId` is the host company of the connector."""
-    connectorId: UUID
+    connector_id: Uuid
 
 
 class RegisterConnectorInput(ConnectorInput):
     """README 8.6, `register-connector`."""
-    endpointUrl: str = Field(pattern=r"^https://", description="address of the connector (DSP endpoint), HTTPS",
-                             examples=["https://edc.beispiel-maschinenbau.example/dsp"])
+    endpoint_url: str = Field(pattern=r"^https://", description="address of the connector (DSP endpoint), HTTPS",
+                              examples=["https://edc.beispiel-maschinenbau.example/dsp"])
 
 
 # ---------------------------------------------------------------- step result (FRAMEWORK 4.4)
-class StepResultData(BaseModel):
+class StepResultData(ApiModel):
     """Fields later steps read, for example `steps.register-company.bpn` in flows.yaml."""
     bpn: str | None = None
     did: str | None = None
-    connectorId: UUID | None = None
+    connector_id: Uuid | None = None
 
 
-class StepResult(BaseModel):
+class StepResult(models.StepResult[StepResultData]):
     """Answer of every step: DONE with the result, or RUNNING until the completing event."""
-    stepRunId: UUID
-    state: Literal["DONE", "RUNNING"]
-    result: StepResultData | None = None
 
 
 # ---------------------------------------------------------------- other operations
-class CspRegistration(BaseModel):
+class CspRegistration(ApiModel):
     """README 7.1: the status of a company at the CSP."""
-    companyId: UUID
+    company_id: Uuid
     bpn: str | None = None
-    status: Literal["PENDING", "REGISTERED", "FAILED", "TRANSFERRED_AWAY"]
-    failureReason: str | None = None
+    status: RegistrationStatus
+    failure_reason: str | None = None
     did: str | None = None
-    membership: Literal["NONE", "REGISTERED", "DEREGISTERED"]
-    registeredAt: str | None = Field(default=None, description="date-time")
-    updatedAt: str | None = Field(default=None, description="date-time")
+    membership: Membership
+    registered_at: str | None = Field(default=None, description="date-time")
+    updated_at: str | None = Field(default=None, description="date-time")
 
 
-class CspCompanyMatch(BaseModel):
+class CspCompanyMatch(ApiModel):
     """README 9: one match of the duplicate check."""
     bpn: str
-    legalName: str
+    legal_name: str
     country: str
-    matchedBy: Literal["EBWOID", "EUID", "IDENTIFIER", "NAME"]
-    homeOspId: UUID
-    homeOspName: str | None = None
-    homeIsThisOsp: bool
-    memberActive: bool | None = None
+    matched_by: Literal["EBWOID", "EUID", "IDENTIFIER", "NAME"]
+    home_osp_id: Uuid
+    home_osp_name: str | None = None
+    home_is_this_osp: bool
+    member_active: bool | None = None
 
 
-class CspNotification(BaseModel):
+class CspNotification(ApiModel):
     """README 7.2: notification from the CSP. `operationId` and `outcome` with `OperationCompleted`."""
-    notificationId: str = Field(min_length=1)
-    type: Literal["OperationCompleted", "CompanyTransferredAway"]
+    notification_id: str = Field(min_length=1)
+    type: NotificationType
     bpn: str | None = None
-    operationId: str | None = None
-    outcome: Literal["SUCCEEDED", "FAILED"] | None = None
+    operation_id: str | None = None
+    outcome: Outcome | None = None
     reason: str | None = None
-
-
-def plain(body: BaseModel) -> dict[str, Any]:
-    """A validated request body as the plain JSON dict the interface functions take."""
-    return body.model_dump(mode="json", exclude_none=True)

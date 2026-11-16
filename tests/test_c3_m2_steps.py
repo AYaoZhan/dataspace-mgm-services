@@ -27,7 +27,6 @@
 called in-process through `interface.py`, as Process Orchestration calls them."""
 import json
 import uuid
-from dataclasses import asdict
 
 import pytest
 
@@ -76,7 +75,7 @@ def published(type_: str) -> list[dict]:
 
 
 def csp_calls(operation: str) -> int:
-    return sum(1 for a in store.audit if a.operation == operation)
+    return sum(1 for a in store.audit_entries() if a.operation == operation)
 
 
 def problem(fn, *args, **kwargs) -> Problem:
@@ -207,13 +206,13 @@ def test_12_connector_in_the_discovery():
     bpn = register()
     r = interface.register_connector(step(connectorId=CONNECTOR, endpointUrl=ENDPOINT))
     assert r["result"] == {"bpn": bpn, "connectorId": CONNECTOR}
-    assert store.connectors[CONNECTOR].status == "REGISTERED"
+    assert store.get_connector(CONNECTOR).status == "REGISTERED"
     interface.register_connector(step(connectorId=CONNECTOR, endpointUrl=ENDPOINT))
     assert csp_calls("register-connector") == 1 and len(published("ConnectorRegisteredAtCsp")) == 1
     interface.register_connector(step(connectorId=CONNECTOR, endpointUrl=ENDPOINT + "/v2"))
     assert csp_calls("register-connector") == 2 and len(published("ConnectorRegisteredAtCsp")) == 2
     interface.deregister_connector(step(connectorId=CONNECTOR))
-    assert store.connectors[CONNECTOR].status == "DEREGISTERED"
+    assert store.get_connector(CONNECTOR).status == "DEREGISTERED"
     interface.deregister_connector(step(connectorId=CONNECTOR))
     assert published("ConnectorDeregisteredAtCsp") == [{"companyId": COMPANY, "bpn": bpn, "connectorId": CONNECTOR}]
     assert csp_calls("deregister-connector") == 1
@@ -234,7 +233,7 @@ def test_deregister_unknown_connector_is_done_without_a_call():
 def test_13_seed_data_of_the_osp_company():
     view = interface.get_csp_registration(companyId=OSP_COMPANY)
     assert (view["status"], view["bpn"], view["membership"]) == ("REGISTERED", OSP_COMPANY_BPN, "REGISTERED")
-    assert store.audit == [] and events.RELAY.log == []
+    assert store.audit_entries() == [] and events.RELAY.log == []
     store.seed()   # a second start changes nothing
     assert interface.get_csp_registration(companyId=OSP_COMPANY) == view
     r = interface.register_connector(step(companyId=OSP_COMPANY, connectorId=CONNECTOR, endpointUrl=ENDPOINT))
@@ -258,13 +257,13 @@ def test_notification_for_unknown_company_is_404():
     p = problem(interface.receive_csp_notification,
                 {"notificationId": "n-x", "type": "CompanyTransferredAway", "bpn": "BPNL0000000UNKNW"})
     assert (p.status, p.name) == (404, "unknown-company")
-    assert "n-x" not in store.notifications
+    assert not store.has_notification("n-x")
 
 
 def test_no_secrets_in_audit_or_events():
     register()
     interface.register_membership(step())
-    text = json.dumps([asdict(a) for a in store.audit]) + json.dumps(events.RELAY.log)
+    text = json.dumps([a.model_dump() for a in store.audit_entries()]) + json.dumps(events.RELAY.log)
     assert "access_token" not in text and "Bearer" not in text and "client_assertion" not in text
 
 
@@ -284,7 +283,7 @@ def test_return_after_a_move_registers_did_membership_and_connector_again():
     move_away(bpn)
     view = interface.get_csp_registration(companyId=COMPANY)
     assert "did" not in view and view["membership"] == "NONE"
-    assert store.connectors[CONNECTOR].status == "DEREGISTERED"
+    assert store.get_connector(CONNECTOR).status == "DEREGISTERED"
     # while away: removing the connector is DONE without a call (the new home OSP owns it)
     interface.deregister_connector(step(connectorId=CONNECTOR))
     assert csp_calls("deregister-connector") == 0
@@ -309,13 +308,14 @@ def test_late_operation_completed_does_not_revive_a_moved_company():
     assert (p.status, p.name) == (404, "unknown-company")
     assert interface.get_csp_registration(companyId=COMPANY)["status"] == "TRANSFERRED_AWAY"
     assert len(published("CompanyRegisteredAtCsp")) == 1
-    assert "n-late" not in store.notifications
+    assert not store.has_notification("n-late")
 
 
 def test_operation_completed_falls_back_to_the_bpn_of_a_pending_registration():
     """README 7.2 step 2: a PENDING registration is found by its BPN when the operation id is unknown."""
     row = store.registration_row(COMPANY)
     row.status, row.bpn, row.pending_operation_id = "PENDING", MASCHINENBAU_BPN, "operation-1"
+    store.save(row)
     interface.receive_csp_notification({"notificationId": "n-1", "type": "OperationCompleted",
                                         "operationId": "operation-2", "outcome": "SUCCEEDED",
                                         "bpn": MASCHINENBAU_BPN})
@@ -404,7 +404,7 @@ def test_callback_before_the_202_is_applied_when_the_202_is_stored(monkeypatch, 
         assert published("CompanyRegistrationAtCspFailed") == [{"companyId": COMPANY, "reason": "NO_MATCH"}]
     # the CSP sends the same notification again: acknowledged, nothing processed twice
     assert interface.receive_csp_notification(note)["accepted"] is True
-    assert store.early_completions == {}
+    assert store.early_completions() == []
 
 
 def test_rejected_return_keeps_the_company_transferred_away():
@@ -437,7 +437,7 @@ def test_connector_registered_for_another_company_is_409():
     interface.register_connector(step(connectorId=CONNECTOR, endpointUrl=ENDPOINT))
     p = problem(interface.register_connector, step(companyId=LOGISTIK, connectorId=CONNECTOR, endpointUrl=ENDPOINT))
     assert (p.status, p.name, p.ext["retryable"]) == (409, "invalid-state", False)
-    assert csp_calls("register-connector") == 1 and store.connectors[CONNECTOR].company_id == COMPANY
+    assert csp_calls("register-connector") == 1 and store.get_connector(CONNECTOR).company_id == COMPANY
 
 
 def test_every_notification_gets_an_audit_entry():
@@ -450,7 +450,7 @@ def test_every_notification_gets_an_audit_entry():
     problem(interface.receive_csp_notification, {"notificationId": "n-c", "type": "CompanyTransferredAway",
                                                  "bpn": "BPNL0000000UNKNW"})                         # 404
     entries = [(a.operation, a.http_status, a.error_type)
-               for a in store.audit if a.operation.startswith("notification")]
+               for a in store.audit_entries() if a.operation.startswith("notification")]
     assert entries == [("notification:CompanyTransferredAway", 200, None),
                        ("notification:CompanyTransferredAway", 200, "duplicate"),
                        ("notification:Unknown", 400, "validation"),
@@ -477,7 +477,7 @@ def test_csp_answers_map_to_the_errors_of_readme_12(monkeypatch, csp_status, nam
     answers_first(monkeypatch, (csp_status, None))
     p = problem(interface.register_company, maschinenbau())
     assert (p.status, p.name, p.ext["retryable"]) == (502, name, retryable)
-    row = store.registrations.get(COMPANY)
+    row = store.get_registration(COMPANY)
     assert (row.status if row else None) == row_status
 
 
@@ -491,9 +491,9 @@ def test_broken_stub_file_is_502_upstream_error_with_an_audit_entry(tmp_path, mo
     interface.reset()
     p = problem(interface.register_company, maschinenbau())
     assert (p.status, p.name, p.ext["retryable"]) == (502, "upstream-error", True)
-    entries = [(a.operation, a.http_status, a.error_type) for a in store.audit]
+    entries = [(a.operation, a.http_status, a.error_type) for a in store.audit_entries()]
     assert entries == [("register-company", None, "stub-file")]
-    assert COMPANY not in store.registrations
+    assert store.get_registration(COMPANY) is None
     # once the file is fixed, the retry of C12 succeeds
     bad.write_text(json.dumps(CSP_STUB))
     assert interface.register_company(maschinenbau())["result"] == {"bpn": MASCHINENBAU_BPN}
@@ -507,7 +507,7 @@ def test_deregister_connector_with_another_company_is_409():
     interface.register_connector(step(connectorId=CONNECTOR, endpointUrl=ENDPOINT))
     p = problem(interface.deregister_connector, step(companyId=LOGISTIK, connectorId=CONNECTOR))
     assert (p.status, p.name, p.ext["retryable"]) == (409, "invalid-state", False)
-    assert store.connectors[CONNECTOR].status == "REGISTERED"
+    assert store.get_connector(CONNECTOR).status == "REGISTERED"
     assert csp_calls("deregister-connector") == 0 and published("ConnectorDeregisteredAtCsp") == []
 
 
@@ -518,6 +518,7 @@ def test_pending_without_an_operation_id_calls_the_csp_again(step_name):
         move_away(register())
     row = store.registration_row(COMPANY)
     row.status, row.pending_operation_id = "PENDING", None
+    store.save(row)
     s = maschinenbau() if step_name == "register_company" else step(bpn=MASCHINENBAU_BPN, ebwoid=EBWOID)
     r = getattr(interface, step_name)(s)
     assert r["state"] == "DONE" and r["result"] == {"bpn": MASCHINENBAU_BPN}
@@ -567,7 +568,7 @@ def test_concurrent_register_connector_publishes_once(monkeypatch):
         interface.register_connector(step(connectorId=CONNECTOR, endpointUrl=ENDPOINT))
     run_twice_at_once(monkeypatch, enter_connector, 1, 2)
     assert len(published("ConnectorRegisteredAtCsp")) == 1
-    assert store.connectors[CONNECTOR].status == "REGISTERED"
+    assert store.get_connector(CONNECTOR).status == "REGISTERED"
 
 
 def test_audit_list_is_capped(monkeypatch):
@@ -575,7 +576,7 @@ def test_audit_list_is_capped(monkeypatch):
     monkeypatch.setattr(store, "AUDIT_MAX", 3)
     for i in range(5):
         store.record_audit(f"op-{i}", None, None, 200)
-    assert [a.operation for a in store.audit] == ["op-2", "op-3", "op-4"]
+    assert [a.operation for a in store.audit_entries()] == ["op-2", "op-3", "op-4"]
 
 
 # ---------------------------------------------------------------- team re-review of #31 (2026-11-06)
@@ -590,7 +591,7 @@ def test_broken_osp_company_file_names_its_setting(tmp_path, monkeypatch):
     assert (p.status, p.name, p.ext["retryable"]) == (502, "upstream-error", True)
     assert "ospCompanyFile" in (p.detail or "") and "CSP_STUB_FILE" not in (p.detail or "")
     assert str(tmp_path) not in (p.detail or "")
-    assert [a.error_type for a in store.audit] == ["osp-company-file"]
+    assert [a.error_type for a in store.audit_entries()] == ["osp-company-file"]
 
 
 def test_settings_fault_is_not_blamed_on_a_file(monkeypatch):
@@ -621,7 +622,7 @@ def test_moving_away_ends_a_waiting_return(monkeypatch):
     answers_first(monkeypatch, (202, {"operationId": "operation-return"}))
     assert interface.transfer_company(step(bpn=bpn, ebwoid=EBWOID))["state"] == "RUNNING"
     move_away(bpn)                                        # the company moves away again meanwhile
-    row = store.registrations[COMPANY]
+    row = store.get_registration(COMPANY)
     assert (row.status, row.pending_operation_id, row.returning) == ("TRANSFERRED_AWAY", None, False)
     late = {"notificationId": "n-late-return", "type": "OperationCompleted", "operationId": "operation-return",
             "outcome": "SUCCEEDED", "bpn": bpn}

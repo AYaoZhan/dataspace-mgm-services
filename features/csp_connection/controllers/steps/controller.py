@@ -37,7 +37,6 @@ from features.csp_connection.models.schemas import (
     StepResult,
     TransferCompanyInput,
     UpdateCompanyInput,
-    plain,
 )
 from portal_common.routing import Controller, Permission
 
@@ -49,7 +48,7 @@ controller = Controller("CSP Connection: Steps")
                  response_model=StepResult, response_model_exclude_none=True)
 def register_company(body: RegisterCompanyInput, _: dict = Permission) -> StepReply:
     """README 8.1. DONE with `bpn`, or RUNNING until `CompanyRegisteredAtCsp`."""
-    return interface.register_company(plain(body))
+    return interface.register_company(body.to_json())
 
 
 @controller.post("/transfer-company", operation_id="stepTransferCompany",
@@ -57,7 +56,7 @@ def register_company(body: RegisterCompanyInput, _: dict = Permission) -> StepRe
                  response_model=StepResult, response_model_exclude_none=True)
 def transfer_company(body: TransferCompanyInput, _: dict = Permission) -> StepReply:
     """README 8.2. The company moves to this OSP; answers as register-company."""
-    return interface.transfer_company(plain(body))
+    return interface.transfer_company(body.to_json())
 
 
 @controller.post("/register-did", operation_id="stepRegisterDid",
@@ -65,7 +64,7 @@ def transfer_company(body: TransferCompanyInput, _: dict = Permission) -> StepRe
                  response_model=StepResult, response_model_exclude_none=True)
 def register_did(body: RegisterDidInput, _: dict = Permission) -> StepReply:
     """README 8.3. Needs status REGISTERED."""
-    return interface.register_did(plain(body))
+    return interface.register_did(body.to_json())
 
 
 @controller.post("/update-company", operation_id="stepUpdateCompany",
@@ -73,7 +72,7 @@ def register_did(body: RegisterDidInput, _: dict = Permission) -> StepReply:
                  response_model=StepResult, response_model_exclude_none=True)
 def update_company(body: UpdateCompanyInput, _: dict = Permission) -> StepReply:
     """README 8.4. Needs status REGISTERED."""
-    return interface.update_company(plain(body))
+    return interface.update_company(body.to_json())
 
 
 @controller.post("/register-membership", operation_id="stepRegisterMembership",
@@ -81,7 +80,7 @@ def update_company(body: UpdateCompanyInput, _: dict = Permission) -> StepReply:
                  response_model=StepResult, response_model_exclude_none=True)
 def register_membership(body: StepInput, _: dict = Permission) -> StepReply:
     """README 8.5. Needs status REGISTERED; calls the CSP only on a change."""
-    return interface.register_membership(plain(body))
+    return interface.register_membership(body.to_json())
 
 
 @controller.post("/deregister-membership", operation_id="stepDeregisterMembership",
@@ -89,7 +88,7 @@ def register_membership(body: StepInput, _: dict = Permission) -> StepReply:
                  response_model=StepResult, response_model_exclude_none=True)
 def deregister_membership(body: StepInput, _: dict = Permission) -> StepReply:
     """README 8.5. After `CompanyTransferredAway`: DONE without a call."""
-    return interface.deregister_membership(plain(body))
+    return interface.deregister_membership(body.to_json())
 
 
 @controller.post("/register-connector", operation_id="stepRegisterConnector",
@@ -97,7 +96,7 @@ def deregister_membership(body: StepInput, _: dict = Permission) -> StepReply:
                  response_model=StepResult, response_model_exclude_none=True)
 def register_connector(body: RegisterConnectorInput, _: dict = Permission) -> StepReply:
     """README 8.6. Calls the CSP only for a new connector or a new address."""
-    return interface.register_connector(plain(body))
+    return interface.register_connector(body.to_json())
 
 
 @controller.post("/deregister-connector", operation_id="stepDeregisterConnector",
@@ -105,4 +104,4 @@ def register_connector(body: RegisterConnectorInput, _: dict = Permission) -> St
                  response_model=StepResult, response_model_exclude_none=True)
 def deregister_connector(body: ConnectorInput, _: dict = Permission) -> StepReply:
     """README 8.6. Unknown or already removed: DONE without a call."""
-    return interface.deregister_connector(plain(body))
+    return interface.deregister_connector(body.to_json())

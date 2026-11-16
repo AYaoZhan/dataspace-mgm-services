@@ -26,12 +26,12 @@
 """Notifications of the CSP (README 7.2): `OperationCompleted` and `CompanyTransferredAway`."""
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from features.csp_connection.managers import store
-from features.csp_connection.managers.store import NotificationType
 from features.csp_connection.models import errors
 from features.csp_connection.models.errors import MODULE
+from features.csp_connection.models.schemas import NotificationType, Outcome
 from features.csp_connection.services.common import optional_text, require_text
 from features.csp_connection.services.registration_state import complete_operation, mark_transferred_away
 from portal_common import events
@@ -61,7 +61,7 @@ def _receive_notification(body: dict[str, Any]) -> dict[str, str | bool]:
     else:
         raise errors.validation("type must be OperationCompleted or CompanyTransferredAway")
     bpn = optional_text(body, "bpn")
-    if notification_id in store.notifications:
+    if store.has_notification(notification_id):
         store.record_audit(f"notification:{kind_type}", None, bpn, 200, "duplicate")
         return {"notificationId": notification_id, "accepted": True}
 
@@ -69,7 +69,7 @@ def _receive_notification(body: dict[str, Any]) -> dict[str, str | bool]:
         operation_id = require_text(body, "operationId")
         outcome = require_text(body, "outcome")
         if outcome == "SUCCEEDED":
-            result: Literal["SUCCEEDED", "FAILED"] = "SUCCEEDED"
+            result: Outcome = "SUCCEEDED"
         elif outcome == "FAILED":
             result = "FAILED"
         else:
@@ -86,10 +86,11 @@ def _receive_notification(body: dict[str, Any]) -> dict[str, str | bool]:
         if row is None:
             # Possibly earlier than the 202 answer of the step: keep it aside, the step applies it
             # when it stores the operation id (OPEN-QUESTIONS 15). The answer stays 404 (README 7.2).
-            store.keep_early_completion(store.EarlyCompletion(notification_id, operation_id, result, bpn, reason,
-                                                              store.now()))
+            store.keep_early_completion(store.EarlyCompletion(notification_id=notification_id,
+                                                              operation_id=operation_id, outcome=result, bpn=bpn,
+                                                              reason=reason))
             raise errors.unknown_company(f"no registration for operation {operation_id}")
-        complete_operation(row, result, bpn, reason)
+        row = complete_operation(row.company_id, result, bpn, reason)
     else:
         if not bpn:
             raise errors.validation("bpn is required with CompanyTransferredAway")
@@ -98,10 +99,10 @@ def _receive_notification(body: dict[str, Any]) -> dict[str, str | bool]:
         if row is None:
             raise errors.unknown_company(f"no registration for BPN {bpn}")
         if row.status != "TRANSFERRED_AWAY":
-            mark_transferred_away(row)
+            mark_transferred_away(row.company_id)
             events.publish(MODULE, "CompanyTransferredAway", {"companyId": row.company_id, "bpn": bpn})
 
     # Stored only after it was processed, so a failed processing does not swallow the notification.
-    store.notifications[notification_id] = store.Notification(notification_id, kind_type, row.bpn, store.now())
+    store.save(store.Notification(notification_id=notification_id, type=kind_type, bpn=row.bpn))
     store.record_audit(f"notification:{kind_type}", row.company_id, row.bpn, 200)
     return {"notificationId": notification_id, "accepted": True}

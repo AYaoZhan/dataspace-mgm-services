@@ -33,7 +33,7 @@ from pydantic import ValidationError
 from features.csp_connection.managers import csp_client, store
 from features.csp_connection.managers.store import Registration
 from features.csp_connection.models import errors
-from features.csp_connection.models.schemas import CspCompanyMatch
+from features.csp_connection.models.schemas import CspCompanyMatch, CspRegistration
 from features.csp_connection.services.common import COUNTRY
 
 
@@ -80,15 +80,12 @@ def find_companies(*, ebwoid: str | None = None, euid: str | None = None, identi
 
 def registration_view(row: Registration) -> dict[str, str]:
     """A registration as `CspRegistration`; empty fields are left out."""
-    view: dict[str, str | None] = {
-        "companyId": row.company_id, "bpn": row.bpn, "status": row.status, "failureReason": row.failure_reason,
-        "did": row.did, "membership": row.membership, "registeredAt": row.registered_at, "updatedAt": row.updated_at}
-    return {k: v for k, v in view.items() if v is not None}
+    return CspRegistration.model_validate(row, from_attributes=True).to_json()
 
 
 def get_csp_registration(companyId: str) -> dict[str, str]:  # openapi name
     """Operation getCspRegistration (README 7.1); 404 `not-found` without a registration."""
-    row = store.registrations.get(companyId)
+    row = store.get_registration(companyId)
     if row is None or row.status is None:
         raise errors.not_found()
     return registration_view(row)

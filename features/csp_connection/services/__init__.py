@@ -44,8 +44,14 @@ from features.csp_connection.services.steps import (
 __all__ = [
     "StepReply", "deregister_connector", "deregister_membership", "find_companies", "get_csp_registration",
     "receive_csp_notification", "register_company", "register_connector", "register_did", "register_membership",
-    "registration_view", "reset", "transfer_company", "update_company",
+    "registration_view", "reset", "start", "transfer_company", "update_company",
 ]
+
+
+def start() -> None:
+    """Start of a runtime: the tables exist and hold the seed data of README 4."""
+    store.create_tables()
+    store.seed()
 
 
 def reset() -> None:
