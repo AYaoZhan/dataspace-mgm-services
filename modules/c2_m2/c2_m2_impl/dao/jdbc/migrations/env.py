@@ -36,7 +36,7 @@ MIGRATION_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('c2_m2:migration
 
 
 def _url():
-    return sqlalchemy_url(os.environ.get("DATABASE_URL") or "")
+    return sqlalchemy_url(os.environ.get("C2_M2_DATABASE_URL") or os.environ.get("DATABASE_URL") or "")
 
 
 def run_offline() -> None:
