@@ -22,3 +22,13 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Neighbours of the offers, in-process or over HTTP (`portal_common.neighbours`)."""
+from __future__ import annotations
+
+from features.offers.models import MODULE
+from portal_common import neighbours
+
+
+def query_company(company_id: str) -> dict | None:
+    """C3-M1 `query_company`: the company with its company roles."""
+    return neighbours.query(MODULE, "c3-m1", "query_company", companyId=company_id)

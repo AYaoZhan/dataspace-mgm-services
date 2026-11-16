@@ -2,7 +2,7 @@
 
 **Status:** proposed (9 Nov 2026, updated 13 Nov 2026), proof of concept with the onboarding: the features `registration` (C1-M2) and
 `company_profile` (C3-M1), migrated from the hackathon folders `modules/c1_m2/` and `modules/c3_m1/`; then
-`technical_user` (C2-M3) from `modules/c2_m3/`.
+`technical_user` (C2-M3) from `modules/c2_m3/`; `offers` (C8-M1) from `modules/c8_m1/`.
 Also migrated: `csp_connection` (C3-M2) from `modules/c3_m2/`.
 Then `notifications` (C11-M1) from `modules/c11_m1/`.
 Also migrated: `connector` (C6-M1) from `modules/c6_m1/`.

@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paths answer 404. Problem types, event
   sources, permissions and service accounts keep the spec id. Concept for one database per feature in a shared
   PostgreSQL instance ([ADR-0003](docs/architecture/decisions/ADR-0003-feature-first-layout-and-runtimes.md)).
+- **Breaking:** C8-M1 Offers moves from `modules/c8_m1/` to `features/offers/` (ADR-0003) and is served under `/api/offers` (was `/api/c8-m1`); the old path answers 404. Problem types, event sources, permissions and `svc-c8-m1` keep the spec id.
 - **Breaking:** C3-M2 CSP Connection is served under `/api/csp-connection` (was `/api/c3-m2`); the old path answers
   404, and the CSP stand-in calls back `/api/csp-connection/csp-notifications`. Problem types, events, permissions
   and `svc-c3-m2` keep the spec id.
