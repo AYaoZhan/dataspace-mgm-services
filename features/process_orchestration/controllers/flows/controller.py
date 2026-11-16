@@ -25,18 +25,18 @@
 """The flows of the installation (README 7.5)."""
 from __future__ import annotations
 
+from features.process_orchestration import interface
 from features.process_orchestration.models.process import Flow, FlowList
-from features.process_orchestration.services import queries
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Process Orchestration: Flows")
 
 
 @controller.get("", response_model=FlowList, summary="List the flows")
-def list_flows(_: dict = Permission):
-    return queries.list_flows()
+def list_flows(_: dict = Permission) -> FlowList:
+    return interface.list_flows()
 
 
 @controller.get("/{flowKey}", response_model=Flow, summary="One flow")
-def get_flow(flowKey: str, _: dict = Permission):
-    return queries.get_flow(flowKey)
+def get_flow(flowKey: str, _: dict = Permission) -> Flow:
+    return interface.get_flow(flowKey)

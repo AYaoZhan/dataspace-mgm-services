@@ -93,36 +93,45 @@ def check(doc: dict) -> list[str]:
             lookup_operation(lk.get("query"))
         except FlowError as e:
             raise FlowError(f"lookup {name}: {e}") from None
-    warnings = []
     events_known = known_events() | OWN_EVENTS
+    warnings: list[str] = []
     for fl in doc.get("flows") or []:
-        seen: list[str] = []
-        names = {fl["trigger"]["event"], *(fl.get("endOn") or [])}
-        for st in fl["steps"]:
-            where = f"flow {fl['key']}, step {st.get('key')}"
-            names |= {st["waitFor"]} if st.get("waitFor") else set()
-            names |= completion_types(st) | set(st.get("failsOn") or [])
-            module, _, step = st.get("call", "").partition(".")
-            if module not in mods or step not in mods[module].steps():
-                raise FlowError(f"{where}: unknown step {st.get('call')}")
-            if st.get("lookup") and st["lookup"] not in lookups:
-                raise FlowError(f"{where}: unknown lookup {st['lookup']}")
-            sources = [s for s in (st.get("input") or {}).values() if isinstance(s, str)] + list((st.get("when") or {}))
-            for src in sources:
-                if src.startswith("steps.") and src.split(".")[1] not in seen:
-                    raise FlowError(f"{where}: source {src} is not earlier in the flow")
-                if src.startswith("lookup.") and src.split(".")[1] not in lookups:
-                    raise FlowError(f"{where}: unknown lookup in {src}")
-            op = mods[module].steps()[step]
-            required = set(mods[module].resolve(op.request_schema).get("required", [])) - {"processId", "stepRunId"}
-            missing = sorted(required - set(st.get("input") or {}))
-            if missing:
-                warnings.append(f"{where}: required input {missing} of {st['call']} has no source")
-            seen.append(st["key"])
-        unknown = sorted(n for n in names if n not in events_known)
-        if unknown:
-            warnings.append(f"flow {fl['key']}: events {unknown} are not in any event table or schema of the spec")
+        warnings += _check_flow(fl, mods, lookups, events_known)
     return warnings
+
+
+def _check_flow(fl: dict, mods: dict[str, spec.ModuleSpec], lookups: dict, events_known: set[str]) -> list[str]:
+    seen: list[str] = []
+    warnings: list[str] = []
+    names = {fl["trigger"]["event"], *(fl.get("endOn") or [])}
+    for st in fl["steps"]:
+        names |= {st["waitFor"]} if st.get("waitFor") else set()
+        names |= completion_types(st) | set(st.get("failsOn") or [])
+        warnings += _check_step(f"flow {fl['key']}, step {st.get('key')}", st, seen, mods, lookups)
+        seen.append(st["key"])
+    unknown = sorted(n for n in names if n not in events_known)
+    if unknown:
+        warnings.append(f"flow {fl['key']}: events {unknown} are not in any event table or schema of the spec")
+    return warnings
+
+
+def _check_step(where: str, st: dict, seen: list[str], mods: dict[str, spec.ModuleSpec], lookups: dict) -> list[str]:
+    """FlowError for an unknown step, lookup or source; a warning for a required input without a source."""
+    module, _, step = st.get("call", "").partition(".")
+    if module not in mods or step not in mods[module].steps():
+        raise FlowError(f"{where}: unknown step {st.get('call')}")
+    if st.get("lookup") and st["lookup"] not in lookups:
+        raise FlowError(f"{where}: unknown lookup {st['lookup']}")
+    sources = [s for s in (st.get("input") or {}).values() if isinstance(s, str)] + list(st.get("when") or {})
+    for src in sources:
+        if src.startswith("steps.") and src.split(".")[1] not in seen:
+            raise FlowError(f"{where}: source {src} is not earlier in the flow")
+        if src.startswith("lookup.") and src.split(".")[1] not in lookups:
+            raise FlowError(f"{where}: unknown lookup in {src}")
+    op = mods[module].steps()[step]
+    required = set(mods[module].resolve(op.request_schema).get("required", [])) - {"processId", "stepRunId"}
+    missing = sorted(required - set(st.get("input") or {}))
+    return [f"{where}: required input {missing} of {st['call']} has no source"] if missing else []
 
 
 def load(flows_file: str | Path | None = None) -> tuple[dict, list[str]]:

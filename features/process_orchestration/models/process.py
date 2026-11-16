@@ -32,8 +32,9 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, ValidationError
 
+from features.process_orchestration.models.errors import problem
 from features.process_orchestration.models.states import ProcessStatus, StepState, SubjectType
 from portal_common.models import ApiModel, Page
 
@@ -132,6 +133,14 @@ class RetriggerRequest(ApiModel):
     """README 7.4; further fields are ignored, as `additionalProperties` is not false in the spec."""
 
     comment: str | None = Field(None, max_length=500)
+
+    @classmethod
+    def of_body(cls, body: dict | None) -> RetriggerRequest:
+        """The request of an optional body; a wrong `comment` is the Problem of README 12, not a 422."""
+        try:
+            return cls.model_validate(body or {})
+        except ValidationError:
+            raise problem(400, "validation", detail="comment up to 500 characters") from None
 
 
 class Flow(ApiModel):

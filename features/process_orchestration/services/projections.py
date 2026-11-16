@@ -28,8 +28,13 @@ from __future__ import annotations
 
 import datetime as dt
 
-from features.process_orchestration.models.process import (Process, ProcessChanged, ProcessSummary, StepRun,
-                                                           StepRunDetail)
+from features.process_orchestration.models.process import (
+    Process,
+    ProcessChanged,
+    ProcessSummary,
+    StepRun,
+    StepRunDetail,
+)
 from features.process_orchestration.models.states import FINAL_STEP
 
 

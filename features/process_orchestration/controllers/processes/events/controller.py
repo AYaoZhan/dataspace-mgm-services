@@ -26,8 +26,9 @@
 from __future__ import annotations
 
 from fastapi import Header, Request
+from fastapi.responses import StreamingResponse
 
-from features.process_orchestration.services import queries, streams
+from features.process_orchestration import interface
 from portal_common import sse
 from portal_common.routing import Controller, Permission
 
@@ -36,7 +37,6 @@ controller = Controller("Process Orchestration: Live State")
 
 @controller.get("", summary="Live changes of one process")
 def stream_process_events(processId: str, request: Request, claims: dict = Permission,
-                          last_event_id: str | None = Header(None, alias="Last-Event-ID")):
-    queries.process_dict(processId)   # 404 for an unknown process
-    return sse.response(streams.BROKER, request, claims, last_event_id,
-                        visible=streams.process_visible(processId), initial=streams.process_current(processId))
+                          last_event_id: str | None = Header(None, alias="Last-Event-ID")) -> StreamingResponse:
+    stream = interface.process_stream(processId)   # 404 for an unknown process
+    return sse.response(stream.broker, request, claims, last_event_id, visible=stream.visible, initial=stream.initial)

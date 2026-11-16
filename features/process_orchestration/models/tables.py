@@ -32,23 +32,25 @@ and correlation value of a new event, the subject of the query of other modules.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, Column, DateTime
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from features.process_orchestration.models.errors import MODULE
 from portal_common import database
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:   # the base is built at run time; for the type checker it is a SQLModel
+    Table = SQLModel
+else:
+    Table = database.table_base(MODULE)
+
+Json = dict | list | str | int | float | bool | None   # the value of a JSON column
 
 
-def _when(**kwargs) -> Any:
-    return Field(default=None, sa_column=Column(DateTime(timezone=True), **kwargs))
-
-
-def _json(default: Any = None) -> Any:
-    return Field(default=default, sa_column=Column(JSON))
+def _when(*, nullable: bool = True) -> Column:
+    """A timestamp column with time zone (every timestamp of the engine is UTC)."""
+    return Column(DateTime(timezone=True), nullable=nullable)
 
 
 class ProcessRow(Table, table=True):
@@ -58,20 +60,20 @@ class ProcessRow(Table, table=True):
     sequence: int = Field(index=True)                      # order in which the processes started
     flow_key: str = Field(index=True)
     flow_version: int | None = None
-    flow: dict = _json()                                   # the flow as it was when the process started (README 4)
+    flow: dict = Field(sa_column=Column(JSON))             # the flow as it was when the process started (README 4)
     subject_type: str = Field(index=True)
-    subject_id: str | None = Field(default=None, index=True)
+    subject_id: str | None = Field(default=None, index=True)          # JSON text of the value
     correlation_key: str
     correlation_value: str | None = Field(default=None, index=True)   # JSON text of the value
     status: str = Field(index=True)
-    variables: dict = _json()
-    lookups: dict = _json()
-    inbox: list = _json()
+    variables: dict = Field(sa_column=Column(JSON))
+    lookups: dict = Field(sa_column=Column(JSON))
+    inbox: list = Field(sa_column=Column(JSON))
     trigger_event_id: str | None = None
     end_reason: str | None = None
-    created_at: dt.datetime = _when(nullable=False)
-    updated_at: dt.datetime = _when(nullable=False)
-    finished_at: dt.datetime | None = _when()
+    created_at: dt.datetime = Field(sa_column=_when(nullable=False))
+    updated_at: dt.datetime = Field(sa_column=_when(nullable=False))
+    finished_at: dt.datetime | None = Field(default=None, sa_column=_when())
 
 
 class StepRunRow(Table, table=True):
@@ -85,13 +87,13 @@ class StepRunRow(Table, table=True):
     state: str
     attempts: int
     max_attempts: int
-    next_attempt_at: dt.datetime | None = _when()
-    await_until: dt.datetime | None = _when()
-    result: Any = _json()
-    last_error: dict | None = _json()
-    started_at: dt.datetime | None = _when()
-    finished_at: dt.datetime | None = _when()
-    attempt_history: list = _json()
+    next_attempt_at: dt.datetime | None = Field(default=None, sa_column=_when())
+    await_until: dt.datetime | None = Field(default=None, sa_column=_when())
+    result: Json = Field(default=None, sa_column=Column(JSON))
+    last_error: dict | None = Field(default=None, sa_column=Column(JSON))
+    started_at: dt.datetime | None = Field(default=None, sa_column=_when())
+    finished_at: dt.datetime | None = Field(default=None, sa_column=_when())
+    attempt_history: list = Field(sa_column=Column(JSON))
 
 
 class ProcessedEventRow(Table, table=True):

@@ -159,7 +159,7 @@ class Engine:
         self._publish("ProcessStarted", proc)
         return proc
 
-    def _publish(self, etype: str, proc: dict, **extra) -> None:
+    def _publish(self, etype: str, proc: dict, **extra: object) -> None:
         """Events of C12-M1 (README 10) as CloudEvents with `source` `urn:c12-m1` (FRAMEWORK 6)."""
         data = {"processId": proc["id"]}
         if etype != "ProcessStepRetriggered":
@@ -177,46 +177,68 @@ class Engine:
 
     # ---------------------------------------------------------------- progress (README 6.3, 6.4)
     def advance(self, proc: dict) -> None:
+        """Runs the steps in order until one has to wait; then sets the status of the process."""
         with self.lock:
             if proc["status"] in ("ENDED", "COMPLETED"):
                 return
-            for st, sr in zip(proc["flow"]["steps"], proc["steps"]):
-                if sr["state"] in FINAL_STEP:
-                    continue
-                if sr["state"] == "FAILED":
-                    return self._set_status(proc, "FAILED")
-                if sr["nextAttemptAt"] and sr["nextAttemptAt"] > self.clock():
-                    return self._set_status(proc, "RUNNING")      # due later; the worker picks it up
-                if sr["state"] == "WAITING":
-                    if st.get("waitFor") and not any(e["type"] == st["waitFor"] for e in proc["inbox"]):
-                        return self._set_status(proc, "WAITING")
-                    sr["state"] = "READY"
-                if sr["state"] == "READY":
-                    try:   # README 6.8: the lookup runs when the step is READY, before its `when`
-                        when_ok = self._prepare(proc, st)
-                    except LookupFailed as e:
-                        self._error(proc, sr, e.error)
-                        return self._set_status(proc, "FAILED" if sr["state"] == "FAILED" else "RUNNING")
-                    if not when_ok:
-                        sr["state"], sr["finishedAt"] = "SKIPPED", self.clock()
-                        continue
-                    proc["status"] = "RUNNING"   # README 6.4: a step is IN_PROGRESS (shown in the stream, 7.6)
-                    self._call(proc, st, sr)
-                    if proc["status"] == "ENDED":   # endOn during the call (README 6.3)
-                        if sr["state"] not in FINAL_STEP:
-                            sr["state"] = "SKIPPED"
-                        return
-                if sr["state"] == "AWAITING_EVENT":
-                    self._check_completion(proc, st, sr)
-                if sr["state"] in FINAL_STEP:
-                    continue
-                if sr["state"] == "FAILED":
-                    return self._set_status(proc, "FAILED")
-                return self._set_status(proc, "RUNNING")
+            for st, sr in zip(proc["flow"]["steps"], proc["steps"], strict=True):
+                stop = self._advance_step(proc, st, sr)
+                if stop is not None:
+                    if stop:
+                        self._set_status(proc, stop)
+                    return
             proc["status"] = "COMPLETED"
             proc["finishedAt"] = proc["updatedAt"] = self.clock()
             self._changed(proc)
             self._publish("ProcessCompleted", proc)
+
+    def _advance_step(self, proc: dict, st: dict, sr: dict) -> str | None:
+        """One step: None when it is finished (go on with the next), otherwise the status the process gets now
+        (`""`: the process ended during the call and keeps its status)."""
+        if sr["state"] in FINAL_STEP:
+            return None
+        blocked = self._blocked(proc, st, sr)
+        if blocked:
+            return blocked
+        if sr["state"] == "READY":
+            stop = self._run_ready(proc, st, sr)
+            if stop is not None:
+                return stop
+        if sr["state"] == "AWAITING_EVENT":
+            self._check_completion(proc, st, sr)
+        if sr["state"] in FINAL_STEP:
+            return None
+        return "FAILED" if sr["state"] == "FAILED" else "RUNNING"
+
+    def _blocked(self, proc: dict, st: dict, sr: dict) -> str | None:
+        """The status of a process whose step cannot run now; a `WAITING` step whose event is there becomes READY."""
+        if sr["state"] == "FAILED":
+            return "FAILED"
+        if sr["nextAttemptAt"] and sr["nextAttemptAt"] > self.clock():
+            return "RUNNING"      # due later; the worker picks it up
+        if sr["state"] == "WAITING":
+            if st.get("waitFor") and not any(e["type"] == st["waitFor"] for e in proc["inbox"]):
+                return "WAITING"
+            sr["state"] = "READY"
+        return None
+
+    def _run_ready(self, proc: dict, st: dict, sr: dict) -> str | None:
+        """README 6.8: the lookups run when the step is READY, before its `when`; then the call (README 6.3)."""
+        try:
+            when_ok = self._prepare(proc, st)
+        except LookupFailed as e:
+            self._error(proc, sr, e.error)
+            return "FAILED" if sr["state"] == "FAILED" else "RUNNING"
+        if not when_ok:
+            sr["state"], sr["finishedAt"] = "SKIPPED", self.clock()
+            return None
+        proc["status"] = "RUNNING"   # README 6.4: a step is IN_PROGRESS (shown in the stream, 7.6)
+        self._call(proc, st, sr)
+        if proc["status"] == "ENDED":   # endOn during the call (README 6.3)
+            if sr["state"] not in FINAL_STEP:
+                sr["state"] = "SKIPPED"
+            return ""
+        return None
 
     def _set_status(self, proc: dict, status: str) -> None:
         proc["status"], proc["updatedAt"] = status, self.clock()
@@ -288,6 +310,8 @@ class Engine:
         # step setting > AWAIT_TIMEOUT > defaults of the flow file
         duration = st.get("awaitTimeout") or config.await_timeout() or self.defaults.get("awaitTimeout") or "PT24H"
         m = re.fullmatch(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?", duration)
+        if m is None:
+            raise FlowError(f"awaitTimeout {duration}: not an ISO 8601 duration of days, hours, minutes, seconds")
         d, h, mi, s = (int(x or 0) for x in m.groups())
         return dt.timedelta(days=d, hours=h, minutes=mi, seconds=s)
 
@@ -304,7 +328,8 @@ class Engine:
                     proc["variables"].update(c.get("set") or {})
             return
         if sr["awaitUntil"] and self.clock() > sr["awaitUntil"]:
-            sr["lastError"] = {"type": "await-timeout", "status": None, "title": "no completing event", "retryable": False}
+            sr["lastError"] = {"type": "await-timeout", "status": None, "title": "no completing event",
+                               "retryable": False}
             self._fail(proc, sr, "await-timeout", False)
 
     def _fail(self, proc: dict, sr: dict, error_type: str | None, retryable: bool) -> None:

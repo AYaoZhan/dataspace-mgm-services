@@ -34,20 +34,19 @@ import json
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import cast
 
-from sqlmodel import select
+from sqlmodel import Session, col, select
 
 from features.process_orchestration.models.errors import MODULE
-from features.process_orchestration.models.tables import AuditEntryRow, ProcessedEventRow, ProcessRow, StepRunRow
+from features.process_orchestration.models.tables import AuditEntryRow, Json, ProcessedEventRow, ProcessRow, StepRunRow
 from portal_common import database
-
 
 _lock = threading.RLock()
 
 
 @contextmanager
-def _session() -> Iterator:
+def _session() -> Iterator[Session]:
     """One unit of work at a time: the default in-memory SQLite database is one connection for all threads, and
     the worker, the event relay and the requests write from different threads."""
     with _lock, database.session(MODULE) as session:
@@ -64,19 +63,21 @@ def reset() -> None:
         database.reset_tables(MODULE)
 
 
-def correlation(value: Any) -> str:
+def correlation(value: object) -> str:
     """The stored form of a correlation value or subject id: its JSON text, so any JSON value can be indexed."""
     return json.dumps(value, sort_keys=True)
 
 
-def _plain(value: Any) -> Any:
-    """JSON data for a JSON column; a value that JSON does not know (a date of the flow file) as its text."""
-    return json.loads(json.dumps(value, default=str))
+def _plain[T: Json](value: T) -> T:
+    """JSON data for a JSON column; a value that JSON does not know (a date of the flow file) as its text.
+    The shape stays the same (a dict stays a dict, a list a list)."""
+    return cast(T, json.loads(json.dumps(value, default=str)))
 
 
 def _process_row(proc: dict, sequence: int) -> ProcessRow:
     return ProcessRow(
-        id=proc["id"], sequence=sequence, flow_key=proc["flowKey"], flow_version=proc["flowVersion"], flow=_plain(proc["flow"]),
+        id=proc["id"], sequence=sequence, flow_key=proc["flowKey"], flow_version=proc["flowVersion"],
+        flow=_plain(proc["flow"]),
         subject_type=proc["subjectType"], subject_id=correlation(proc["subjectId"]),
         correlation_key=proc["correlationKey"], correlation_value=correlation(proc["correlationValue"]),
         status=proc["status"], variables=_plain(proc["variables"]), lookups=_plain(proc["lookups"]),
@@ -101,19 +102,19 @@ def save(proc: dict, sequence: int) -> None:
             session.merge(_step_row(proc["id"], position, sr))
 
 
-def ids_of_correlation(flow_key: str, value: Any) -> list[str]:
+def ids_of_correlation(flow_key: str, value: object) -> list[str]:
     """Ids of the processes of a flow with this correlation value, in the order they started."""
     with _session() as session:
         return list(session.exec(select(ProcessRow.id).where(ProcessRow.flow_key == flow_key,
                                                              ProcessRow.correlation_value == correlation(value))
-                                 .order_by(ProcessRow.sequence)))
+                                 .order_by(col(ProcessRow.sequence))))
 
 
-def ids_of_subject(subject_type: str, subject_id: Any) -> list[str]:
+def ids_of_subject(subject_type: str, subject_id: object) -> list[str]:
     with _session() as session:
         return list(session.exec(select(ProcessRow.id).where(ProcessRow.subject_type == subject_type,
                                                              ProcessRow.subject_id == correlation(subject_id))
-                                 .order_by(ProcessRow.sequence)))
+                                 .order_by(col(ProcessRow.sequence))))
 
 
 def record_event(engine_id: str, event_id: str) -> bool:

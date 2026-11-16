@@ -67,7 +67,7 @@ class ProcessStore:
     def _live(self, ids: Iterable[str]) -> list[dict]:
         return [self.processes[pid] for pid in ids if pid in self.processes]
 
-    def open_process(self, flow_key: str, value, open_states: Iterable[str]) -> dict | None:
+    def open_process(self, flow_key: str, value: object, open_states: Iterable[str]) -> dict | None:
         """The open process of a flow with this correlation value (README 6.5)."""
         return next((p for p in self._live(repository.ids_of_correlation(flow_key, value))
                      if p["status"] in open_states), None)

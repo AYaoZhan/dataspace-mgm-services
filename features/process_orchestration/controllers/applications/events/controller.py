@@ -27,8 +27,9 @@ application gives an empty stream, never a 404."""
 from __future__ import annotations
 
 from fastapi import Header, Request
+from fastapi.responses import StreamingResponse
 
-from features.process_orchestration.services import streams
+from features.process_orchestration import interface
 from portal_common import sse
 from portal_common.routing import Controller, Permission
 
@@ -37,8 +38,7 @@ controller = Controller("Process Orchestration: Live State")
 
 @controller.get("", summary="Live changes of the processes of the own application")
 def stream_application_process_events(applicationId: str, request: Request, claims: dict = Permission,
-                                      last_event_id: str | None = Header(None, alias="Last-Event-ID")):
-    streams.check_application_id(applicationId)
-    visible = streams.application_visible(applicationId, claims["sub"])
-    return sse.response(streams.BROKER, request, claims, last_event_id,
-                        visible=visible, initial=streams.application_current(visible))
+                                      last_event_id: str | None = Header(None, alias="Last-Event-ID"),
+                                      ) -> StreamingResponse:
+    stream = interface.application_stream(applicationId, claims["sub"])   # 400 for an id that is no UUID
+    return sse.response(stream.broker, request, claims, last_event_id, visible=stream.visible, initial=stream.initial)

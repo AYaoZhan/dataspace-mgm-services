@@ -22,11 +22,19 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Spec id and the errors of Process Orchestration (spec C12-M1): a broken flow catalogue and a failed lookup."""
+"""Spec id and the errors of Process Orchestration (spec C12-M1): the Problem factory of the API (README 12), a
+broken flow catalogue and a failed lookup."""
 from __future__ import annotations
+
+from portal_common.problems import Problem
 
 MODULE = "c12-m1"
 LOOKUP_FAILED = "urn:c12-m1:problem:lookup-failed"
+
+
+def problem(status: int, name: str, *, detail: str | None = None) -> Problem:
+    """A Problem of C12-M1 (`urn:c12-m1:problem:<name>`): `validation`, `not-found` or `invalid-state`."""
+    return Problem(MODULE, status, name, detail=detail)
 
 
 class FlowError(Exception):

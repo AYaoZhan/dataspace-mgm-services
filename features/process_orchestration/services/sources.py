@@ -28,7 +28,7 @@ from __future__ import annotations
 import re
 
 
-def extract(obj, path: str):
+def extract(obj: object, path: str) -> object:
     """Field path (README 6.8): a.b, a[0].b, [0].id, a[TYPE].value (first entry whose `type` is TYPE)."""
     for part in re.findall(r"[^.\[\]]+|\[[^\]]*\]", path):
         if obj is None:
@@ -46,7 +46,7 @@ def extract(obj, path: str):
     return obj
 
 
-def map_fields(raw, spec_: object):
+def map_fields(raw: object, spec_: object) -> object:
     """README 6.8: a path, an object mapping, or `{join: [paths]}`. Returns None for no value."""
     if isinstance(spec_, str):
         return extract(raw, spec_)
@@ -59,7 +59,7 @@ def map_fields(raw, spec_: object):
     return None
 
 
-def resolve(proc: dict, src):
+def resolve(proc: dict, src: object) -> object:
     """The value of a source: `=constant`, `steps.<key>.<path>`, `lookup.<name>.<field>` or a variable path."""
     if not isinstance(src, str):
         return src
@@ -84,11 +84,11 @@ def build_input(proc: dict, st: dict, sr: dict) -> dict:
     return data
 
 
-def lookup_result(lk: dict, raw) -> dict:
+def lookup_result(lk: dict, raw: object) -> dict:
     """The fields of a lookup answer; nothing, an empty list or a 404 is not found (README 6.8)."""
     if not raw:
         return {"found": False}
-    res = {"found": True}
+    res: dict[str, object] = {"found": True}
     for target, fspec in (lk.get("fields") or {}).items():
         val = map_fields(raw, fspec)
         if val is not None:

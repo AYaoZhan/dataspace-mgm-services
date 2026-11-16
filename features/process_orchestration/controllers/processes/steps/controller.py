@@ -27,19 +27,20 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.process_orchestration import interface
 from features.process_orchestration.models.process import StepRun, StepRunDetail
-from features.process_orchestration.services import queries
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Process Orchestration: Processes")
 
 
 @controller.get("/{stepKey}", response_model=StepRunDetail, summary="A step run with its result and attempts")
-def get_step_run(processId: str, stepKey: str, _: dict = Permission):
-    return queries.get_step_run(processId, stepKey)
+def get_step_run(processId: str, stepKey: str, _: dict = Permission) -> StepRunDetail:
+    return interface.get_step_run(processId, stepKey)
 
 
 @controller.post("/{stepKey}/retrigger", status_code=202, response_model=StepRun, summary="Run a FAILED step again")
-def retrigger_step(processId: str, stepKey: str, claims: dict = Permission, body: dict | None = Body(None)):
+def retrigger_step(processId: str, stepKey: str, claims: dict = Permission,
+                   body: dict | None = Body(None)) -> StepRun:
     """The body is checked by the service (`RetriggerRequest`), so a wrong `comment` keeps its Problem detail."""
-    return queries.retrigger_step(processId, stepKey, claims["sub"], body)
+    return interface.retrigger_step(processId, stepKey, claims["sub"], body)

@@ -40,8 +40,9 @@ import copy
 
 import httpx
 
-from features.process_orchestration.models.errors import LOOKUP_FAILED, MODULE, LookupFailed
+from features.process_orchestration.models.errors import LOOKUP_FAILED, MODULE, FlowError, LookupFailed
 from portal_common import http, neighbours, problems, spec, standin, tokens
+
 # the JSON encoding of in-process answers, the same as `neighbours.query` uses (no HTTP involved)
 from portal_common.neighbours import jsonable_encoder
 
@@ -97,11 +98,14 @@ def step_over_http(module: str, step: str, data: dict, timeout: float) -> dict:
 
 
 # ---------------------------------------------------------------- lookups (README 6.8)
-def query_in_process(op: spec.Operation, name: str, params: dict):
+def query_in_process(op: spec.Operation, name: str, params: dict) -> object:
     """`<interface of module>.<operationId in snake_case>(**params)`; a Problem counts like the same answer
     over HTTP: 404 is None (not found), every other error raises LookupFailed."""
+    function = op.function_name
+    if function is None:    # flow_catalogue.lookup_operation only gives queries with an operationId
+        raise FlowError(f"lookup {name}: {op.method} {op.path} is not a query")
     try:
-        return jsonable_encoder(standin.interface_function(op.module, op.function_name)(**params))
+        return jsonable_encoder(standin.interface_function(op.module, function)(**params))
     except Exception as e:  # noqa: BLE001 - every error of a lookup is an error of the step
         p = problems.to_problem(op.module, e, False)
         if p.status == 404:
@@ -111,7 +115,7 @@ def query_in_process(op: spec.Operation, name: str, params: dict):
                             "title": f"lookup {name} answered {p.status}", "retryable": retryable}) from e
 
 
-def query_over_http(op: spec.Operation, name: str, params: dict, path_params: set[str], timeout: float):
+def query_over_http(op: spec.Operation, name: str, params: dict, path_params: set[str], timeout: float) -> object:
     """`GET <address><base path><path>` with the path and query parameters; 404 is None (not found)."""
     base = neighbours.address(op.module)
     path = op.path
