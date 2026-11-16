@@ -28,25 +28,28 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
-import re
 import threading
 import time
 import unicodedata
 from pathlib import Path
+from typing import TypeGuard
 
 import httpx
 import jwt
+from jwt.types import Options
 
-from features.registration.managers import reference_catalog
+from features.registration.managers import config, reference_catalog
+from features.registration.managers.config import AttestationConfig
+from features.registration.models import MODULE
+from features.registration.models.applications import AttestationRecord, SignatureCheck
+from features.registration.models.tables import ApplicationRow
 from portal_common import http
 from portal_common.problems import Problem
 
-MODULE = "c1-m2"
 TYP = "ebw-attestation+jwt"
-DURATION = re.compile(r"^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
-_VERIFY_SIGNATURE_ONLY = {"verify_signature": True, "verify_exp": False, "verify_nbf": False, "verify_iat": False,
-                          "verify_aud": False, "verify_iss": False, "verify_sub": False, "verify_jti": False}
+_VERIFY_SIGNATURE_ONLY: Options = {"verify_signature": True, "verify_exp": False, "verify_nbf": False,
+                                   "verify_iat": False, "verify_aud": False, "verify_iss": False, "verify_sub": False,
+                                   "verify_jti": False}
 
 _jwks_lock = threading.Lock()
 _jwks: tuple[list[dict], float] | None = None
@@ -63,51 +66,32 @@ def reset() -> None:
         _jwks = None
 
 
-def duration_seconds(value: str) -> int:
-    """ISO 8601 duration in seconds; raises ValueError for anything else."""
-    m = DURATION.match(value or "")
-    if not m or not any(m.groups()):
-        raise ValueError(f"ATTESTATION_MAX_AGE: not an ISO 8601 duration: {value!r}")
-    weeks, days, hours, minutes, seconds = (int(g or 0) for g in m.groups())
-    return weeks * 604800 + days * 86400 + hours * 3600 + minutes * 60 + seconds
-
-
-def config() -> dict:
-    """Variables of README 4; an unset value takes the column "Example" (FRAMEWORK 4.8)."""
-    return {"issuer": os.environ.get("ATTESTATION_ISSUER", ""),
-            "audience": os.environ.get("ATTESTATION_AUDIENCE") or "portal-registration",
-            "algorithms": [a.strip() for a in (os.environ.get("ATTESTATION_ALGORITHMS") or "ES256").split(",") if a.strip()],
-            "clients": [c.strip() for c in os.environ.get("ATTESTATION_CLIENT_IDS", "").split(",") if c.strip()],
-            "maxAge": duration_seconds(os.environ.get("ATTESTATION_MAX_AGE") or "P30D"),
-            "skew": int(os.environ.get("ATTESTATION_CLOCK_SKEW_SECONDS") or 60),
-            "cacheSeconds": int(os.environ.get("ATTESTATION_JWKS_CACHE_SECONDS") or 300)}
-
-
-def _fetch_keys() -> list[dict]:
-    path = os.environ.get("ATTESTATION_JWKS_FILE")
+def _fetch_keys(cfg: AttestationConfig) -> list[dict]:
+    path = config.jwks_file()
     if path:
         return json.loads(Path(path).read_text(encoding="utf-8")).get("keys", [])
-    cfg = config()
-    url = os.environ.get("ATTESTATION_JWKS_URL") or f"{cfg['issuer'].rstrip('/')}/jwks"
+    url = config.jwks_url(cfg.issuer)
     try:
         r = http.request("GET", url, timeout=5)
         if not r.is_success:
-            raise Problem(MODULE, 502, "upstream-error", detail=f"JWKS of the issuer answered {r.status_code}", retryable=True)
+            raise Problem(MODULE, 502, "upstream-error", detail=f"JWKS of the issuer answered {r.status_code}",
+                          retryable=True)
         return r.json().get("keys", [])
     except (httpx.HTTPError, ValueError) as e:
-        raise Problem(MODULE, 502, "upstream-error", detail=f"JWKS of the issuer: {type(e).__name__}", retryable=True) from e
+        raise Problem(MODULE, 502, "upstream-error", detail=f"JWKS of the issuer: {type(e).__name__}",
+                      retryable=True) from e
 
 
-def _key(kid: str | None) -> dict | None:
+def _key(kid: str | None, cfg: AttestationConfig) -> dict | None:
     """Key for `kid` from the configuration only; a `kid` missing in the cache triggers one reload."""
     global _jwks
-    cache_seconds = config()["cacheSeconds"]
     with _jwks_lock:
         cached = _jwks
-    keys = cached[0] if cached and time.monotonic() - cached[1] < cache_seconds and not os.environ.get("ATTESTATION_JWKS_FILE") else None
+    fresh = cached is not None and time.monotonic() - cached[1] < cfg.cache_seconds and not config.jwks_file()
+    keys = cached[0] if cached is not None and fresh else None
     found = next((k for k in keys or [] if k.get("kid") == kid), None)
     if found is None:
-        keys = _fetch_keys()
+        keys = _fetch_keys(cfg)
         with _jwks_lock:
             _jwks = (keys, time.monotonic())
         found = next((k for k in keys if k.get("kid") == kid), None)
@@ -118,21 +102,21 @@ def _invalid(reason: str) -> Problem:
     return Problem(MODULE, 400, "attestation-invalid", reason=reason)
 
 
-def _signed_payload(token: str, cfg: dict) -> tuple[dict, dict]:
+def _signed_payload(token: str, cfg: AttestationConfig) -> tuple[dict, dict]:
     """Steps 1 to 4 of 6.4; returns header and payload. Used by the checks and by `signature_check`."""
     try:
         header = jwt.get_unverified_header(token)
         payload = jwt.decode(token, options={"verify_signature": False})
     except (jwt.PyJWTError, ValueError, TypeError) as e:
         raise _invalid("format") from e
-    if not cfg["issuer"]:   # an address of another system: the installation must set it (FRAMEWORK 4.8)
+    if not cfg.issuer:   # an address of another system: the installation must set it (FRAMEWORK 4.8)
         raise Problem(MODULE, 502, "upstream-error", detail="ATTESTATION_ISSUER is not set", retryable=False)
     alg = header.get("alg")
-    if not isinstance(alg, str) or alg.lower() == "none" or alg not in cfg["algorithms"] or header.get("typ") != TYP:
+    if not isinstance(alg, str) or alg.lower() == "none" or alg not in cfg.algorithms or header.get("typ") != TYP:
         raise _invalid("algorithm")
-    if payload.get("iss") != cfg["issuer"]:
+    if payload.get("iss") != cfg.issuer:
         raise _invalid("issuer")
-    jwk = _key(header.get("kid"))
+    jwk = _key(header.get("kid"), cfg)
     if jwk is None:
         raise _invalid("signature")
     try:
@@ -178,26 +162,30 @@ def _claims_valid(p: dict) -> bool:
         return False
     if not (_optional_text(company.get("euid")) and _address_valid(company.get("address"))):
         return False
-    numbers = isinstance(p.get("verified_at"), (int, float)) and not isinstance(p.get("verified_at"), bool)
+    numbers = _is_number(p.get("verified_at"))
     return (numbers and _text(p.get("jti"), 200) and _text(p.get("client_id")) and _text(person.get("given_name"))
             and _text(person.get("family_name")) and _text(company.get("legal_name")) and _text(company.get("ebwoid"))
             and p.get("sub") == company.get("ebwoid") and _representation_valid(rep)
             and _evidence_valid(p.get("evidence")) and reference_catalog.country(company.get("country")) is not None)
 
 
+def _is_number(value: object) -> TypeGuard[int | float]:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def verify(token: str, claims: dict) -> tuple[dict, dict]:
     """The checks of 6.4 in their order; the first failure decides `reason`. Returns header and payload."""
-    cfg = config()
+    cfg = config.attestation()
     header, p = _signed_payload(token, cfg)
     aud = p.get("aud")
-    if cfg["audience"] not in (aud if isinstance(aud, list) else [aud]):
+    if cfg.audience not in (aud if isinstance(aud, list) else [aud]):
         raise _invalid("audience")
     exp, iat = p.get("exp"), p.get("iat")
-    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (exp, iat)):
+    if not (_is_number(exp) and _is_number(iat)):
         raise _invalid("claims")
-    if exp <= now() - cfg["skew"]:
+    if exp <= now() - cfg.skew:
         raise _invalid("expired")
-    if iat > now() + cfg["skew"]:
+    if iat > now() + cfg.skew:
         raise _invalid("not-yet-valid")
     if p.get("attestation_version") != "0.2":
         raise _invalid("version")
@@ -205,7 +193,7 @@ def verify(token: str, claims: dict) -> tuple[dict, dict]:
         raise _invalid("purpose")
     if not _claims_valid(p):
         raise _invalid("claims")
-    if cfg["clients"] and p.get("client_id") not in cfg["clients"]:
+    if cfg.clients and p.get("client_id") not in cfg.clients:
         raise _invalid("client")
     person = p["person"]
     if not claims.get("given_name") or not claims.get("family_name")\
@@ -215,40 +203,44 @@ def verify(token: str, claims: dict) -> tuple[dict, dict]:
     return header, p
 
 
-def usable_at_submission(a: dict) -> bool:
+def usable_at_submission(a: ApplicationRow) -> bool:
     """6.4 "At submission": not expired and not older than `ATTESTATION_MAX_AGE` from `iat`."""
-    cfg, claims = config(), a["_attestationClaims"]
-    return claims["exp"] > now() - cfg["skew"] and now() - claims["iat"] <= cfg["maxAge"] + cfg["skew"]
+    cfg, claims = config.attestation(), a.attestation_claims
+    if not claims:
+        return False
+    return claims["exp"] > now() - cfg.skew and now() - claims["iat"] <= cfg.max_age + cfg.skew
 
 
-def signature_check(token: str) -> dict:
+def signature_check(token: str) -> SignatureCheck:
     """9.1: steps 1 to 4 again, without time check. `VALID`, `INVALID` or `UNAVAILABLE`."""
     checked = dt.datetime.fromtimestamp(now(), dt.UTC).isoformat()
     try:
-        _signed_payload(token, config())
+        _signed_payload(token, config.attestation())
     except Problem as p:
-        return {"result": "UNAVAILABLE" if p.status == 502 else "INVALID", "checkedAt": checked}
-    return {"result": "VALID", "checkedAt": checked}
+        return SignatureCheck(result="UNAVAILABLE" if p.status == 502 else "INVALID", checked_at=checked)
+    return SignatureCheck(result="VALID", checked_at=checked)
 
 
 def _ts(epoch: float | None) -> str | None:
     return dt.datetime.fromtimestamp(epoch, dt.UTC).isoformat() if epoch else None
 
 
-def summary(header: dict, p: dict) -> dict:
-    """`AttestationDetail` without `signatureCheck`, which is added at every query."""
+def summary(header: dict, p: dict) -> AttestationRecord:
+    """What the module keeps of a verified attestation: `AttestationDetail` without `signatureCheck`."""
     rep, company = p["representation"], p["company"]
     addr = company.get("address") or None
-    return {"attestationId": p["jti"], "issuer": p["iss"], "issuedAt": _ts(p["iat"]), "expiresAt": _ts(p["exp"]),
-            "verifiedAt": _ts(p["verified_at"]),
-            "person": {"givenName": p["person"]["given_name"], "familyName": p["person"]["family_name"]},
-            "representation": {"confirmed": rep["confirmed"], "result": rep.get("result"), "type": rep.get("type"),
-                               "role": rep.get("role"), "validUntil": rep.get("valid_until"), "issuer": rep.get("issuer"),
-                               "trust": rep.get("trust"), "reasons": list(rep.get("reasons") or [])},
-            "keyId": header.get("kid"), "clientId": p["client_id"],
-            "company": {"legalName": company["legal_name"], "ebwoid": company["ebwoid"], "euid": company.get("euid"),
-                        "countryCode": company["country"],
-                        "address": addr and {"streetAddress": addr.get("street_address"), "postalCode": addr.get("postal_code"),
-                                             "locality": addr.get("locality"), "country": addr.get("country")}},
-            "evidence": [{"type": e.get("type"), "vct": e.get("vct"), "issuer": e.get("issuer"), "wallet": e.get("wallet"),
-                          "statusChecked": e.get("status_checked")} for e in p["evidence"]]}
+    return AttestationRecord.model_validate({
+        "attestationId": p["jti"], "issuer": p["iss"], "issuedAt": _ts(p["iat"]), "expiresAt": _ts(p["exp"]),
+        "verifiedAt": _ts(p["verified_at"]),
+        "person": {"givenName": p["person"]["given_name"], "familyName": p["person"]["family_name"]},
+        "representation": {"confirmed": rep["confirmed"], "result": rep.get("result"), "type": rep.get("type"),
+                           "role": rep.get("role"), "validUntil": rep.get("valid_until"), "issuer": rep.get("issuer"),
+                           "trust": rep.get("trust"), "reasons": list(rep.get("reasons") or [])},
+        "keyId": header.get("kid"), "clientId": p["client_id"],
+        "company": {"legalName": company["legal_name"], "ebwoid": company["ebwoid"], "euid": company.get("euid"),
+                    "countryCode": company["country"],
+                    "address": addr and {"streetAddress": addr.get("street_address"),
+                                         "postalCode": addr.get("postal_code"), "locality": addr.get("locality"),
+                                         "country": addr.get("country")}},
+        "evidence": [{"type": e.get("type"), "vct": e.get("vct"), "issuer": e.get("issuer"), "wallet": e.get("wallet"),
+                      "statusChecked": e.get("status_checked")} for e in p["evidence"]]})

@@ -25,7 +25,7 @@
 from __future__ import annotations
 
 from features.registration import controllers
-from features.registration.services.shared import MODULE
+from features.registration.models import MODULE
 from portal_common.routing import mount
 
 router = mount(controllers, MODULE)

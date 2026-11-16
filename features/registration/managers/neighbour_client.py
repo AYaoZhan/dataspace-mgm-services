@@ -31,18 +31,18 @@ every call; the JSON string "unavailable" instead of a list means "not reachable
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
+from features.registration.managers import config
+from features.registration.models import MODULE
 from portal_common import neighbours
 from portal_common.problems import Problem
 
-MODULE = "c1-m2"
 C3_M1, C1_M3 = "c3-m1", "c1-m3"
 
 
 def _stub(var: str, target: str) -> list[dict]:
-    path = os.environ.get(var, "")
+    path = config.stub_file(var)
     if not path:
         raise Problem(MODULE, 502, "upstream-error", detail=f"{target} stand-in: {var} not set", retryable=True)
     data = json.loads(Path(path).read_text(encoding="utf-8"))

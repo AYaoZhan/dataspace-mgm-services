@@ -25,41 +25,49 @@
 """
 from __future__ import annotations
 
-from features.registration.managers import reference_catalog
+from collections import defaultdict
+
+from features.registration.managers import agreement_repository, reference_catalog
+from features.registration.models.reference_data import Agreement, CompanyRoleInfo, Country, IdentifierTypeInfo
+from features.registration.models.value_sets import AgreementStatus
 from features.registration.services.shared import MODULE, field_error, validation_problem
 from portal_common.problems import Problem
 
 
-# ----------------------------------------------------------------------------- reference data
-def list_countries(lang: str) -> list[dict]:
-    return sorted(({"code": c["code"], "name": c["name"].get(lang) or c["name"]["en"]} for c in reference_catalog.master()["countries"]),
-                  key=lambda c: c["code"])
+def _text(texts: dict, lang: str) -> str:
+    """The text in the requested language, English when there is none."""
+    return texts.get(lang) or texts["en"]
 
 
-def list_identifier_types(country_code: str, lang: str) -> list[dict]:
+def list_countries(lang: str) -> list[Country]:
+    countries = sorted(reference_catalog.master()["countries"], key=lambda c: c["code"])
+    return [Country(code=c["code"], name=_text(c["name"], lang)) for c in countries]
+
+
+def list_identifier_types(country_code: str, lang: str) -> list[IdentifierTypeInfo]:
     country = reference_catalog.country(country_code)
     if country is None:
         raise Problem(MODULE, 404, "not-found")
-    out = []
-    for t in reference_catalog.master()["identifierTypes"]:
-        if t["type"] in country.get("identifierTypes", []):
-            out.append({"type": t["type"], "name": t["name"].get(lang) or t["name"]["en"],
-                        "pattern": reference_catalog.identifier_pattern(t["type"], country_code)})
-    return out
+    allowed = set(country.get("identifierTypes", []))
+    return [IdentifierTypeInfo(type=t["type"], name=_text(t["name"], lang),
+                               pattern=reference_catalog.identifier_pattern(t["type"], country_code))
+            for t in reference_catalog.master()["identifierTypes"] if t["type"] in allowed]
 
 
-def list_company_roles(lang: str) -> list[dict]:
-    active = reference_catalog.active()
-    return [{"role": r["role"], "name": r["name"].get(lang) or r["name"]["en"],
-             "description": r["description"].get(lang) or r["description"]["en"],
-             "agreementKeys": [a["agreementKey"] for a in active if r["role"] in a["companyRoles"]]}
-            for r in reference_catalog.all_roles() if r.get("selectable")]
+def list_company_roles(lang: str) -> list[CompanyRoleInfo]:
+    keys: dict[str, list[str]] = defaultdict(list)
+    for a in agreement_repository.versions(AgreementStatus.ACTIVE):
+        for role in a.company_roles:
+            keys[role].append(a.agreement_key)
+    return [CompanyRoleInfo(role=r["role"], name=_text(r["name"], lang), description=_text(r["description"], lang),
+                            agreement_keys=keys[r["role"]])
+            for r in reference_catalog.roles() if r.get("selectable")]
 
 
-def list_agreements(company_roles: list[str], lang: str) -> list[dict]:
+def list_agreements(company_roles: list[str], lang: str) -> list[Agreement]:
     bad = [r for r in company_roles if not reference_catalog.selectable(r)]
     if bad:
         raise validation_problem([field_error("companyRole", f"unknown or not selectable role: {r}") for r in bad])
-    return [{"agreementKey": a["agreementKey"], "version": a["version"], "party": a["party"], "scope": a["scope"],
-             "title": a["title"].get(lang) or a["title"]["en"], "documentUrls": a["documentUrls"],
-             "companyRoles": a["companyRoles"]} for a in reference_catalog.required(company_roles)]
+    return [Agreement(agreement_key=a.agreement_key, version=a.version, party=a.party, scope=a.scope,
+                      title=_text(a.title, lang), document_urls=a.document_urls, company_roles=a.company_roles)
+            for a in agreement_repository.required(company_roles)]

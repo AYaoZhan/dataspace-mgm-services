@@ -227,7 +227,7 @@ def test_02_invalid_attestations(client, env, monkeypatch, change, reason):
         monkeypatch.setenv("ATTESTATION_CLIENT_IDS", "demo-osp")
     r = client.post(api("/applications"), headers=_h("erika"), json=onboarding(token))
     assert r.status_code == 400 and r.json()["type"] == "urn:c1-m2:problem:attestation-invalid"
-    assert r.json()["reason"] == reason and not application_repository.applications
+    assert r.json()["reason"] == reason and not application_repository.search()
 
 
 def test_02_jwks_not_reachable_is_502(client, env, monkeypatch):
@@ -246,7 +246,7 @@ def test_03_person_binding(client, env):
 # ------------------------------------------------------------------------ 4 to 9: applications
 def test_04_bound_account(client, env):
     r = client.post(api("/applications"), headers=_h("bound"), json=onboarding(env.sign()))
-    assert r.status_code == 403 and r.json()["type"] == "urn:c1-m2:problem:account-bound" and not application_repository.applications
+    assert r.status_code == 403 and r.json()["type"] == "urn:c1-m2:problem:account-bound" and not application_repository.search()
     assert client.get(api("/applications"), headers=_h("bound")).status_code == 200
 
 
@@ -314,9 +314,9 @@ def test_10_submit(client, env):
     r = submit(client, aid)
     assert r.status_code == 200 and r.json()["status"] == "SUBMITTED" and r.json()["submittedAt"]
     assert {c["language"] for c in r.json()["consents"]} == {"de", "en"}
-    records = application_repository.applications[aid]["_consentRecords"]
+    records = application_repository.get(aid).consent_records
     assert {x["givenBySub"] for x in records} == {ERIKA}
-    assert {x["attestationId"] for x in records} == {application_repository.applications[aid]["_attestation"]["attestationId"]}
+    assert {x["attestationId"] for x in records} == {application_repository.get(aid).attestation["attestationId"]}
     assert events_of("ApplicationSubmitted")[0]["applicantSub"] == ERIKA
     assert submit(client, aid).status_code == 200 and len(events_of("ApplicationSubmitted")) == 1
 
@@ -439,7 +439,7 @@ def test_18_withdraw(client, env):
     assert r.status_code == 409 and r.json()["type"] == "urn:c1-m2:problem:already-decided" and r.json()["reviewStatus"] == "APPROVED"
     env.write(env.reviews, "unavailable")
     r = client.post(url, headers=_h("erika"))
-    assert r.status_code == 502 and application_repository.applications[aid]["status"] == "SUBMITTED"
+    assert r.status_code == 502 and application_repository.get(aid).status == "SUBMITTED"
     env.write(env.reviews, [{"applicationId": aid, "status": "OPEN"}])
     assert client.post(url, headers=_h("erika")).json()["status"] == "WITHDRAWN"
     [ev] = events_of("ApplicationWithdrawn")
@@ -469,7 +469,7 @@ def test_20_osp_staff(client, env):
     r = client.get(api(f"/osp/applications/{aid}/documents/{doc}"), headers=_h("rolf"))
     assert r.status_code == 200 and r.content == PDF and r.headers["x-content-type-options"] == "nosniff"
     assert "attachment" in r.headers["content-disposition"]
-    assert any(x["operation"] == "getAnyDocument" and x["objectId"] == doc for x in application_repository.audit_log)
+    assert any(x.operation == "getAnyDocument" and x.object_id == doc for x in application_repository.audit_log())
     assert client.get(api("/osp/applications"), headers=_h("erika")).status_code == 403
     iam = test_iam.iam()
     iam.first_login(NO_PERMISSIONS, "Nora", "Norights", key="norights")   # 14.1, not in testdata/
@@ -517,7 +517,7 @@ def test_23_close(client, env):
     assert step(interface.close_application, aid, reason="Register extract too old")["result"]["status"] == "DECLINED"
     assert client.get(api(f"/applications/{aid}"), headers=_h("erika")).json()["declineReason"] == "Register extract too old"
     step(interface.close_application, aid, reason="Another reason")
-    assert application_repository.applications[aid]["declineReason"] == "Register extract too old"
+    assert application_repository.get(aid).decline_reason == "Register extract too old"
     other = created(client, env)["id"]
     client.post(api(f"/applications/{other}/withdraw"), headers=_h("erika"))
     r = step(interface.close_application, other, reason="x")
@@ -553,11 +553,11 @@ def test_26_audit_and_no_personal_data(client, env):
     aid = client.post(api("/applications"), headers=_h("erika"), json=onboarding(token)).json()["id"]
     submit(client, aid)
     step(interface.complete_application, aid)
-    ops = [(x["operation"], x["sub"], x["companyId"]) for x in application_repository.audit_log]
-    company = application_repository.applications[aid]["companyId"]
+    ops = [(x.operation, x.sub, x.company_id) for x in application_repository.audit_log()]
+    company = application_repository.get(aid).company_id
     assert ops == [("createApplication", ERIKA, company), ("submitApplication", ERIKA, company),
                    ("stepCompleteApplication", None, company)]
-    text = json.dumps(events.RELAY.log) + json.dumps(application_repository.audit_log)
+    text = json.dumps(events.RELAY.log) + json.dumps([x.model_dump() for x in application_repository.audit_log()])
     for secret in (token, "Mustermann", "Erika"):
         assert secret not in text
     assert token not in json.dumps(client.get(api(f"/applications/{aid}"), headers=_h("erika")).json())
@@ -568,10 +568,10 @@ def test_26_audit_and_no_personal_data(client, env):
 @pytest.mark.parametrize("change", [{"identifiers": []}, {"identifiers": None}, {"legalName": None}, {"address": None}])
 def test_patch_keeps_required_company_data(client, env, change):
     aid = client.post(api("/applications"), headers=_h("erika"), json=documents_body()).json()["id"]
-    before = json.dumps(application_repository.applications[aid]["companyData"])
+    before = json.dumps(application_repository.get(aid).company_data)
     r = client.patch(api(f"/applications/{aid}"), headers=_h("erika"), json=change)
     assert r.status_code == 400 and r.json()["type"] == "urn:c1-m2:problem:validation"
-    assert json.dumps(application_repository.applications[aid]["companyData"]) == before
+    assert json.dumps(application_repository.get(aid).company_data) == before
 
 
 def test_patch_without_identifiers_of_the_person_on_the_ebw_path(client, env):
@@ -603,7 +603,7 @@ def test_reference_in_a_wrong_format(client, env, reference):
     {"representation": {"confirmed": True, "reasons": "x"}}])
 def test_signed_attestation_with_malformed_claims(client, env, over):
     r = client.post(api("/applications"), headers=_h("erika"), json=onboarding(env.sign(payload=env.payload() | over)))
-    assert r.status_code == 400 and r.json()["reason"] == "claims" and not application_repository.applications
+    assert r.status_code == 400 and r.json()["reason"] == "claims" and not application_repository.search()
 
 
 def test_issuer_not_configured_names_the_variable(client, env, monkeypatch):
@@ -634,7 +634,7 @@ def test_replacement_checks_the_new_identifiers(client, env):
     wrong_country = env.payload() | {"company": {**_without_euid(env)["company"], "euid": "FRXX001T.HRB100001"}}
     r = client.put(api(f"/applications/{aid}/attestation"), headers=_h("erika"), json={"attestation": env.sign(payload=wrong_country)})
     assert r.status_code == 400 and r.json()["type"] == "urn:c1-m2:problem:validation"
-    assert [i["type"] for i in application_repository.applications[aid]["companyData"]["identifiers"]] == ["EBWOID", "VAT_ID"]
+    assert [i["type"] for i in application_repository.get(aid).company_data["identifiers"]] == ["EBWOID", "VAT_ID"]
 
 
 def test_replacement_checks_the_existing_company(client, env):
@@ -674,21 +674,27 @@ def _during_submission(env, client, action) -> list:
     return outcome, threading.Thread(target=run)
 
 
+def _set_status(application_id: str, status: str) -> None:
+    row = application_repository.get(application_id)
+    row.status = status
+    application_repository.save(row)
+
+
 def test_document_changes_cannot_follow_a_submission(client, env):
     aid = client.post(api("/applications"), headers=_h("erika"), json=documents_body()).json()["id"]
     doc = upload(client, aid).json()["documentId"]
     actions = [lambda: document_service.upload_document(aid, ERIKA, "OTHER", "late.pdf", PDF),
                lambda: document_service.delete_document(aid, doc, ERIKA)]
     for action in actions:
-        application_repository.applications[aid]["status"] = "CREATED"
+        _set_status(aid, "CREATED")
         outcome, thread = _during_submission(env, client, action)
         with application_repository.applications_lock:
             thread.start()
             time.sleep(0.2)
-            application_repository.applications[aid]["status"] = "SUBMITTED"
+            _set_status(aid, "SUBMITTED")
         thread.join(5)
         assert isinstance(outcome[0], Problem) and outcome[0].status == 409
-    assert [d["documentId"] for d in application_repository.applications[aid]["documents"]] == [doc]
+    assert [d["documentId"] for d in application_repository.get(aid).documents] == [doc]
 
 
 def test_swagger_tags_c1_m2_as_implemented_not_as_stand_in():

@@ -24,6 +24,8 @@
 """OSP staff read the documents of an application (README 7.14)."""
 from __future__ import annotations
 
+from fastapi import Response
+
 from features.registration.services import document_service
 from portal_common.routing import Controller, Permission, download
 
@@ -31,5 +33,5 @@ controller = Controller("Registration: Application Review")
 
 
 @controller.get("/{documentId}")
-def get_any_document(applicationId: str, documentId: str, claims: dict = Permission):
+def get_any_document(applicationId: str, documentId: str, claims: dict = Permission) -> Response:
     return download(*document_service.staff_document(applicationId, documentId, claims["sub"]))

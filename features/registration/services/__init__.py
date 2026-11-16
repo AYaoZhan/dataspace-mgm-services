@@ -21,6 +21,7 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""Business logic of the registration: applications, their validation and views, documents, agreements,
-reference data, the attestation of the business wallet and the process steps.
+"""Business logic of the registration: applications, their validation, submission and views, documents,
+agreements, reference data, the attestation of the business wallet and the process steps. State is read and
+written through the repositories of `managers/`.
 """

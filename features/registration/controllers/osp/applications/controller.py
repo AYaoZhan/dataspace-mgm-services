@@ -26,20 +26,23 @@ from __future__ import annotations
 
 from fastapi import Query
 
-from features.registration.models.value_sets import Kind, Status, Verification
+from features.registration.models.applications import ApplicationSummary, ApplicationWithReview
+from features.registration.models.value_sets import ApplicationKind, ApplicationStatus, Verification
 from features.registration.services import application_service, application_views
+from portal_common.models import Page as PageOf
 from portal_common.routing import Controller, Page, Permission, Size
 
 controller = Controller("Registration: Application Review")
 
 
-@controller.get("")
-def list_all_applications(status: list[Status] | None = Query(None), kind: list[Kind] | None = Query(None),
+@controller.get("", response_model=PageOf[ApplicationSummary], response_model_exclude_unset=True)
+def list_all_applications(status: list[ApplicationStatus] | None = Query(None),
+                          kind: list[ApplicationKind] | None = Query(None),
                           verification: list[Verification] | None = Query(None), companyId: str | None = None,
-                          page: int = Page, size: int = Size, _: dict = Permission):
+                          page: int = Page, size: int = Size, _: dict = Permission) -> PageOf[ApplicationSummary]:
     return application_service.list_all(status, kind, verification, companyId, page, size)
 
 
-@controller.get("/{applicationId}")
-def get_any_application(applicationId: str, _: dict = Permission):
+@controller.get("/{applicationId}", response_model=ApplicationWithReview, response_model_exclude_unset=True)
+def get_any_application(applicationId: str, _: dict = Permission) -> ApplicationWithReview:
     return application_views.with_review(application_service.any_application(applicationId))

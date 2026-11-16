@@ -24,6 +24,7 @@
 """The company roles for the registration form (README 7.1)."""
 from __future__ import annotations
 
+from features.registration.models.reference_data import CompanyRoleInfo
 from features.registration.models.value_sets import Lang
 from features.registration.services import reference_data_service
 from portal_common.routing import Controller, Permission
@@ -31,6 +32,6 @@ from portal_common.routing import Controller, Permission
 controller = Controller("Registration: Reference Data")
 
 
-@controller.get("")
-def list_company_roles(lang: Lang = "en", _: dict = Permission):
+@controller.get("", response_model=list[CompanyRoleInfo], response_model_exclude_unset=True)
+def list_company_roles(lang: Lang = "en", _: dict = Permission) -> list[CompanyRoleInfo]:
     return reference_data_service.list_company_roles(lang)

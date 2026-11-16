@@ -21,42 +21,65 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""The JSON views of an application (`Application`, `ApplicationSummary`, review status 7.4).
+"""The views of an application (`Application`, `ApplicationWithReview`, `ApplicationInternal`,
+`ApplicationSummary`), built from its row. Internal fields (the JWT, the declared data, the consent records)
+never reach a view.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from features.registration.managers import neighbour_client
+from features.registration.models.applications import (
+    Application,
+    ApplicationInternal,
+    ApplicationSummary,
+    ApplicationWithReview,
+)
+from features.registration.models.tables import ApplicationRow
+from features.registration.models.value_sets import ApplicationStatus
+from features.registration.services import attestation_verifier
+from portal_common.models import ApiModel
 from portal_common.problems import Problem
 
-SUMMARY_KEYS = ("attestationId", "issuer", "issuedAt", "expiresAt", "verifiedAt", "person", "representation")
+
+def _fields(a: ApplicationRow, view: type[ApiModel]) -> dict[str, Any]:
+    """The columns of the row that the view has; `attestation` is the stored extract, cut down by the view."""
+    return {name: getattr(a, name) for name in view.model_fields if hasattr(a, name)}
 
 
-# ------------------------------------------------------------------------------------- views
-def public(a: dict) -> dict:
+def public(a: ApplicationRow) -> Application:
     """`Application`: without the JWT and with the extract of the attestation only."""
-    out = {k: v for k, v in a.items() if not k.startswith("_")}
-    current = a.get("_attestation")
-    out["attestation"] = {k: current[k] for k in SUMMARY_KEYS} if current else None
-    return out
+    return Application.model_validate(_fields(a, Application))
 
 
-def summary(a: dict) -> dict:
+def summary(a: ApplicationRow) -> ApplicationSummary:
     """`ApplicationSummary`."""
-    return {"id": a["id"], "companyId": a["companyId"], "kind": a["kind"], "existingCompany": a["existingCompany"],
-            "verification": a["verification"], "status": a["status"], "legalName": a["companyData"]["legalName"],
-            "countryCode": a["companyData"]["address"].get("countryCode"), "companyRoles": a["companyRoles"],
-            "createdAt": a["createdAt"], "submittedAt": a.get("submittedAt")}
+    return ApplicationSummary(id=a.id, company_id=a.company_id, kind=a.kind, existing_company=a.existing_company,
+                              verification=a.verification, status=a.status, legal_name=a.company_data["legalName"],
+                              country_code=a.company_data["address"].get("countryCode"),
+                              company_roles=a.company_roles, created_at=a.created_at, submitted_at=a.submitted_at)
 
 
-def _review_status(a: dict) -> str:
-    """`reviewStatus` of 7.4."""
-    if a["status"] == "CREATED":
+def _review_status(a: ApplicationRow) -> str:
+    """`reviewStatus` of 7.4: NONE before submission, UNKNOWN when C1-M3 does not answer."""
+    if a.status == ApplicationStatus.CREATED:
         return "NONE"
     try:
-        return neighbour_client.review_status(a["id"]) or "NONE"
+        return neighbour_client.review_status(a.id) or "NONE"
     except Problem:
         return "UNKNOWN"
 
 
-def with_review(a: dict) -> dict:
-    return public(a) | {"reviewStatus": _review_status(a)}
+def with_review(a: ApplicationRow) -> ApplicationWithReview:
+    fields = _fields(a, ApplicationWithReview) | {"review_status": _review_status(a)}
+    return ApplicationWithReview.model_validate(fields)
+
+
+def internal(a: ApplicationRow) -> ApplicationInternal:
+    """`ApplicationInternal` (9.1): the whole attestation with a fresh signature check."""
+    detail = None
+    if a.attestation and a.attestation_token:
+        check = attestation_verifier.signature_check(a.attestation_token)
+        detail = a.attestation | {"signatureCheck": check}
+    return ApplicationInternal.model_validate(_fields(a, ApplicationInternal) | {"attestation": detail})

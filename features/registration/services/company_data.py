@@ -28,9 +28,11 @@ from __future__ import annotations
 import unicodedata
 import uuid
 
-from features.registration.managers import neighbour_client, reference_catalog
-from features.registration.managers.application_repository import applications
-from features.registration.services.shared import MODULE, field_error, validation_problem
+from features.registration.managers import application_repository, neighbour_client, reference_catalog
+from features.registration.models import MODULE
+from features.registration.models.applications import ApplicationCreate
+from features.registration.models.problems import field_error, validation_problem
+from features.registration.models.value_sets import ApplicationKind, Verification
 from portal_common.problems import Problem
 from tools import testdata
 
@@ -52,7 +54,8 @@ def _compare(field: str, mine: str | None, claim: str | None) -> dict | None:
 
 
 def given_identifiers(given: dict) -> dict[str, str]:
-    return {x["type"]: reference_catalog.normalise_identifier(x["type"], x["value"]) for x in given.get("identifiers") or []}
+    return {x["type"]: reference_catalog.normalise_identifier(x["type"], x["value"])
+            for x in given.get("identifiers") or []}
 
 
 def company_data_ebw(company: dict, given: dict) -> tuple[dict, list[dict]]:
@@ -70,10 +73,12 @@ def company_data_ebw(company: dict, given: dict) -> tuple[dict, list[dict]]:
     if fields:
         raise Problem(MODULE, 400, "attestation-mismatch", fields=fields)
     if not address and not (claim.get("street_address") and claim.get("locality")):
-        raise validation_problem([field_error("companyData.address", "the attestation has no address: streetName and city required")])
+        raise validation_problem([field_error("companyData.address",
+                                              "the attestation has no address: streetName and city required")])
     identifiers = [{"type": "EBWOID", "value": ebwoid, "source": "ATTESTATION"}]
     if euid:
-        identifiers.append({"type": "EUID", "value": reference_catalog.normalise_identifier("EUID", euid), "source": "ATTESTATION"})
+        identifiers.append({"type": "EUID", "value": reference_catalog.normalise_identifier("EUID", euid),
+                            "source": "ATTESTATION"})
     identifiers += [{"type": t, "value": v, "source": "APPLICANT"} for t, v in ids.items()
                     if t != "EBWOID" and not (t == "EUID" and euid)]
     street = " ".join(p for p in (address.get("streetName"), address.get("streetNumber")) if p) if address else None
@@ -95,11 +100,15 @@ def company_data_ebw(company: dict, given: dict) -> tuple[dict, list[dict]]:
 def _company_data_documents(given: dict) -> tuple[dict, list[dict]]:
     """6.9: all data from the person."""
     return ({"legalName": given["legalName"], "shortName": given.get("shortName"), "address": given["address"],
-             "identifiers": [{"type": t, "value": v, "source": "APPLICANT"} for t, v in given_identifiers(given).items()]}, [])
+             "identifiers": [{"type": t, "value": v, "source": "APPLICANT"}
+                             for t, v in given_identifiers(given).items()]}, [])
 
 
 def build_company_data(verification: str, company: dict | None, given: dict) -> tuple[dict, list[dict]]:
-    return company_data_ebw(company, given) if verification == "EBW" else _company_data_documents(given)
+    """`companyData` and `comparison` of the application: from the attestation (EBW) or as declared (DOCUMENTS)."""
+    if verification == Verification.EBW and company is not None:
+        return company_data_ebw(company, given)
+    return _company_data_documents(given)
 
 
 def check_existing_identifiers(company: dict, ebwoid: str | None, euid: str | None) -> None:
@@ -108,19 +117,22 @@ def check_existing_identifiers(company: dict, ebwoid: str | None, euid: str | No
     fields = []
     if ebwoid and kept.get("EBWOID") and kept["EBWOID"] != ebwoid:
         fields.append("EBWOID")
-    if euid and kept.get("EUID") and reference_catalog.normalise_identifier("EUID", kept["EUID"]) != reference_catalog.normalise_identifier("EUID", euid):
+    normalise = reference_catalog.normalise_identifier
+    if euid and kept.get("EUID") and normalise("EUID", kept["EUID"]) != normalise("EUID", euid):
         fields.append("EUID")
     if fields:
         raise Problem(MODULE, 400, "attestation-mismatch", fields=fields)
 
 
-def company_for_reference(body: dict, kind: str) -> dict:
+def company_for_reference(request: ApplicationCreate) -> dict:
     """6.2: read the company at C3-M1 and check that status and reason fit the application kind."""
-    company = neighbour_client.company_by_id(body["companyId"]) if body.get("companyId") else neighbour_client.company_by_bpn(body["bpn"])
+    company = (neighbour_client.company_by_id(request.company_id) if request.company_id
+               else neighbour_client.company_by_bpn(request.bpn or ""))
     if company is None:
         raise Problem(MODULE, 409, "company-not-eligible", detail="company unknown")
     transferred = company.get("deactivationReason") == "TRANSFERRED"
-    eligible = company.get("status") == "INACTIVE" and (transferred if kind == "TRANSFER" else not transferred)
+    eligible = company.get("status") == "INACTIVE" and (transferred if request.kind == ApplicationKind.TRANSFER
+                                                        else not transferred)
     if not eligible:
         raise Problem(MODULE, 409, "company-not-eligible", companyStatus=company.get("status"))
     return company
@@ -129,6 +141,6 @@ def company_for_reference(body: dict, kind: str) -> dict:
 def new_company_id(ebwoid: str | None) -> str:
     """7.2 generates the `companyId`; a test company takes its ID of FRAMEWORK 7a once (OPEN-QUESTIONS 3)."""
     cid = testdata.test_company_id(ebwoid)
-    if cid and not any(a["companyId"] == cid for a in applications.values()):
+    if cid and not application_repository.company_id_used(cid):
         return cid
     return str(uuid.uuid4())

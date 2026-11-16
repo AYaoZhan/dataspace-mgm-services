@@ -29,11 +29,13 @@ import re
 import uuid
 
 from features.registration.managers import reference_catalog
-from features.registration.services.shared import ATTESTATION_MAX_CHARS, field_error, validation_problem
+from features.registration.models.problems import field_error, validation_problem
+from features.registration.models.value_sets import ApplicationKind, IdentifierType, Verification
+from features.registration.services.shared import ATTESTATION_MAX_CHARS
 
-KINDS = ("ONBOARDING", "REACTIVATION", "TRANSFER")
-VERIFICATIONS = ("EBW", "DOCUMENTS")
-IDENTIFIER_TYPES = ("EUID", "EBWOID", "COMMERCIAL_REG_NUMBER", "VAT_ID", "LEI_CODE", "EORI")
+KINDS = tuple(ApplicationKind)
+VERIFICATIONS = tuple(Verification)
+IDENTIFIER_TYPES = tuple(IdentifierType)
 
 
 # ------------------------------------------------------------------------------ input checks
@@ -92,51 +94,69 @@ def check_roles(company_roles: object, errors: list[dict]) -> None:
 
 
 def _is_uuid(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
     try:
         uuid.UUID(value)
-    except (ValueError, TypeError, AttributeError):
+    except ValueError:
         return False
     return True
 
 
-def check_create(body: dict) -> None:
-    """7.2 step 2 with the rules of 6.2."""
-    errors: list[dict] = []
-    kind, verification = body.get("kind"), body.get("verification")
+def _check_path(kind: object, verification: object, token: object, errors: list[dict]) -> None:
+    """6.2: the kind, the verification path and the attestation it needs."""
     if kind not in KINDS:
         errors.append(field_error("kind", f"one of {', '.join(KINDS)}"))
     if verification not in VERIFICATIONS:
         errors.append(field_error("verification", f"one of {', '.join(VERIFICATIONS)}"))
-    token = body.get("attestation")
     if verification == "EBW" and not (isinstance(token, str) and 0 < len(token) <= ATTESTATION_MAX_CHARS):
         errors.append(field_error("attestation", "required for EBW, at most 16 KB"))
     if verification == "DOCUMENTS" and token is not None:
         errors.append(field_error("attestation", "not allowed for DOCUMENTS"))
-    reference = body.get("companyId") or body.get("bpn")
-    if body.get("companyId") and body.get("bpn"):
+
+
+def _check_reference(body: dict, kind: object, errors: list[dict]) -> bool:
+    """6.2: `companyId` or `bpn` of an existing company, as the kind requires; returns whether one is given."""
+    company_id, bpn = body.get("companyId"), body.get("bpn")
+    if company_id and bpn:
         errors.append(field_error("companyId", "companyId and bpn must not both be given"))
-    if body.get("companyId") and not _is_uuid(body["companyId"]):
+    if company_id and not _is_uuid(company_id):
         errors.append(field_error("companyId", "must be a UUID"))
-    if body.get("bpn") and not (isinstance(body["bpn"], str) and re.fullmatch(r"BPNL[A-Z0-9]{12}", body["bpn"])):
+    if bpn and not (isinstance(bpn, str) and re.fullmatch(r"BPNL[A-Z0-9]{12}", bpn)):
         errors.append(field_error("bpn", "must be a BPN"))
+    reference = bool(company_id or bpn)
     if kind == "ONBOARDING" and reference:
         errors.append(field_error("companyId", "no reference for ONBOARDING"))
     if kind == "REACTIVATION" and not reference:
         errors.append(field_error("companyId", "reference required for REACTIVATION"))
-    if body.get("companyRoles") is not None or not reference:
-        check_roles(body.get("companyRoles"), errors)
-    data = body.get("companyData")
+    return reference
+
+
+def _check_company_data(data: object, verification: object, errors: list[dict]) -> None:
+    """6.2, 6.9: the declared company data; DOCUMENTS needs name, address and an identifier."""
     if data is not None and not isinstance(data, dict):
         errors.append(field_error("companyData", "must be an object"))
     elif data:
         check_company_fields(data, errors)
-    if verification == "DOCUMENTS":
-        data = data if isinstance(data, dict) else {}
-        for name in ("legalName", "address"):
-            if not data.get(name):
-                errors.append(field_error(f"companyData.{name}", "required for DOCUMENTS"))
-        if not data.get("identifiers"):
-            errors.append(field_error("companyData.identifiers", "at least one identifier for DOCUMENTS"))
+    if verification != "DOCUMENTS":
+        return
+    data = data if isinstance(data, dict) else {}
+    for name in ("legalName", "address"):
+        if not data.get(name):
+            errors.append(field_error(f"companyData.{name}", "required for DOCUMENTS"))
+    if not data.get("identifiers"):
+        errors.append(field_error("companyData.identifiers", "at least one identifier for DOCUMENTS"))
+
+
+def check_create(body: dict) -> None:
+    """7.2 step 2 with the rules of 6.2, the errors in the order of the fields."""
+    errors: list[dict] = []
+    kind, verification = body.get("kind"), body.get("verification")
+    _check_path(kind, verification, body.get("attestation"), errors)
+    reference = _check_reference(body, kind, errors)
+    if body.get("companyRoles") is not None or not reference:
+        check_roles(body.get("companyRoles"), errors)
+    _check_company_data(body.get("companyData"), verification, errors)
     if errors:
         raise validation_problem(errors)
 
@@ -155,6 +175,7 @@ def check_reference_data(a_data: dict, company_roles: list[str], verification: s
                 errors.append(field_error(f"identifiers[{i}]", message))
     if len(a_data["identifiers"]) > 10:
         errors.append(field_error("identifiers", "at most 10 identifiers"))
-    errors += [field_error("companyRoles", f"not selectable: {r}") for r in company_roles if not reference_catalog.selectable(r)]
+    errors += [field_error("companyRoles", f"not selectable: {r}") for r in company_roles
+               if not reference_catalog.selectable(r)]
     if errors:
         raise validation_problem(errors)

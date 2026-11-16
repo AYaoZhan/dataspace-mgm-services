@@ -23,17 +23,35 @@
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
 """In-process contract of the registration (call convention, AGENTS.md): the steps of README 8 and the queries
 of README 9 under their convention names. Other services and Process Orchestration import only from here.
+
+Every function answers with the same JSON the HTTP API sends (`services.shared.as_json`).
 """
 from __future__ import annotations
 
-from features.registration.services.application_process_service import (
-           close_application,
-           complete_application,
-           get_application_internal,
-           list_agreements_internal,
-           list_applications_internal,
-)
-from features.registration.services.shared import MODULE
+from features.registration.models import MODULE
+from features.registration.services import application_process_service as process
+from features.registration.services.shared import as_json
 
 __all__ = ["MODULE", "close_application", "complete_application", "get_application_internal",
            "list_agreements_internal", "list_applications_internal"]
+
+
+def complete_application(input: dict) -> dict:
+    return as_json(process.complete_application(input))
+
+
+def close_application(input: dict) -> dict:
+    return as_json(process.close_application(input))
+
+
+def get_application_internal(*, applicationId: str, **other: object) -> dict:
+    return as_json(process.get_application_internal(applicationId=applicationId, **other))
+
+
+def list_applications_internal(*, applicationId: list[str] | str | None = None,
+                               **other: object) -> list[dict]:
+    return [as_json(x) for x in process.list_applications_internal(applicationId=applicationId, **other)]
+
+
+def list_agreements_internal(*, status: str | None = None, **other: object) -> list[dict]:
+    return [as_json(x) for x in process.list_agreements_internal(status=status, **other)]

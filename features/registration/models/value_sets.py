@@ -21,13 +21,69 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""Value sets of the registration API (spec C1-M2 openapi.yaml).
+"""Value sets of the registration API (spec C1-M2 openapi.yaml), as `str` enums so that table columns, query
+parameters and JSON share one definition.
 """
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Literal
 
-Status = Literal["CREATED", "SUBMITTED", "WITHDRAWN", "DECLINED", "COMPLETED"]
-Kind = Literal["ONBOARDING", "REACTIVATION", "TRANSFER"]
-Verification = Literal["EBW", "DOCUMENTS"]
 Lang = Literal["de", "en"]
+
+
+class ApplicationStatus(StrEnum):
+    """`ApplicationStatus`: CREATED and SUBMITTED are open, the others final (README 6.1)."""
+    CREATED = "CREATED"
+    SUBMITTED = "SUBMITTED"
+    WITHDRAWN = "WITHDRAWN"
+    DECLINED = "DECLINED"
+    COMPLETED = "COMPLETED"
+
+
+OPEN_STATUSES = (ApplicationStatus.CREATED, ApplicationStatus.SUBMITTED)
+
+
+class ApplicationKind(StrEnum):
+    ONBOARDING = "ONBOARDING"
+    REACTIVATION = "REACTIVATION"
+    TRANSFER = "TRANSFER"
+
+
+class Verification(StrEnum):
+    EBW = "EBW"
+    DOCUMENTS = "DOCUMENTS"
+
+
+class IdentifierType(StrEnum):
+    EUID = "EUID"
+    EBWOID = "EBWOID"
+    COMMERCIAL_REG_NUMBER = "COMMERCIAL_REG_NUMBER"
+    VAT_ID = "VAT_ID"
+    LEI_CODE = "LEI_CODE"
+    EORI = "EORI"
+
+
+class DocumentType(StrEnum):
+    COMMERCIAL_REGISTER_EXTRACT = "COMMERCIAL_REGISTER_EXTRACT"
+    POWER_OF_ATTORNEY = "POWER_OF_ATTORNEY"
+    OTHER = "OTHER"
+
+
+class AgreementStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+
+
+class AgreementParty(StrEnum):
+    OSP = "OSP"
+    DATASPACE = "DATASPACE"
+
+
+class AgreementScope(StrEnum):
+    ALL = "ALL"
+    COMPANY_ROLE = "COMPANY_ROLE"
+
+
+ReviewStatus = Literal["NONE", "OPEN", "AWAITING_SECOND_APPROVAL", "APPROVED", "DECLINED", "CLOSED", "UNKNOWN"]
+SignatureResult = Literal["VALID", "INVALID", "UNAVAILABLE"]

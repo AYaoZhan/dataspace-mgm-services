@@ -24,6 +24,7 @@
 """Countries and their identifier types for the registration form (README 7.1)."""
 from __future__ import annotations
 
+from features.registration.models.reference_data import Country, IdentifierTypeInfo
 from features.registration.models.value_sets import Lang
 from features.registration.services import reference_data_service
 from portal_common.routing import Controller, Permission
@@ -31,11 +32,12 @@ from portal_common.routing import Controller, Permission
 controller = Controller("Registration: Reference Data")
 
 
-@controller.get("")
-def list_countries(lang: Lang = "en", _: dict = Permission):
+@controller.get("", response_model=list[Country], response_model_exclude_unset=True)
+def list_countries(lang: Lang = "en", _: dict = Permission) -> list[Country]:
     return reference_data_service.list_countries(lang)
 
 
-@controller.get("/{countryCode}/identifier-types")
-def list_identifier_types(countryCode: str, lang: Lang = "en", _: dict = Permission):
+@controller.get("/{countryCode}/identifier-types", response_model=list[IdentifierTypeInfo],
+                response_model_exclude_unset=True)
+def list_identifier_types(countryCode: str, lang: Lang = "en", _: dict = Permission) -> list[IdentifierTypeInfo]:
     return reference_data_service.list_identifier_types(countryCode, lang)
