@@ -27,19 +27,19 @@ from __future__ import annotations
 
 from fastapi import Body, Response
 
-from features.dataspace_wallet_interface.services import callback_service
+from features.dataspace_wallet_interface import interface
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Provider")
 
 
 @controller.post("/{externalId}", summary="Callback: SAP DIV created the wallet account")
-def sap_div_wallet_account_created(externalId: str, body: dict = Body(...), claims: dict = Permission):
-    callback_service.account_created(externalId, body, claims)
+def sap_div_wallet_account_created(externalId: str, body: dict = Body(...), claims: dict = Permission) -> Response:
+    interface.sap_div_wallet_account_created(externalId, body, claims)
     return Response(status_code=204)
 
 
 @controller.post("/{externalId}/delete", summary="Callback: SAP DIV deleted the wallet account")
-def sap_div_wallet_account_deleted(externalId: str, claims: dict = Permission):
-    callback_service.account_deleted(externalId, claims)
+def sap_div_wallet_account_deleted(externalId: str, claims: dict = Permission) -> Response:
+    interface.sap_div_wallet_account_deleted(externalId, claims)
     return Response(status_code=204)

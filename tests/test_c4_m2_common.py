@@ -30,7 +30,7 @@ This file holds fixtures and helpers, no tests. Import explicitly, e.g.:
     from test_c4_m2_common import COMPANIES, companies, osp_factory, ...
 
 Seams that the production code must provide are listed in TEAM3-PLAN.md section 12; they are reached
-lazily here (`seam("features.dataspace_wallet_interface.services.wallet_service")`) so that a missing module fails the single test that needs
+lazily here (`seam(f"{PKG}.services.wallet_service")`) so that a missing module fails the single test that needs
 it instead of breaking collection.
 
 Contents
@@ -58,9 +58,9 @@ import re
 from typing import Any
 
 import pytest
-from conftest import BASE
 from fastapi.testclient import TestClient
 
+from conftest import BASE
 from portal_common import csp as csp_client
 from portal_common import events, spec
 from portal_common import http as phttp
@@ -69,6 +69,8 @@ from tools import test_iam
 from tools.csp_standin.app import create_app as create_csp
 from tools.keys import ec_jwk
 
+PKG = "features.dataspace_wallet_interface"   # the feature package (ADR-0003)
+API = "/api/dataspace-wallet-interface"      # its base path
 CSP_URL = "http://csp.test"
 OSP_A_ID = "22222222-2222-4222-8222-222222222222"
 OSP_B_ID = "99a5685c-7397-402c-88de-b1b3a939ecc9"
@@ -148,12 +150,12 @@ def companies(monkeypatch) -> CompanyBook:
 
 # ------------------------------------------------------------------------------------------- seams
 def seam(name: str) -> Any:
-    """Lazy import of a production module/seam, e.g. `seam("features.dataspace_wallet_interface.services.wallet_service")`."""
+    """Lazy import of a production module/seam, e.g. `seam(f"{PKG}.services.wallet_service")`."""
     return importlib.import_module(name)
 
 
 class Clock:
-    """A settable UTC clock; patch it with `clock.install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")`."""
+    """A settable UTC clock; patch it with `clock.install(monkeypatch, f"{PKG}.services.wallet_service")`."""
 
     def __init__(self, start: dt.datetime | None = None) -> None:
         self.t = start or dt.datetime(2026, 11, 6, 9, 0, tzinfo=dt.UTC)
@@ -392,8 +394,8 @@ class WalletFake:
 @pytest.fixture
 def wallet_fake(monkeypatch, companies) -> WalletFake:
     fake = WalletFake(companies)
-    monkeypatch.setattr("features.dataspace_wallet_interface.interface.get_wallet_info", fake.get_wallet_info)
-    monkeypatch.setattr("features.dataspace_wallet_interface.interface.get_holder_access", fake.get_holder_access)
+    monkeypatch.setattr(f"{PKG}.interface.get_wallet_info", fake.get_wallet_info)
+    monkeypatch.setattr(f"{PKG}.interface.get_holder_access", fake.get_holder_access)
     return fake
 
 

@@ -36,8 +36,8 @@ import threading
 import httpx
 
 from portal_common import http
-from portal_common.problems import Problem
 
+from ...models import errors
 from . import common
 
 PROVIDER = "IDENTITY_HUB"
@@ -78,7 +78,8 @@ def _context_id(bpn: str) -> str:
 # --------------------------------------------------------------------------------------- stand-in
 def _standin(method: str, path: str, body: dict | None) -> tuple[int, dict | None]:
     """The built-in IdentityHub: participant contexts in memory (README 11.2)."""
-    context = body["participantContextId"] if method == "POST" else path.rsplit("/", 1)[-1]
+    payload = body or {}
+    context = payload["participantContextId"] if method == "POST" else path.rsplit("/", 1)[-1]
     bpn = context
     if method == "DELETE" and os.environ.get("IDENTITYHUB_CONTEXT_ID_ENCODING", "").strip().lower() == "base64":
         bpn = context = base64.urlsafe_b64decode(context + "=" * (-len(context) % 4)).decode()
@@ -94,7 +95,7 @@ def _standin(method: str, path: str, body: dict | None) -> tuple[int, dict | Non
             return 409, None
         answer = {"apiKey": common.random_secret(), "clientId": f"sts-{bpn}", "clientSecret": common.random_secret()}
         _contexts[context] = answer
-    common.publish_wallet_document(bpn, body["did"], body["serviceEndpoints"][0]["serviceEndpoint"])
+    common.publish_wallet_document(bpn, payload["did"], payload["serviceEndpoints"][0]["serviceEndpoint"])
     return 201, answer
 
 
@@ -104,7 +105,7 @@ def _real(method: str, path: str, body: dict | None) -> tuple[int, dict | None]:
                                 headers={"x-api-key": os.environ.get("IDENTITYHUB_API_KEY", "")})
         answer = response.json() if response.content else None
     except httpx.HTTPError as error:
-        raise common.upstream_error(f"IdentityHub not reachable: {type(error).__name__}") from error
+        raise errors.upstream_error(f"IdentityHub not reachable: {type(error).__name__}") from error
     except ValueError:
         answer = None
     return response.status_code, answer if isinstance(answer, dict) else None
@@ -139,7 +140,7 @@ class IdentityHubAdapter:
             self._call("DELETE", f"/v1alpha/participants/{context}")
             status, answer = self._call("POST", "/v1alpha/participants", body)
         if status not in (200, 201) or not answer:
-            raise common.upstream_error(f"IdentityHub answered {status}")
+            raise errors.upstream_error(f"IdentityHub answered {status}")
         identity_api = os.environ.get("IDENTITYHUB_URL", "").strip() or DEFAULT_IDENTITY_API
         return {"result": "CREATED", "did": did, "did_document_location": common.did_location(did),
                 "credential_service_url": _credential_service(context), "provider_ref": bpn,
@@ -151,8 +152,7 @@ class IdentityHubAdapter:
         """README 6.3: every wallet account gets a copy of the one STS access of the participant context."""
         sts = order.get("sts_access")
         if not sts:
-            raise Problem(common.MODULE, 409, "wallet-not-active", detail="the wallet has no STS access",
-                          retryable=False)
+            raise errors.problem(409, "wallet-not-active", "the wallet has no STS access")
         return {"result": "CREATED", "token_url": _sts_token_url() if os.environ.get("IDENTITYHUB_STS_TOKEN_URL")
                 else sts["url"], "client_id": sts["client_id"], "client_secret": sts["secret"]}
 

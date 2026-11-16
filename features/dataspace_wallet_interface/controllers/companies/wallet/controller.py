@@ -34,6 +34,6 @@ controller = Controller("Dataspace Wallet Interface: Company")
 
 
 @controller.get("", summary="The dataspace wallet of the company", response_model=Wallet)
-def get_wallet(companyId: str, claims: dict = Permission):
+def get_wallet(companyId: str, claims: dict = Permission) -> dict:
     company_scope(MODULE, claims, companyId)
     return interface.wallet_view(companyId=companyId)

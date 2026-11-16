@@ -46,15 +46,15 @@ def _input(body: CreateWalletInput | WalletAccountInput) -> dict:
 
 
 @controller.post("/create-wallet", summary="Step: create-wallet", **WALLET)
-def step_create_wallet(body: CreateWalletInput, _: dict = Permission):
+def step_create_wallet(body: CreateWalletInput, _: dict = Permission) -> dict:
     return interface.create_wallet(_input(body))
 
 
 @controller.post("/create-wallet-account", summary="Step: create-wallet-account", **ACCOUNT)
-def step_create_wallet_account(body: WalletAccountInput, _: dict = Permission):
+def step_create_wallet_account(body: WalletAccountInput, _: dict = Permission) -> dict:
     return interface.create_wallet_account(_input(body))
 
 
 @controller.post("/delete-wallet-account", summary="Step: delete-wallet-account", **ACCOUNT)
-def step_delete_wallet_account(body: WalletAccountInput, _: dict = Permission):
+def step_delete_wallet_account(body: WalletAccountInput, _: dict = Permission) -> dict:
     return interface.delete_wallet_account(_input(body))

@@ -34,3 +34,4 @@ WalletAccountStatus = Literal["REQUESTED", "ACTIVE", "FAILED", "DELETING", "DELE
 WalletAccountFailureReason = Literal["PROVIDER_TIMEOUT", "NOT_SUPPORTED_BY_PROVIDER"]
 CredentialsState = Literal["NONE", "AVAILABLE", "RETRIEVED", "EXPIRED"]
 IssuanceMode = Literal["ISSUER_WRITES", "HOLDER_REQUESTS", "CREDENTIAL_OFFER"]
+StepState = Literal["DONE", "RUNNING"]

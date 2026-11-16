@@ -33,13 +33,11 @@ import logging
 import os
 import threading
 import uuid
-from typing import Callable
+from collections.abc import Callable
+from typing import Protocol
 
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from portal_common.problems import Problem
-
-from ...models import MODULE
 log = logging.getLogger(__name__)
 
 _lock = threading.RLock()
@@ -65,16 +63,6 @@ def failures(subject: str) -> set[str]:
         if failure and name.strip().lower() == str(subject).lower():
             found.add(failure.strip().upper())
     return found
-
-
-def upstream_error(detail: str) -> Problem:
-    """README 12: the provider did not accept an order or is not reachable."""
-    return Problem(MODULE, 502, "upstream-error", detail=detail, retryable=True)
-
-
-def provider_rejected(detail: str) -> Problem:
-    """README 12: the provider rejects on business grounds."""
-    return Problem(MODULE, 409, "provider-rejected", detail=detail, retryable=False)
 
 
 # ------------------------------------------------------------------------------------- order log
@@ -152,12 +140,26 @@ def random_secret() -> str:
 _callbacks: dict[str, Callable[..., None]] = {}
 
 
+class ProviderAdapter(Protocol):
+    """README 6.11: what every provider adapter offers the services."""
+
+    provider: str
+    supports_wallet_accounts: bool
+    issuance_mode: str
+    deletion_is_async: bool
+
+    def did_for(self, bpn: str) -> str | None: ...
+    def order_wallet(self, order: dict) -> dict: ...
+    def order_account(self, order: dict) -> dict: ...
+    def order_account_deletion(self, account: dict) -> dict: ...
+
+
 def on_callback(name: str, handler: Callable[..., None]) -> None:
     """The service function behind a stand-in callback; kept across `reset()`."""
     _callbacks[name] = handler
 
 
-def callback(name: str, *args) -> None:
+def callback(name: str, *args: object) -> None:
     """Call the registered service function `name` as the provider would over HTTP."""
     _callbacks[name](*args)
 

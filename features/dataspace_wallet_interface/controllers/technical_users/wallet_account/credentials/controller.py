@@ -27,8 +27,8 @@ from __future__ import annotations
 
 from fastapi import Response
 
+from features.dataspace_wallet_interface import interface
 from features.dataspace_wallet_interface.models.api import WalletAccountCredentials
-from features.dataspace_wallet_interface.services import account_service
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Company")
@@ -36,6 +36,6 @@ controller = Controller("Dataspace Wallet Interface: Company")
 
 @controller.post("", summary="Retrieve the credentials of a wallet account",
                  response_model=WalletAccountCredentials)
-def retrieve_wallet_account_credentials(technicalUserId: str, response: Response, claims: dict = Permission):
+def retrieve_wallet_account_credentials(technicalUserId: str, response: Response, claims: dict = Permission) -> dict:
     response.headers["Cache-Control"] = "no-store"
-    return account_service.retrieve_credentials(technicalUserId, claims)
+    return interface.retrieve_wallet_account_credentials(technicalUserId, claims)

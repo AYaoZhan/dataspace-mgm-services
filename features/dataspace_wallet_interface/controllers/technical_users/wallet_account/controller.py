@@ -25,13 +25,13 @@
 """The wallet account of a technical user of the own company (README 7.2)."""
 from __future__ import annotations
 
+from features.dataspace_wallet_interface import interface
 from features.dataspace_wallet_interface.models.api import WalletAccount
-from features.dataspace_wallet_interface.services import account_service
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Company")
 
 
 @controller.get("", summary="The wallet account of a technical user", response_model=WalletAccount)
-def get_wallet_account(technicalUserId: str, claims: dict = Permission):
-    return account_service.view_wallet_account(technicalUserId, claims)
+def get_wallet_account(technicalUserId: str, claims: dict = Permission) -> dict:
+    return interface.view_wallet_account(technicalUserId, claims)

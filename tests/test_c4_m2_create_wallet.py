@@ -42,12 +42,24 @@ import uuid
 
 import pytest
 import yaml
+from test_c4_m2_common import (  # noqa: F401
+    API,
+    COMPANIES,
+    PKG,
+    Clock,
+    companies,
+    event_errors,
+    osp_factory,
+    response_errors,
+    schema_errors,
+    seam,
+    step_input,
+    uuid_str,
+)
 
 from portal_common import http as phttp
 from portal_common import problems, spec
 from portal_common.problems import Problem
-from test_c4_m2_common import (COMPANIES, Clock, companies, event_errors, osp_factory, response_errors,  # noqa: F401
-                               schema_errors, seam, step_input, uuid_str)
 
 MODULE = "c4-m2"
 DIV = COMPANIES["div"]
@@ -63,15 +75,15 @@ HOLD_CALLBACK = {"STUB_CALLBACK_DELAY_SECONDS": "3600"}
 
 # ------------------------------------------------------------------------------------------ helpers
 def m2():
-    return seam("features.dataspace_wallet_interface.interface")
+    return seam(f"{PKG}.interface")
 
 
 def providers():
-    return seam("features.dataspace_wallet_interface.managers.providers")
+    return seam(f"{PKG}.managers.providers")
 
 
 def service():
-    return seam("features.dataspace_wallet_interface.services.wallet_service")
+    return seam(f"{PKG}.services.wallet_service")
 
 
 class HttpSpy:
@@ -389,7 +401,7 @@ def test_case_10_div_csp_and_ih_wallets_in_one_installation(osp_factory, compani
     assert all(event_errors(MODULE, e) == [] for e in created)
     token = osp.service("sa-modules", ["query_c4_m2", "execute_steps_c4_m2", "read_wallet_holder_access"])
     for company, provider, mode, did in expected:
-        r = osp.get(f"/api/dataspace-wallet-interface/internal/wallets/{company['id']}", token)
+        r = osp.get(f"{API}/internal/wallets/{company['id']}", token)
         assert r.status_code == 200, r.text
         assert (r.json()["provider"], r.json()["issuanceMode"], r.json()["did"]) == (provider, mode, did)
         assert response_errors(MODULE, "GET", "/internal/wallets/{companyId}", 200, r.json()) == []
@@ -529,14 +541,14 @@ def test_create_wallet_over_http_with_service_token(osp_factory, companies):
     osp = osp_factory()
     token = osp.service("svc-c4-m2")
     body = step_input(IH["id"], 1, provider="IDENTITY_HUB")
-    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet", token, json=body)
+    r = osp.post(f"{API}/steps/create-wallet", token, json=body)
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["stepRunId"] == body["stepRunId"] and out["state"] == "RUNNING"
     assert response_errors(MODULE, "POST", "/steps/create-wallet", 200, out) == []
     assert out["result"]["provider"] == "IDENTITY_HUB" and out["result"]["companyId"] == IH["id"]
     assert row(IH)["status"] == "ACTIVE" and len(events_of(osp, "DataspaceWalletCreated")) == 1
-    r2 = osp.post("/api/dataspace-wallet-interface/steps/create-wallet", token, json=step_input(IH["id"], 2, provider="IDENTITY_HUB"))
+    r2 = osp.post(f"{API}/steps/create-wallet", token, json=step_input(IH["id"], 2, provider="IDENTITY_HUB"))
     assert r2.status_code == 200 and r2.json()["state"] == "DONE"
     assert r2.json()["result"]["did"] == IH_DID
     assert len(events_of(osp, "DataspaceWalletCreated")) == 1
@@ -553,7 +565,7 @@ def test_create_wallet_over_http_with_service_token(osp_factory, companies):
 def test_create_wallet_errors_over_http_are_problem_details(osp_factory, companies, company_id, extra, status, name):
     # README 12: type urn:c4-m2:problem:<name>, retryable false on steps (FRAMEWORK 4.5)
     osp = osp_factory(env={"ENABLED_PROVIDERS": "CSP"} if extra.get("provider") == "SAP_DIV" else None)
-    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet", osp.service("svc-c4-m2"),
+    r = osp.post(f"{API}/steps/create-wallet", osp.service("svc-c4-m2"),
                  json=step_input(company_id, 1, **extra))
     assert r.status_code == status, r.text
     assert r.headers["content-type"].startswith("application/problem+json")
@@ -567,9 +579,9 @@ def test_create_wallet_over_http_needs_a_token_and_the_step_permission(osp_facto
     # README 6.8: `execute_steps_c4_m2`
     osp = osp_factory()
     body = step_input(IH["id"], 1, provider="IDENTITY_HUB")
-    assert osp.post("/api/dataspace-wallet-interface/steps/create-wallet", json=body).status_code == 401
+    assert osp.post(f"{API}/steps/create-wallet", json=body).status_code == 401
     no_perm = osp.service("sa-no-steps", ["query_c4_m2"])
-    r = osp.post("/api/dataspace-wallet-interface/steps/create-wallet", no_perm, json=body)
+    r = osp.post(f"{API}/steps/create-wallet", no_perm, json=body)
     assert r.status_code == 403 and r.json()["type"] == "urn:c4-m2:problem:forbidden"
     assert m2().store().get_wallet(IH["id"]) is None
 
@@ -623,7 +635,7 @@ def test_requested_wallet_without_provider_ordered_at_is_not_timed_out(osp_facto
     # after provider-rejected (409) or a 502 the order was never accepted, so there is nothing to time out
     bpn = COMPANIES["csp_rejected"]["bpn"]
     osp = osp_factory(env={"STUB_FAILURES": f"{bpn}:CSP_REJECTED", "PROVIDER_CALLBACK_TIMEOUT_MINUTES": "1"})
-    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
+    clock = Clock().install(monkeypatch, f"{PKG}.services.wallet_service")
     rejected = COMPANIES["csp_rejected"]
     assert_problem(step_problem(rejected["id"], 1, provider="CSP"), 409, "provider-rejected")
     unreachable = COMPANIES["byo"]                       # any company with a BPN: its order fails technically (502)
@@ -643,7 +655,7 @@ def test_requested_wallet_without_provider_ordered_at_is_not_timed_out(osp_facto
 def test_failed_wallet_is_never_retried_by_the_timer(osp_factory, companies, monkeypatch):
     # README 6.2: FAILED leaves only through a new create-wallet; 6.10: the tasks select REQUESTED / VALIDATING
     osp = osp_factory(env={**HOLD_CALLBACK, "STUB_FAILURES": f"{FAIL01['bpn']}:DID_MISMATCH"})
-    clock = Clock().install(monkeypatch, "features.dataspace_wallet_interface.services.wallet_service")
+    clock = Clock().install(monkeypatch, f"{PKG}.services.wallet_service")
     create(FAIL01, 1, provider="SAP_DIV")
     providers().flush_stand_in()
     service().run_timer_once()

@@ -40,6 +40,7 @@ import httpx
 
 from portal_common import http
 
+from ...models import MODULE, errors
 from . import common
 
 PROVIDER = "SAP_DIV"
@@ -75,9 +76,9 @@ def _access_token() -> str:
                                       "client_secret": os.environ.get("SAP_DIV_CLIENT_SECRET", "")})
         body = response.json()
     except (httpx.HTTPError, ValueError) as error:
-        raise common.upstream_error(f"SAP DIV token endpoint: {type(error).__name__}") from error
+        raise errors.upstream_error(f"SAP DIV token endpoint: {type(error).__name__}") from error
     if response.status_code != 200 or not isinstance(body, dict) or not isinstance(body.get("access_token"), str):
-        raise common.upstream_error(f"SAP DIV token endpoint answered {response.status_code}")
+        raise errors.upstream_error(f"SAP DIV token endpoint answered {response.status_code}")
     try:
         lifetime = int(body.get("expires_in", 300))
     except (TypeError, ValueError):
@@ -92,22 +93,22 @@ def _real(path: str, params: dict | None, body: dict | None) -> None:
         response = http.request("POST", os.environ["SAP_DIV_URL"].rstrip("/") + path, params=params, json=body,
                                 headers={"Authorization": "Bearer " + _access_token()})
     except httpx.HTTPError as error:
-        raise common.upstream_error(f"SAP DIV not reachable: {type(error).__name__}") from error
+        raise errors.upstream_error(f"SAP DIV not reachable: {type(error).__name__}") from error
     if not 200 <= response.status_code < 300:
-        raise common.upstream_error(f"SAP DIV answered {response.status_code}")
+        raise errors.upstream_error(f"SAP DIV answered {response.status_code}")
 
 
 # ----------------------------------------------------------------------------------- the callbacks
 def _wallet_callback(bpn: str, body: dict) -> None:
-    common.callback("wallet-created", bpn, body, common.MODULE)
+    common.callback("wallet-created", bpn, body, MODULE)
 
 
 def _account_created_callback(reference: str, body: dict) -> None:
-    common.callback("account-created", reference, body, common.MODULE)
+    common.callback("account-created", reference, body, MODULE)
 
 
 def _account_deleted_callback(reference: str) -> None:
-    common.callback("account-deleted", reference, common.MODULE)
+    common.callback("account-deleted", reference, MODULE)
 
 
 class SapDivAdapter:
@@ -124,7 +125,7 @@ class SapDivAdapter:
     @staticmethod
     def _standin_refuses(bpn: str) -> None:
         if "ORDER_ERROR" in common.failures(bpn):
-            raise common.upstream_error("SAP DIV stand-in answered 503")
+            raise errors.upstream_error("SAP DIV stand-in answered 503")
 
     def order_wallet(self, order: dict) -> dict:
         bpn = order["bpn"]

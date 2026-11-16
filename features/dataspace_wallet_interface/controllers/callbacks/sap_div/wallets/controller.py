@@ -27,13 +27,13 @@ from __future__ import annotations
 
 from fastapi import Body, Response
 
-from features.dataspace_wallet_interface.services import callback_service
+from features.dataspace_wallet_interface import interface
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Dataspace Wallet Interface: Provider")
 
 
 @controller.post("/{bpn}", summary="Callback: SAP DIV created the wallet")
-def sap_div_wallet_created(bpn: str, body: dict = Body(...), claims: dict = Permission):
-    callback_service.wallet_created(bpn, body, claims)
+def sap_div_wallet_created(bpn: str, body: dict = Body(...), claims: dict = Permission) -> Response:
+    interface.sap_div_wallet_created(bpn, body, claims)
     return Response(status_code=204)

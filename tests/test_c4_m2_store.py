@@ -37,8 +37,7 @@ import threading
 import uuid
 
 import pytest
-
-from test_c4_m2_common import assert_no_secret, osp_factory, seam  # noqa: F401  (osp_factory is a fixture)
+from test_c4_m2_common import API, PKG, assert_no_secret, osp_factory, seam  # noqa: F401  (osp_factory is a fixture)
 
 STORES = ["DatabaseStore"]
 
@@ -54,7 +53,7 @@ def at(seconds: int = 0, day: int = 6, month: int = 11) -> dt.datetime:
 
 @pytest.fixture(params=STORES)
 def store(request):
-    st = getattr(seam("features.dataspace_wallet_interface.managers.wallet_store"), request.param)()
+    st = getattr(seam(f"{PKG}.managers.wallet_store"), request.param)()
     st.reset()
     yield st
     st.reset()
@@ -431,7 +430,7 @@ def test_reset_empties_everything(store):
 
 def test_store_instances_share_the_feature_database():
     # F17: the rows live in the feature's own database, not in the store object
-    mod = seam("features.dataspace_wallet_interface.managers.wallet_store")
+    mod = seam(f"{PKG}.managers.wallet_store")
     one, two = getattr(mod, STORES[0])(), getattr(mod, STORES[0])()
     one.reset()
     one.put_wallet(wallet(1))
@@ -443,7 +442,7 @@ def test_store_instances_share_the_feature_database():
 def test_the_module_store_is_a_wallet_store_and_reset_clears_it(osp_factory):
     # TEAM3-PLAN 12.2: `interface.store()` returns the active store; `interface.reset()` clears it
     osp_factory()
-    interface, store = seam("features.dataspace_wallet_interface.interface"), seam("features.dataspace_wallet_interface.managers.wallet_store")
+    interface, store = seam(f"{PKG}.interface"), seam(f"{PKG}.managers.wallet_store")
     active = interface.store()
     assert isinstance(active, tuple(getattr(store, name) for name in STORES))
     active.put_wallet(wallet(1))

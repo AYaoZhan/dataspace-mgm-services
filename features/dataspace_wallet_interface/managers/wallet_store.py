@@ -35,9 +35,11 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import threading
-from typing import Any, Iterator, Protocol
+from collections.abc import Iterator
+from typing import Protocol
 
-from sqlmodel import SQLModel, col, delete, select
+from sqlalchemy import ColumnElement
+from sqlmodel import Session, SQLModel, col, delete, select
 
 from portal_common import database
 
@@ -54,9 +56,10 @@ from ..models.tables import (
 # One connection serves the in-memory database of a process: every unit of work holds this lock.
 _DATA = threading.RLock()
 _LOGS = (AuditLogRow, StepLogRow)
-_DUMP = {"dataspace_wallet": WalletRow, "wallet_secret": WalletSecretRow, "audit_log": AuditLogRow,
-         "step_log": StepLogRow, "wallet_account": WalletAccountRow,
-         "wallet_account_credentials": WalletAccountCredentialsRow}
+_EARLIEST = dt.datetime.min.replace(tzinfo=dt.UTC)
+_DUMP: dict[str, type[SQLModel]] = {
+    "dataspace_wallet": WalletRow, "wallet_secret": WalletSecretRow, "audit_log": AuditLogRow, "step_log": StepLogRow,
+    "wallet_account": WalletAccountRow, "wallet_account_credentials": WalletAccountCredentialsRow}
 
 
 class WalletStore(Protocol):
@@ -82,7 +85,7 @@ class WalletStore(Protocol):
     def list_accounts(self, wallet_id: str | None = None, statuses: list[str] | None = None) -> list[dict]: ...
     def put_account_credentials(self, wallet_account_id: str, token_url: str, client_id: str,
                                 client_secret_encrypted: bytes, nonce: bytes, key_version: int,
-                                created_at: Any, expires_at: Any) -> None: ...
+                                created_at: dt.datetime | str, expires_at: dt.datetime | str) -> None: ...
     def get_account_credentials(self, wallet_account_id: str) -> dict | None: ...
     def delete_account_credentials(self, wallet_account_id: str) -> None: ...
     def pop_account_credentials(self, wallet_account_id: str) -> dict | None: ...
@@ -100,7 +103,7 @@ class WalletStore(Protocol):
     def reset(self) -> None: ...
 
 
-def _jsonable(value: Any) -> Any:
+def _jsonable(value: object) -> object:
     if isinstance(value, (bytes, bytearray)):
         return bytes(value).hex()
     if isinstance(value, (dt.datetime, dt.date)):
@@ -112,15 +115,17 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def _plain(row: SQLModel | None) -> dict | None:
+def _row(row: SQLModel) -> dict:
     """A row as a detached dict of its spec columns (the log tables without their sequence number)."""
-    if row is None:
-        return None
     return row.model_dump(exclude={"seq"} if isinstance(row, _LOGS) else None)
 
 
+def _plain(row: SQLModel | None) -> dict | None:
+    return None if row is None else _row(row)
+
+
 @contextlib.contextmanager
-def _session() -> Iterator[Any]:
+def _session() -> Iterator[Session]:
     with _DATA, database.session(MODULE) as session:
         yield session
 
@@ -146,29 +151,29 @@ class DatabaseStore:
         with _session() as session:
             session.merge(row)
 
-    def _first(self, *where: Any) -> dict | None:
+    def _first(self, where: ColumnElement[bool]) -> dict | None:
         with _session() as session:
-            return _plain(session.exec(select(WalletRow).where(*where).limit(1)).first())
+            return _plain(session.exec(select(WalletRow).where(where).limit(1)).first())
 
     def find_wallet_by_bpn(self, bpn: str) -> dict | None:
-        return self._first(WalletRow.bpn == (bpn.upper() if isinstance(bpn, str) else bpn))
+        return self._first(col(WalletRow.bpn) == (bpn.upper() if isinstance(bpn, str) else bpn))
 
     def find_wallet_by_did(self, did: str) -> dict | None:
-        return self._first(WalletRow.did == did) if did else None
+        return self._first(col(WalletRow.did) == did) if did else None
 
     def list_wallets(self, statuses: list[str] | None = None) -> list[dict]:
         query = select(WalletRow)
         if statuses is not None:
             query = query.where(col(WalletRow.status).in_(statuses))
         with _session() as session:
-            return [_plain(row) for row in session.exec(query)]
+            return [_row(row) for row in session.exec(query)]
 
     # ------------------------------------------------------------------------------------ secrets
     def put_secret(self, wallet_id: str, kind: str, url: str, client_id: str, secret_encrypted: bytes,
                    nonce: bytes, key_version: int) -> None:
         row = WalletSecretRow(wallet_id=wallet_id, kind=kind, url=url, client_id=client_id,
                               secret_encrypted=bytes(secret_encrypted), nonce=bytes(nonce), key_version=key_version,
-                              created_at=dt.datetime.now(dt.timezone.utc))
+                              created_at=dt.datetime.now(dt.UTC))
         with _session() as session:
             session.merge(row)
 
@@ -178,18 +183,18 @@ class DatabaseStore:
 
     def delete_secrets(self, wallet_id: str) -> None:
         with _session() as session:
-            session.exec(delete(WalletSecretRow).where(WalletSecretRow.wallet_id == wallet_id))
+            session.exec(delete(WalletSecretRow).where(col(WalletSecretRow.wallet_id) == wallet_id))
 
     # ------------------------------------------------------------------------- wallet accounts
     def get_account(self, technical_user_id: str) -> dict | None:
         """The row with a status other than DELETED, otherwise the latest one (README 7.2 step 2)."""
-        query = select(WalletAccountRow).where(WalletAccountRow.technical_user_id == technical_user_id)
+        query = select(WalletAccountRow).where(col(WalletAccountRow.technical_user_id) == technical_user_id)
         with _session() as session:
             rows = list(session.exec(query))
         if not rows:
             return None
         live = [row for row in rows if row.status != "DELETED"]
-        return _plain(max(live or rows, key=lambda row: row.created_at or dt.datetime.min.replace(tzinfo=dt.timezone.utc)))
+        return _row(max(live or rows, key=lambda row: row.created_at or _EARLIEST))
 
     def get_account_by_ref(self, wallet_account_ref: str) -> dict | None:
         with _session() as session:
@@ -202,15 +207,15 @@ class DatabaseStore:
     def list_accounts(self, wallet_id: str | None = None, statuses: list[str] | None = None) -> list[dict]:
         query = select(WalletAccountRow)
         if wallet_id is not None:
-            query = query.where(WalletAccountRow.wallet_id == wallet_id)
+            query = query.where(col(WalletAccountRow.wallet_id) == wallet_id)
         if statuses is not None:
             query = query.where(col(WalletAccountRow.status).in_(statuses))
         with _session() as session:
-            return [_plain(row) for row in session.exec(query)]
+            return [_row(row) for row in session.exec(query)]
 
     def put_account_credentials(self, wallet_account_id: str, token_url: str, client_id: str,
                                 client_secret_encrypted: bytes, nonce: bytes, key_version: int,
-                                created_at: Any, expires_at: Any) -> None:
+                                created_at: dt.datetime | str, expires_at: dt.datetime | str) -> None:
         row = WalletAccountCredentialsRow.model_validate({
             "wallet_account_id": wallet_account_id, "token_url": token_url, "client_id": client_id,
             "client_secret_encrypted": bytes(client_secret_encrypted), "nonce": bytes(nonce),
@@ -234,13 +239,13 @@ class DatabaseStore:
             return _plain(row)
 
     # ------------------------------------------------------------------- audit log and step log
-    def _append(self, table: type[SQLModel], entry: dict) -> None:
+    def _append(self, table: type[AuditLogRow] | type[StepLogRow], entry: dict) -> None:
         with _session() as session:
             session.add(table.model_validate(entry))
 
-    def _list(self, table: type[SQLModel]) -> list[dict]:
+    def _list(self, table: type[AuditLogRow] | type[StepLogRow]) -> list[dict]:
         with _session() as session:
-            return [_plain(row) for row in session.exec(select(table).order_by(table.seq))]
+            return [_row(row) for row in session.exec(select(table).order_by(col(table.seq)))]
 
     def append_audit(self, entry: dict) -> None:
         self._append(AuditLogRow, entry)
@@ -265,7 +270,7 @@ class DatabaseStore:
     # ------------------------------------------------------------------------------- dump, reset
     def dump(self) -> dict:
         with _session() as session:
-            return {name: _jsonable([_plain(row) for row in session.exec(select(table))])
+            return {name: _jsonable([_row(row) for row in session.exec(select(table))])
                     for name, table in _DUMP.items()}
 
     def reset(self) -> None:

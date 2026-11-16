@@ -31,15 +31,14 @@ writes the audit entry itself.
 """
 from __future__ import annotations
 
-from portal_common.problems import Problem
-
 from ..managers import config
-from ..models import MODULE
+from ..models import errors
 from . import account_service, wallet_service
+
 
 def _authorize(claims: dict) -> None:
     if claims.get("azp") != config.sap_div_callback_client_id():
-        raise Problem(MODULE, 403, "forbidden", detail="the calling client is not the callback client of SAP DIV")
+        raise errors.problem(403, "forbidden", "the calling client is not the callback client of SAP DIV")
 
 
 def wallet_created(bpn: str, body: dict, claims: dict) -> None:

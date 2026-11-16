@@ -30,43 +30,38 @@ as dicts with exactly these keys. Timestamps are timezone-aware UTC datetimes in
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, LargeBinary
+from sqlalchemy import Column, Dialect, LargeBinary
 from sqlalchemy.types import DateTime, TypeDecorator
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from portal_common import database
 
 from . import MODULE
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:
+    Table = SQLModel    # for the type checker: the base below is a SQLModel class with its own MetaData
+else:
+    Table = database.table_base(MODULE)
 
 
-class UtcDateTime(TypeDecorator):
+class UtcDateTime(TypeDecorator[dt.datetime]):
     """A timestamp stored as UTC and read back timezone-aware; ISO strings are accepted on write (SQLite keeps no
     time zone, so without this a stored `now()` would come back naive)."""
 
     impl = DateTime
     cache_ok = True
 
-    def process_bind_param(self, value: Any, dialect) -> dt.datetime | None:
+    def process_bind_param(self, value: dt.datetime | str | None, dialect: Dialect) -> dt.datetime | None:
         if isinstance(value, str):
             value = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if isinstance(value, dt.datetime) and value.tzinfo is not None:
-            value = value.astimezone(dt.timezone.utc).replace(tzinfo=None)
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(dt.UTC).replace(tzinfo=None)
         return value
 
-    def process_result_value(self, value: Any, dialect) -> dt.datetime | None:
-        return value.replace(tzinfo=dt.timezone.utc) if isinstance(value, dt.datetime) else value
-
-
-def _moment(index: bool = False) -> Any:
-    return Field(default=None, sa_type=UtcDateTime, index=index)
-
-
-def _bytes() -> Any:
-    return Field(sa_column=Column(LargeBinary, nullable=False))
+    def process_result_value(self, value: object, dialect: Dialect) -> dt.datetime | None:
+        return value.replace(tzinfo=dt.UTC) if isinstance(value, dt.datetime) else None
 
 
 class WalletRow(Table, table=True):
@@ -86,13 +81,13 @@ class WalletRow(Table, table=True):
     provider_ref: str | None = None
     control_challenge_id: str | None = None
     attempt: int = 1
-    provider_ordered_at: dt.datetime | None = _moment()
-    validating_since: dt.datetime | None = _moment()
-    did_validated_at: dt.datetime | None = _moment()
-    next_check_at: dt.datetime | None = _moment()
-    activated_at: dt.datetime | None = _moment()
-    created_at: dt.datetime | None = _moment()
-    changed_at: dt.datetime | None = _moment()
+    provider_ordered_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    validating_since: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    did_validated_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    next_check_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    activated_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    created_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    changed_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
 
 
 class WalletSecretRow(Table, table=True):
@@ -104,10 +99,10 @@ class WalletSecretRow(Table, table=True):
     kind: str = Field(primary_key=True)
     url: str
     client_id: str
-    secret_encrypted: bytes = _bytes()
-    nonce: bytes = _bytes()
+    secret_encrypted: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    nonce: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
     key_version: int
-    created_at: dt.datetime | None = _moment()
+    created_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
 
 
 class WalletAccountRow(Table, table=True):
@@ -123,12 +118,12 @@ class WalletAccountRow(Table, table=True):
     status: str = Field(index=True)
     failure_reason: str | None = None
     provider_name: str
-    provider_ordered_at: dt.datetime | None = _moment()
-    deletion_ordered_at: dt.datetime | None = _moment()
-    deletion_failed_at: dt.datetime | None = _moment()
+    provider_ordered_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    deletion_ordered_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    deletion_failed_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
     credentials_state: str
-    created_at: dt.datetime | None = _moment()
-    changed_at: dt.datetime | None = _moment()
+    created_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    changed_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
 
 
 class WalletAccountCredentialsRow(Table, table=True):
@@ -139,11 +134,11 @@ class WalletAccountCredentialsRow(Table, table=True):
     wallet_account_id: str = Field(primary_key=True)
     token_url: str
     client_id: str
-    client_secret_encrypted: bytes = _bytes()
-    nonce: bytes = _bytes()
+    client_secret_encrypted: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+    nonce: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
     key_version: int
-    created_at: dt.datetime | None = _moment()
-    expires_at: dt.datetime | None = _moment()
+    created_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    expires_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
 
 
 class AuditLogRow(Table, table=True):
@@ -152,7 +147,7 @@ class AuditLogRow(Table, table=True):
     __tablename__ = "audit_log"
 
     seq: int | None = Field(default=None, primary_key=True)
-    occurred_at: dt.datetime | None = _moment()
+    occurred_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
     sub: str | None = None
     azp: str | None = None
     company_id: str | None = None
@@ -171,4 +166,4 @@ class StepLogRow(Table, table=True):
     step: str
     object_id: str | None = None
     state: str
-    occurred_at: dt.datetime | None = _moment()
+    occurred_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)

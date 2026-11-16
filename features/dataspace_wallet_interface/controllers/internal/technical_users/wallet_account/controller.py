@@ -33,5 +33,5 @@ controller = Controller("Dataspace Wallet Interface: Internal")
 
 
 @controller.get("", summary="Query: getWalletAccountInternal", response_model=WalletAccount)
-def get_wallet_account_internal(technicalUserId: str, _: dict = Permission):
+def get_wallet_account_internal(technicalUserId: str, _: dict = Permission) -> dict:
     return interface.get_wallet_account_internal(technicalUserId=technicalUserId)

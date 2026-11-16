@@ -37,30 +37,32 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import uuid
-from typing import Any
+from typing import Final
 
 from portal_common import events
-from portal_common.problems import Problem
 
 from ..managers import config, crypto, providers
 from ..models import MODULE
 from ..models.api import WalletAccount, WalletAccountCredentials, WalletAccountStepReply, WalletAccountStepResult
+from ..models.errors import problem as _problem
+from ..models.value_sets import StepState
 from . import wallet_service as service
-REQUESTED, ACTIVE, FAILED, DELETING, DELETED = "REQUESTED", "ACTIVE", "FAILED", "DELETING", "DELETED"
+
+REQUESTED: Final = "REQUESTED"
+ACTIVE: Final = "ACTIVE"
+FAILED: Final = "FAILED"
+DELETING: Final = "DELETING"
+DELETED: Final = "DELETED"
 NONE, AVAILABLE, RETRIEVED, EXPIRED = "NONE", "AVAILABLE", "RETRIEVED", "EXPIRED"
 
 
 # --------------------------------------------------------------------------------------- helpers
-def _problem(status: int, name: str, detail: str | None = None, retryable: bool = False) -> Problem:
-    return Problem(MODULE, status, name, detail=detail, retryable=retryable)
-
-
 def _lock(technical_user_id: str) -> contextlib.AbstractContextManager:
     """README 6.9: one writer per technical user (the in-memory stand-in of the advisory lock)."""
     return service.get_store().transaction(f"technical-user:{technical_user_id}")
 
 
-def _uuid(value: Any, name: str) -> str:
+def _uuid(value: object, name: str) -> str:
     try:
         if not isinstance(value, str):
             raise ValueError
@@ -93,7 +95,7 @@ def _result(account: dict) -> WalletAccountStepResult:
                                    status=account["status"], **reason)
 
 
-def _reply(input: dict, step: str, state: str, account: dict) -> WalletAccountStepReply:
+def _reply(input: dict, step: str, state: StepState, account: dict) -> WalletAccountStepReply:
     service.log_step(input, step, account["id"], state)
     return WalletAccountStepReply(step_run_id=input["stepRunId"], state=state, result=_result(account))
 
@@ -134,7 +136,7 @@ def view_wallet_account(technical_user_id: str, claims: dict) -> WalletAccount:
 
 
 # ---------------------------------------------------------------------------- transitions (README 6.3)
-def _publish(type_: str, account: dict, **extra: Any) -> None:
+def _publish(type_: str, account: dict, **extra: object) -> None:
     events.publish(MODULE, type_, {"technicalUserId": account["technical_user_id"], "companyId": account["company_id"],
                                    "walletAccountRef": account["id"], **extra})
 
@@ -194,8 +196,9 @@ def _new_account(technical_user_id: str, company_id: str, wallet: dict) -> dict:
 def _order(account: dict, wallet: dict) -> dict:
     """README 8.2 step 4. `provider_ordered_at` is set only after the provider accepted the order."""
     adapter = providers.get(account["provider"])
-    order = {"company_id": account["company_id"], "bpn": wallet["bpn"], "technical_user_id": account["technical_user_id"],
-             "wallet_account_ref": account["id"], "provider_name": account["provider_name"]}
+    order = {"company_id": account["company_id"], "bpn": wallet["bpn"],
+             "technical_user_id": account["technical_user_id"], "wallet_account_ref": account["id"],
+             "provider_name": account["provider_name"]}
     if adapter.provider == "IDENTITY_HUB":
         order["sts_access"] = service.wallet_secret(wallet["id"], service.STS_ACCESS)
     answer = adapter.order_account(order)
@@ -216,7 +219,7 @@ def create_wallet_account(input: dict) -> WalletAccountStepReply:
         account = service.get_store().get_account(technical_user_id)
         if account is not None and account["status"] == DELETED:
             account = None
-        state = "RUNNING"
+        state: StepState = "RUNNING"
         if account is not None:
             if account["company_id"] != company_id:
                 raise _problem(409, "conflict", "the technical user has a wallet account of another company")
@@ -267,17 +270,21 @@ def delete_wallet_account(input: dict) -> WalletAccountStepReply:
             return _reply(input, "delete-wallet-account", "DONE", account)
         if account["company_id"] != company_id:
             raise _problem(409, "conflict", "the wallet account belongs to another company")
-        if account["status"] == FAILED:
-            account = _delete(account)
-        elif providers.get(account["provider"]).deletion_is_async:
-            if account["status"] == ACTIVE:
-                account["status"] = DELETING
-                _save(account)
-            if not account.get("deletion_ordered_at"):
-                account = _order_deletion(account)
-        else:
-            account = _order_deletion(account)
-        return _reply(input, "delete-wallet-account", "RUNNING", account)
+        return _reply(input, "delete-wallet-account", "RUNNING", _continue_deletion(account))
+
+
+def _continue_deletion(account: dict) -> dict:
+    """README 8.3 steps 4-5: delete a FAILED account at once, otherwise order (or keep waiting for) the deletion."""
+    if account["status"] == FAILED:
+        return _delete(account)
+    if not providers.get(account["provider"]).deletion_is_async:
+        return _order_deletion(account)
+    if account["status"] == ACTIVE:
+        account["status"] = DELETING
+        _save(account)
+    if not account.get("deletion_ordered_at"):
+        account = _order_deletion(account)
+    return account
 
 
 # ------------------------------------------------------------------------------ SAP DIV callbacks

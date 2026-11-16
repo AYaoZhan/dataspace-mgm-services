@@ -32,6 +32,7 @@ through this package: `get`, `enabled`, `default_provider`, `on_callback`, `stan
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 
 from . import common
 from . import csp as providers_csp
@@ -39,11 +40,14 @@ from . import identity_hub as providers_identity_hub
 from . import sap_div as providers_sap_div
 
 PROVIDERS = ("SAP_DIV", "IDENTITY_HUB", "CSP")
-_ADAPTERS = {"SAP_DIV": providers_sap_div.SapDivAdapter(), "IDENTITY_HUB": providers_identity_hub.IdentityHubAdapter(),
-             "CSP": providers_csp.CspAdapter()}
+_ADAPTERS: dict[str, common.ProviderAdapter] = {
+    "SAP_DIV": providers_sap_div.SapDivAdapter(),
+    "IDENTITY_HUB": providers_identity_hub.IdentityHubAdapter(),
+    "CSP": providers_csp.CspAdapter(),
+}
 
 
-def get(provider: str):
+def get(provider: str) -> common.ProviderAdapter:
     """The adapter of `SAP_DIV`, `IDENTITY_HUB` or `CSP`."""
     try:
         return _ADAPTERS[provider]
@@ -63,7 +67,7 @@ def default_provider() -> str:
     return os.environ.get("DEFAULT_PROVIDER", "").strip().upper() or "CSP"
 
 
-def on_callback(name: str, handler) -> None:
+def on_callback(name: str, handler: Callable[..., None]) -> None:
     """Register the service function a built-in stand-in calls back (README 7.6): `wallet-created`,
     `account-created` or `account-deleted`. The services register themselves when they are imported, so the
     adapters never import the layer above them."""
