@@ -21,37 +21,47 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""Helpers every registration service uses: the spec id, the clock, the audit entry, validation Problems.
+"""Helpers every registration service uses: the clock, the audit entry, paging and the JSON form of a view.
+The Problem factories are in `models.errors`.
 """
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable, Sequence
+from typing import Any
 
-from features.registration.managers.application_repository import audit_log
+from features.registration.models import MODULE
+from features.registration.models.errors import field_error, parse, validation_problem
+from features.registration.models.steps import ApplicationStep
+from features.registration.models.tables import ApplicationRow, AuditRow
 from features.registration.services import attestation_verifier
-from portal_common.problems import Problem
+from portal_common.models import ApiModel, Page
 
-MODULE = "c1-m2"
 ATTESTATION_MAX_CHARS = 16384
+
+__all__ = ["ATTESTATION_MAX_CHARS", "MODULE", "as_json", "audit_entry", "field_error", "page_of", "parse", "utc_now",
+           "validation_problem"]
 
 
 def utc_now() -> str:
     return dt.datetime.fromtimestamp(attestation_verifier.now(), dt.UTC).isoformat()
 
 
-def write_audit(a: dict, operation: str, sub: str | None = None, step: dict | None = None, object_id: str | None = None) -> None:
-    audit_log.append({"at": utc_now(), "sub": sub, "processId": (step or {}).get("processId"),
-                      "stepRunId": (step or {}).get("stepRunId"), "companyId": a["companyId"], "operation": operation,
-                      "applicationId": a["id"], "objectId": object_id})
+def audit_entry(a: ApplicationRow | None, operation: str, sub: str | None = None, step: ApplicationStep | None = None,
+                object_id: str | None = None) -> AuditRow:
+    """An entry of the audit log (README 10): no personal data beyond the `sub`."""
+    return AuditRow(at=utc_now(), sub=sub, process_id=step.process_id if step else None,
+                    step_run_id=step.step_run_id if step else None, company_id=a.company_id if a else None,
+                    operation=operation, application_id=a.id if a else None, object_id=object_id)
 
 
-def validation_problem(errors: list[dict], **ext) -> Problem:
-    return Problem(MODULE, 400, "validation", errors=errors, **ext)
+def page_of[R](rows: Sequence[R], page: int, size: int, view: Callable[[R], ApiModel]) -> Page[Any]:
+    """One page of rows already filtered and sorted; only the rows of the page become views."""
+    window = Page.of(rows, page, size)
+    return Page(items=[view(row) for row in window.items], page=window.page, size=window.size, total=window.total)
 
 
-def field_error(field: str, message: str) -> dict:
-    return {"field": field, "message": message}
-
-
-def paginate(items: list[dict], page: int, size: int) -> dict:
-    return {"items": items[page * size:(page + 1) * size], "page": page, "size": size, "total": len(items)}
+def as_json(model: ApiModel) -> dict:
+    """The JSON of a view as the HTTP API sends it (`response_model_exclude_unset`): a field a stored object never had
+    stays out, `null` stays where the object has it. In-process callers get the same JSON as HTTP callers."""
+    return model.model_dump(mode="json", by_alias=True, exclude_unset=True)

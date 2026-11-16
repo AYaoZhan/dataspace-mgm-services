@@ -26,13 +26,15 @@ from __future__ import annotations
 
 from fastapi import Query
 
+from features.registration import interface
+from features.registration.models.reference_data import Agreement
 from features.registration.models.value_sets import Lang
-from features.registration.services import reference_data_service
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Registration: Reference Data")
 
 
-@controller.get("")
-def list_agreements(companyRole: list[str] | None = Query(None), lang: Lang = "en", _: dict = Permission):
-    return reference_data_service.list_agreements(companyRole or [], lang)
+@controller.get("", response_model=list[Agreement], response_model_exclude_unset=True)
+def list_agreements(companyRole: list[str] | None = Query(None), lang: Lang = "en",
+                    _: dict = Permission) -> list[Agreement]:
+    return interface.list_agreements(companyRole or [], lang)

@@ -27,13 +27,19 @@ The applicant fills in the application, proves the company with an attestation o
 documents, accepts the agreements and submits; Process Orchestration completes or closes it.
 
 Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
-calls, `reset()` and `on_startup()`. The HTTP API is `features.registration.router.router`.
+calls, `reset()` and `on_startup()`; its state is in its own database (`models/tables.py`). The HTTP API is
+`features.registration.router.router`.
 """
 from __future__ import annotations
 
-from features.registration.managers import application_repository, reference_catalog
+from features.registration.managers import (
+    agreement_repository,
+    application_repository,
+    config,
+    reference_catalog,
+)
+from features.registration.models import MODULE
 from features.registration.services import attestation_verifier
-from features.registration.services.shared import MODULE
 
 NAME = "registration"
 
@@ -41,12 +47,16 @@ __all__ = ["MODULE", "NAME", "on_startup", "reset"]
 
 
 def reset() -> None:
+    """Empty tables with the initial terms, reference files read again, no cached keys of the issuer."""
     with application_repository.applications_lock:
         application_repository.reset()
         reference_catalog.reset()
+        agreement_repository.reset()
         attestation_verifier.reset()
 
 
 def on_startup() -> None:
-    attestation_verifier.config()   # an invalid value prevents the start (README 4)
+    config.attestation()   # an invalid value prevents the start (README 4)
     reference_catalog.master()
+    application_repository.create_tables()
+    agreement_repository.seed()

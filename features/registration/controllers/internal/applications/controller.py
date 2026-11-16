@@ -26,17 +26,19 @@ from __future__ import annotations
 
 from fastapi import Query
 
-from features.registration.services import application_process_service
+from features.registration import interface
+from features.registration.models.applications import ApplicationInternal, ApplicationSummary
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Registration: Process Steps and Queries")
 
 
-@controller.get("/{applicationId}")
-def get_application_internal(applicationId: str, _: dict = Permission):
-    return application_process_service.get_application_internal(applicationId=applicationId)
+@controller.get("/{applicationId}", response_model=ApplicationInternal, response_model_exclude_unset=True)
+def get_application_internal(applicationId: str, _: dict = Permission) -> dict:
+    return interface.get_application_internal(applicationId=applicationId)
 
 
-@controller.get("")
-def list_applications_internal(applicationId: list[str] = Query(..., max_length=100), _: dict = Permission):
-    return application_process_service.list_applications_internal(applicationId=applicationId)
+@controller.get("", response_model=list[ApplicationSummary], response_model_exclude_unset=True)
+def list_applications_internal(applicationId: list[str] = Query(..., max_length=100),
+                               _: dict = Permission) -> list[dict]:
+    return interface.list_applications_internal(applicationId=applicationId)

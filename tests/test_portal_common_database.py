@@ -61,7 +61,10 @@ def test_each_feature_has_its_own_tables_and_database():
     # the features' own tables sit next to the test tables, each in its own MetaData only
     assert "test_company" in database.metadata(A).tables
     assert "test_application" in database.metadata(B).tables
-    assert not set(database.metadata(A).tables) & set(database.metadata(B).tables)
+    # two features may use the same table name (both keep an `audit_log`): they are different tables in
+    # different MetaData, created in different databases
+    assert database.metadata(A) is not database.metadata(B)
+    assert "test_company" not in database.metadata(B).tables and "test_application" not in database.metadata(A).tables
     assert database.engine(A) is not database.engine(B)
 
 

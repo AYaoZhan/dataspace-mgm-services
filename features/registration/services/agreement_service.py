@@ -28,22 +28,61 @@ from __future__ import annotations
 import datetime as dt
 import re
 
-from features.registration.managers import reference_catalog
-from features.registration.managers.application_repository import applications_lock, audit_log
+from features.registration.managers import agreement_repository, reference_catalog
+from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
+from features.registration.models.reference_data import AgreementVersion, AgreementVersionCreate
+from features.registration.models.tables import AgreementVersionRow
+from features.registration.models.value_sets import AgreementStatus
 from features.registration.services import attestation_verifier
 from features.registration.services.application_validation import check_roles
-from features.registration.services.shared import MODULE, field_error, paginate, utc_now, validation_problem
+from features.registration.services.shared import (
+    MODULE,
+    audit_entry,
+    field_error,
+    page_of,
+    parse,
+    utc_now,
+    validation_problem,
+)
 from portal_common import events
-from portal_common.problems import Problem
+from portal_common.models import Page
+
+
+def version_view(row: AgreementVersionRow) -> AgreementVersion:
+    return AgreementVersion.model_validate(row, from_attributes=True)
 
 
 # ---------------------------------------------------------------------------- terms (7.15, 7.16)
-def list_agreement_versions(agreement_key: str | None, status: str | None, page: int, size: int) -> dict:
-    found = [a for a in reference_catalog.versions() if (not agreement_key or a["agreementKey"] == agreement_key)
-             and (not status or a["status"] == status)]
-    found.sort(key=lambda a: a["createdAt"], reverse=True)
-    found.sort(key=lambda a: a["agreementKey"])
-    return paginate(found, page, size)
+def list_agreement_versions(agreement_key: str | None, status: str | None, page: int, size: int) -> Page:
+    """7.15: by agreement, the newest version first."""
+    found = [a for a in agreement_repository.versions(status) if not agreement_key or a.agreement_key == agreement_key]
+    found.sort(key=lambda a: a.created_at, reverse=True)
+    found.sort(key=lambda a: a.agreement_key)
+    return page_of(found, page, size, version_view)
+
+
+def _check_roles_for_scope(scope: object, company_roles: object, errors: list[dict]) -> None:
+    if scope == "COMPANY_ROLE":
+        check_roles(company_roles, errors)
+        if isinstance(company_roles, list):
+            errors += [field_error("companyRoles", f"not selectable: {r}") for r in company_roles
+                       if not reference_catalog.selectable(r)]
+    elif company_roles:
+        errors.append(field_error("companyRoles", "only for scope COMPANY_ROLE"))
+
+
+def _check_reconsent(body: dict, errors: list[dict]) -> None:
+    if not isinstance(body.get("reconsentRequired"), bool):
+        errors.append(field_error("reconsentRequired", "required"))
+    if not body.get("reconsentRequired"):
+        return
+    try:
+        due = dt.datetime.fromisoformat(str(body.get("reconsentDueAt")).replace("Z", "+00:00"))
+        if due.tzinfo is None or due.timestamp() <= attestation_verifier.now():
+            errors.append(field_error("reconsentDueAt", "must be in the future"))
+    except ValueError:
+        errors.append(field_error("reconsentDueAt", "required with reconsentRequired, date-time"))
 
 
 def _check_agreement(body: dict) -> list[dict]:
@@ -54,55 +93,37 @@ def _check_agreement(body: dict) -> list[dict]:
         errors.append(field_error("version", "1 to 20 characters"))
     if body.get("party") not in ("OSP", "DATASPACE"):
         errors.append(field_error("party", "OSP or DATASPACE"))
-    scope, company_roles = body.get("scope"), body.get("companyRoles")
-    if scope not in ("ALL", "COMPANY_ROLE"):
+    if body.get("scope") not in ("ALL", "COMPANY_ROLE"):
         errors.append(field_error("scope", "ALL or COMPANY_ROLE"))
-    if scope == "COMPANY_ROLE":
-        check_roles(company_roles, errors)
-        if isinstance(company_roles, list):
-            errors += [field_error("companyRoles", f"not selectable: {r}") for r in company_roles if not reference_catalog.selectable(r)]
-    elif company_roles:
-        errors.append(field_error("companyRoles", "only for scope COMPANY_ROLE"))
+    _check_roles_for_scope(body.get("scope"), body.get("companyRoles"), errors)
     title = body.get("title")
-    if not (isinstance(title, dict) and all(isinstance(title.get(k), str) and 1 <= len(title[k]) <= 200 for k in ("de", "en"))):
+    if not (isinstance(title, dict)
+            and all(isinstance(title.get(k), str) and 1 <= len(title[k]) <= 200 for k in ("de", "en"))):
         errors.append(field_error("title", "de and en, 1 to 200 characters"))
     urls = body.get("documentUrls")
     if not (isinstance(urls, dict) and urls and set(urls) <= {"de", "en"}
             and all(isinstance(u, str) and u.startswith("https://") for u in urls.values())):
         errors.append(field_error("documentUrls", "de or en, at least one, HTTPS"))
-    if not isinstance(body.get("reconsentRequired"), bool):
-        errors.append(field_error("reconsentRequired", "required"))
-    if body.get("reconsentRequired"):
-        try:
-            due = dt.datetime.fromisoformat(str(body.get("reconsentDueAt")).replace("Z", "+00:00"))
-            if due.tzinfo is None or due.timestamp() <= attestation_verifier.now():
-                errors.append(field_error("reconsentDueAt", "must be in the future"))
-        except ValueError:
-            errors.append(field_error("reconsentDueAt", "required with reconsentRequired, date-time"))
+    _check_reconsent(body, errors)
     return errors
 
 
-def create_agreement_version(body: dict, sub: str) -> dict:
-    """7.16."""
+def create_agreement_version(body: dict, sub: str) -> AgreementVersion:
+    """7.16: the new version is active, the earlier versions of the same terms inactive."""
     errors = _check_agreement(body)
     if errors:
         raise validation_problem(errors)
+    request = parse(AgreementVersionCreate, body)
     with applications_lock:
-        versions = reference_catalog.versions()
-        if any(a["agreementKey"] == body["agreementKey"] and a["version"] == body["version"] for a in versions):
-            raise Problem(MODULE, 409, "conflict", detail="this version of the terms already exists")
-        for a in versions:
-            if a["agreementKey"] == body["agreementKey"]:
-                a["status"] = "INACTIVE"
-        new = {"agreementKey": body["agreementKey"], "version": body["version"], "party": body["party"], "scope": body["scope"],
-               "companyRoles": list(body.get("companyRoles") or []), "title": body["title"], "documentUrls": body["documentUrls"],
-               "status": "ACTIVE", "reconsentRequired": body["reconsentRequired"], "reconsentDueAt": body.get("reconsentDueAt"),
-               "createdAt": utc_now(), "createdBy": sub}
-        versions.append(new)
-        audit_log.append({"at": utc_now(), "sub": sub, "processId": None, "stepRunId": None, "companyId": None,
-                          "operation": "createAgreementVersion", "applicationId": None,
-                          "objectId": f"{new['agreementKey']}:{new['version']}"})
-        events.publish(MODULE, "AgreementVersionActivated", {"agreementKey": new["agreementKey"], "version": new["version"],
-                                                             "party": new["party"], "reconsentRequired": new["reconsentRequired"],
-                                                             "reconsentDueAt": new["reconsentDueAt"]})
-        return new
+        if agreement_repository.exists(request.agreement_key, request.version):
+            raise problems.conflict("this version of the terms already exists")
+        new = AgreementVersionRow(**request.model_dump(by_alias=False, exclude={"company_roles"}),
+                                  company_roles=request.company_roles or [],
+                                  status=AgreementStatus.ACTIVE, created_at=utc_now(), created_by=sub)
+        agreement_repository.activate(new, audit_entry(None, "createAgreementVersion", sub=sub,
+                                                       object_id=f"{new.agreement_key}:{new.version}"))
+        events.publish(MODULE, "AgreementVersionActivated", {"agreementKey": new.agreement_key, "version": new.version,
+                                                             "party": new.party,
+                                                             "reconsentRequired": new.reconsent_required,
+                                                             "reconsentDueAt": new.reconsent_due_at})
+        return version_view(new)

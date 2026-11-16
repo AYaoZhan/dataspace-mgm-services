@@ -26,73 +26,91 @@
 """
 from __future__ import annotations
 
-from features.registration.managers import reference_catalog
-from features.registration.managers.application_repository import applications, applications_lock
-from features.registration.services import attestation_verifier
-from features.registration.services.application_views import public, summary
-from features.registration.services.shared import MODULE, field_error, utc_now, write_audit
+from features.registration.managers import agreement_repository, application_repository
+from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
+from features.registration.models.applications import ApplicationInternal, ApplicationSummary
+from features.registration.models.reference_data import AgreementVersion
+from features.registration.models.steps import ApplicationStep, ApplicationStepResult, CloseApplicationStep
+from features.registration.models.tables import ApplicationRow
+from features.registration.models.value_sets import AgreementStatus, ApplicationStatus
+from features.registration.services.agreement_service import version_view
+from features.registration.services.application_views import internal, summary
+from features.registration.services.shared import MODULE, audit_entry, field_error, parse, utc_now
 from portal_common import events
+from portal_common.models import StepResult
 from portal_common.problems import Problem
+
+StepAnswer = StepResult[ApplicationStepResult]
 
 
 # --------------------------------------------------------------------------------- steps (README 8)
-def _step_application(input: dict) -> dict:
-    a = applications.get(input.get("applicationId"))
+def _step_application(step: ApplicationStep) -> ApplicationRow:
+    a = application_repository.get(step.application_id)
     if not a:
-        raise Problem(MODULE, 404, "not-found", retryable=False)
+        raise problems.not_found(retryable=False)
     return a
 
 
-def _step_result(input: dict, a: dict) -> dict:
-    return {"stepRunId": input.get("stepRunId"), "state": "DONE",
-            "result": {"applicationId": a["id"], "companyId": a["companyId"], "kind": a["kind"], "status": a["status"]}}
+def _step_result(step: ApplicationStep, a: ApplicationRow) -> StepAnswer:
+    result = ApplicationStepResult(application_id=a.id, company_id=a.company_id, kind=a.kind, status=a.status)
+    return StepAnswer(step_run_id=step.step_run_id, state="DONE", result=result)
 
 
-def complete_application(input: dict) -> dict:
+def _invalid_state(a: ApplicationRow) -> Problem:
+    return problems.invalid_state(f"application is {a.status}", retryable=False)
+
+
+def complete_application(input: dict) -> StepAnswer:
+    """The company is active: SUBMITTED becomes COMPLETED; a repetition answers DONE again."""
+    step = parse(ApplicationStep, input)
     with applications_lock:
-        a = _step_application(input)
-        if a["status"] == "SUBMITTED":
+        a = _step_application(step)
+        completed = a.status == ApplicationStatus.SUBMITTED
+        if completed:
             now = utc_now()
-            a.update(status="COMPLETED", completedAt=now, changedAt=now)
-            events.publish(MODULE, "ApplicationCompleted", {"applicationId": a["id"], "companyId": a["companyId"], "kind": a["kind"]})
-        elif a["status"] != "COMPLETED":
-            raise Problem(MODULE, 409, "invalid-state", detail=f"application is {a['status']}", retryable=False)
-        write_audit(a, "stepCompleteApplication", step=input)
-        return _step_result(input, a)
+            a.status, a.completed_at, a.changed_at = ApplicationStatus.COMPLETED, now, now
+        elif a.status != ApplicationStatus.COMPLETED:
+            raise _invalid_state(a)
+        application_repository.save(a, audit=audit_entry(a, "stepCompleteApplication", step=step))
+        if completed:
+            events.publish(MODULE, "ApplicationCompleted", {"applicationId": a.id, "companyId": a.company_id,
+                                                            "kind": a.kind})
+        return _step_result(step, a)
 
 
-def close_application(input: dict) -> dict:
+def close_application(input: dict) -> StepAnswer:
+    """The review declined: SUBMITTED becomes DECLINED; DECLINED and WITHDRAWN stay as they are."""
     reason = input.get("reason")
     if not (isinstance(reason, str) and 1 <= len(reason) <= 1000):
-        raise Problem(MODULE, 400, "validation", errors=[field_error("reason", "1 to 1000 characters")], retryable=False)
+        raise problems.validation_problem([field_error("reason", "1 to 1000 characters")], retryable=False)
+    step = parse(CloseApplicationStep, input)
     with applications_lock:
-        a = _step_application(input)
-        if a["status"] == "SUBMITTED":
+        a = _step_application(step)
+        if a.status == ApplicationStatus.SUBMITTED:
             now = utc_now()
-            a.update(status="DECLINED", declineReason=reason, closedAt=now, changedAt=now)
-        elif a["status"] not in ("DECLINED", "WITHDRAWN"):
-            raise Problem(MODULE, 409, "invalid-state", detail=f"application is {a['status']}", retryable=False)
-        write_audit(a, "stepCloseApplication", step=input)
-        return _step_result(input, a)
+            a.status, a.decline_reason, a.closed_at, a.changed_at = ApplicationStatus.DECLINED, step.reason, now, now
+        elif a.status not in (ApplicationStatus.DECLINED, ApplicationStatus.WITHDRAWN):
+            raise _invalid_state(a)
+        application_repository.save(a, audit=audit_entry(a, "stepCloseApplication", step=step))
+        return _step_result(step, a)
 
 
 # ------------------------------------------------------------------------------- queries (README 9)
-def get_application_internal(*, applicationId: str, **_other) -> dict:
-    a = applications.get(applicationId)
+def get_application_internal(*, applicationId: str, **_other: object) -> ApplicationInternal:
+    a = application_repository.get(applicationId)
     if not a:
-        raise Problem(MODULE, 404, "not-found")
-    detail = None
-    if a.get("_attestation"):
-        detail = a["_attestation"] | {"signatureCheck": attestation_verifier.signature_check(a["_raw"])}
-    return public(a) | {"attestation": detail, "requiredAgreements": a["_requiredAgreements"]}
+        raise problems.not_found()
+    return internal(a)
 
 
-def list_applications_internal(*, applicationId: list[str] | str | None = None, **_other) -> list[dict]:
-    """`ApplicationSummary` in the order of the request; unknown IDs are left out."""
+def list_applications_internal(*, applicationId: list[str] | str | None = None,
+                               **_other: object) -> list[ApplicationSummary]:
+    """`ApplicationSummary` in the order of the request, read in one query; unknown IDs are left out."""
     ids = [applicationId] if isinstance(applicationId, str) else applicationId or []
-    return [summary(a) for i in ids if (a := applications.get(i))]
+    found = application_repository.get_many(ids)
+    return [summary(found[i]) for i in ids if i in found]
 
 
-def list_agreements_internal(*, status: str | None = None, **_other) -> list[dict]:
-    wanted = status or "ACTIVE"
-    return [a for a in reference_catalog.versions() if a["status"] == wanted]
+def list_agreements_internal(*, status: str | None = None, **_other: object) -> list[AgreementVersion]:
+    return [version_view(a) for a in agreement_repository.versions(status or AgreementStatus.ACTIVE)]

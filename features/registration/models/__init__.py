@@ -21,5 +21,9 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""Models of the registration API (spec C1-M2 openapi.yaml).
+"""Models of the registration (spec C1-M2 openapi.yaml): request bodies, step inputs and views in pydantic
+(`applications`, `reference_data`, `steps`), value sets, and the SQLModel tables of its own database (`tables`).
 """
+
+MODULE = "c1-m2"
+"""The spec id: problem types, event sources, permissions and service accounts carry it (F14)."""

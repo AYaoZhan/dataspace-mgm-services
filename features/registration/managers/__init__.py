@@ -21,5 +21,6 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""Managers of the registration: application repository, reference catalogue, neighbour client.
+"""Managers of the registration: the repositories of applications and terms (own database), the read-only
+reference catalogue, the neighbour client and the configuration.
 """
