@@ -25,7 +25,7 @@
 """
 from __future__ import annotations
 
-from features.company_profile import config
+from features.company_profile.managers import config
 from features.company_profile.managers import company_repository
 from features.company_profile.services.shared import MODULE
 from portal_common.problems import Problem

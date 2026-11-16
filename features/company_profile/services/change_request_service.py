@@ -25,7 +25,7 @@
 """
 from __future__ import annotations
 
-from features.company_profile import config
+from features.company_profile.managers import config
 from features.company_profile.managers import company_repository
 from features.company_profile.services import company_validation
 from features.company_profile.services.company_changes import (

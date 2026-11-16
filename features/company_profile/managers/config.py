@@ -115,7 +115,7 @@ def attestation_jwks_url() -> str:
     return value("ATTESTATION_JWKS_URL") or f"{attestation_issuer()}/jwks"
 
 
-MODULE_DIR = Path(__file__).parent
+DATA_DIR = Path(__file__).parent / "data"
 
 
 def attestation_jwks_file() -> Path | None:
@@ -123,9 +123,9 @@ def attestation_jwks_file() -> Path | None:
 
     No default: an installation takes the keys from `ATTESTATION_JWKS_URL`, the JWKS of its own
     EBW-Connector (FRAMEWORK 4.8: keys are never defaulted; OPEN-QUESTIONS 7). A bare name counts
-    from the module folder, an absolute path as given.
+    from `managers/data/`, an absolute path as given.
     """
-    path = _path(MODULE_DIR, value("ATTESTATION_JWKS_FILE"))
+    path = _path(DATA_DIR, value("ATTESTATION_JWKS_FILE"))
     return path if path else None
 
 
@@ -153,9 +153,9 @@ def attestation_jwks_cache_seconds() -> int:
 def stub_applications_file() -> Path | None:
     """Stand-in for C1-M2: applications in the format of C1-M2 `ApplicationInternal` (11.1).
 
-    A bare name counts from the module folder (README 4 example), an absolute path as given.
+    A bare name counts from `managers/data/` (README 4 example), an absolute path as given.
     """
-    path = _path(MODULE_DIR, value("STUB_APPLICATIONS_FILE"))
+    path = _path(DATA_DIR, value("STUB_APPLICATIONS_FILE"))
     if path is None:
         return None
     path = _fallback(path, ROOT / path.name)

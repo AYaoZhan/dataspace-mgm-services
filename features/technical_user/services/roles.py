@@ -25,7 +25,7 @@
 """Technical user roles: which roles exist, which a company may assign (README 6.5, 7.8, 9.3)."""
 from __future__ import annotations
 
-from ..errors import Problem, problem
+from ..models.errors import Problem, problem
 from ..managers import config
 from ..managers import neighbour_client as gateways
 from . import iam_access

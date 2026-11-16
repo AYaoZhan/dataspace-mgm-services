@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import uuid
 
-from ..errors import problem
+from ..models.errors import problem
 from ..managers import config
 from ..managers.technical_user_repository import repository
 from ..models import (

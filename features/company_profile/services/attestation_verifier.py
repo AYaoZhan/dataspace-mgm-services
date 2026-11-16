@@ -42,7 +42,7 @@ import time
 import httpx
 import jwt
 
-from features.company_profile import config
+from features.company_profile.managers import config
 from portal_common import http
 from portal_common.problems import Problem
 

@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 from features.technical_user import controllers
-from features.technical_user.errors import MODULE
+from features.technical_user.models.errors import MODULE
 from portal_common.routing import mount
 
 router = mount(controllers, MODULE)

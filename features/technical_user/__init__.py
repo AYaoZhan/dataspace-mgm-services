@@ -33,7 +33,7 @@ calls, `reset()` and `on_event()`. The HTTP API is `features.technical_user.rout
 from __future__ import annotations
 
 from features.technical_user import services
-from features.technical_user.errors import MODULE
+from features.technical_user.models.errors import MODULE
 
 NAME = "technical_user"
 

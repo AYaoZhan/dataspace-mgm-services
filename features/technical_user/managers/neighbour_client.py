@@ -30,7 +30,7 @@ from pathlib import Path
 
 from portal_common import neighbours
 
-from ..errors import problem
+from ..models.errors import problem
 
 MODULE = "c2-m3"
 _STUB_COMPANIES = Path(__file__).resolve().parent / "data" / "stub-companies.json"

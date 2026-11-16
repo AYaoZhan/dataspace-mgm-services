@@ -28,7 +28,7 @@ Other services and Process Orchestration import only from here; the logic lives 
 from __future__ import annotations
 
 from features.technical_user import services
-from features.technical_user.errors import MODULE
+from features.technical_user.models.errors import MODULE
 from features.technical_user.services import (
     create_technical_user,
     delete_technical_user,

@@ -26,7 +26,7 @@
 from __future__ import annotations
 
 from features.technical_user import interface
-from features.technical_user.errors import MODULE
+from features.technical_user.models.errors import MODULE
 from portal_common.routing import Controller, Permission, company_scope
 
 controller = Controller("Technical User: Technical Users")

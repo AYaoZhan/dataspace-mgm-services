@@ -36,7 +36,7 @@ from conftest import BASE, bearer, person_token
 from fastapi.testclient import TestClient
 from test_c3_m1_steps import A1, U1, _c1_m2, seed, step  # noqa: F401  (_c1_m2: fixture)
 
-from features.company_profile import config
+from features.company_profile.managers import config
 from features.company_profile.managers import company_repository
 from portal_common import http as phttp
 from tools import test_iam

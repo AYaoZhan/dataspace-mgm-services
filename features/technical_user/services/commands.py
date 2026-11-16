@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import contextlib
 
-from ..errors import Problem, problem
+from ..models.errors import Problem, problem
 from ..managers import config
 from ..managers import neighbour_client as gateways
 from ..managers.technical_user_repository import repository

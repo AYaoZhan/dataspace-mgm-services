@@ -29,7 +29,7 @@ import json
 import os
 from pathlib import Path
 
-from ..errors import problem
+from ..models.errors import problem
 
 IDENTITY_WALLET_MANAGEMENT = "Identity Wallet Management"
 _ALL_ASSIGNABLE = ("Dataspace Discovery", IDENTITY_WALLET_MANAGEMENT, "Semantic Model Management")

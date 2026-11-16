@@ -34,7 +34,7 @@ from test_c3_m1_attestation import _keys, claims, sign  # noqa: F401
 from test_c3_m1_steps import A1, A2, U3, _c1_m2, seed, step  # noqa: F401  (_c1_m2: fixture)
 
 from features import company_profile
-from features.company_profile import config
+from features.company_profile.managers import config
 from features.company_profile.managers import company_repository
 from features.company_profile.router import router as company_profile_router
 from features.company_profile.services import change_request_service, company_role_service, company_service

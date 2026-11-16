@@ -29,7 +29,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from ..errors import Problem, problem
+from ..models.errors import Problem, problem
 
 Model = TypeVar("Model", bound=BaseModel)
 _MAX_ISSUES = 5

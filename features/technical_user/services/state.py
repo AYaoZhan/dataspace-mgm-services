@@ -25,7 +25,7 @@
 """Status rules of README 6.1 and 6.2 as plain functions on a row; the caller saves the row."""
 from __future__ import annotations
 
-from ..errors import Problem, problem
+from ..models.errors import Problem, problem
 from ..models import (
     Origin,
     Status,

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import httpx
 
-from ..errors import problem
+from ..models.errors import problem
 from ..managers import iam as iam_package
 from ..managers.iam import IamConflict, IamError, TechnicalUserIam, UnknownRole
 

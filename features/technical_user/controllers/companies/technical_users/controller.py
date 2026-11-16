@@ -29,7 +29,7 @@ from fastapi import Body, Query
 from fastapi.responses import JSONResponse, Response
 
 from features.technical_user import interface
-from features.technical_user.errors import MODULE
+from features.technical_user.models.errors import MODULE
 from features.technical_user.models import Origin, Status, WalletAccess
 from portal_common.routing import Controller, Page, Permission, Size, company_scope
 
