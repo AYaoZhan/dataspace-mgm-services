@@ -31,7 +31,7 @@ from typing import Protocol
 
 from portal_common import events
 
-from .models import AuditLogRecord, RoleAssignmentLogRecord, TechnicalUserRecord
+from ..models import AuditLogRecord, RoleAssignmentLogRecord, TechnicalUserRecord
 
 log = logging.getLogger("portal.c2-m3")
 Publisher = Callable[[str, dict], None]

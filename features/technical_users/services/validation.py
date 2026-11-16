@@ -29,16 +29,14 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from portal_common.problems import Problem
-
-from modules.c2_m3.config import MODULE
+from ..errors import Problem, problem
 
 Model = TypeVar("Model", bound=BaseModel)
 _MAX_ISSUES = 5
 
 
 def invalid(detail: str) -> Problem:
-    return Problem(MODULE, 400, "validation", detail=detail, retryable=False)
+    return problem(400, "validation", detail=detail)
 
 
 def parse(model: type[Model], data: object) -> Model:

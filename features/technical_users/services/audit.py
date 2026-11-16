@@ -31,8 +31,8 @@ import datetime as dt
 import uuid
 from dataclasses import dataclass
 
-from modules.c2_m3.models import ActorType, TechnicalUserRecord
-from modules.c2_m3.repository import repository
+from ..models import ActorType, TechnicalUserRecord
+from ..managers.technical_user_repository import repository
 
 
 def now() -> str:

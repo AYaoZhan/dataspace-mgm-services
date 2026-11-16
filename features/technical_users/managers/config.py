@@ -29,9 +29,7 @@ import json
 import os
 from pathlib import Path
 
-from portal_common.problems import Problem
-
-MODULE = "c2-m3"
+from ..errors import MODULE, problem
 
 IDENTITY_WALLET_MANAGEMENT = "Identity Wallet Management"
 _ALL_ASSIGNABLE = ("Dataspace Discovery", IDENTITY_WALLET_MANAGEMENT, "Semantic Model Management")
@@ -73,5 +71,5 @@ def role_assignments() -> dict[str, list[str]]:
         return {str(role): (value.get("roles", []) if isinstance(value, dict) else value)
                 for role, value in mapping.items()}
     except (OSError, ValueError) as exc:
-        raise Problem(MODULE, 502, "upstream-error", detail="ROLE_ASSIGNMENT_FILE could not be read",
-                      retryable=True) from exc
+        raise problem(502, "upstream-error", detail="ROLE_ASSIGNMENT_FILE could not be read",
+                  retryable=True) from exc

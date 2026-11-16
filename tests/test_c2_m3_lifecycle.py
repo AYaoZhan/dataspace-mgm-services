@@ -32,10 +32,10 @@ import jwt
 import pytest
 
 from conftest import BASE
-from modules.c2_m3 import iam
-from modules.c2_m3 import services as service
-from modules.c2_m3.iam import IamError
-from modules.c2_m3.repository import repository
+from features.technical_users.managers import iam
+from features.technical_users import services as service
+from features.technical_users.managers.iam import IamError
+from features.technical_users.managers.technical_user_repository import repository
 from portal_common import http as phttp
 from portal_common.problems import Problem
 from scaffold import app as scaffold_app
@@ -166,7 +166,8 @@ def test_a_stale_row_cannot_overwrite_a_newer_one(c2m3):
     fresh["name"] = "newer"
     repository.save(fresh)
     stale["name"] = "older"
-    conflict = getattr(__import__("modules.c2_m3.repository", fromlist=["Conflict"]), "Conflict", RuntimeError)
+    conflict = getattr(__import__("features.technical_users.managers.technical_user_repository",
+                                 fromlist=["Conflict"]), "Conflict", RuntimeError)
     with pytest.raises(conflict):
         repository.save(stale)
     assert repository.get(account["id"])["name"] == "newer"

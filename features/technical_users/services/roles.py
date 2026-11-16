@@ -25,10 +25,9 @@
 """Technical user roles: which roles exist, which a company may assign (README 6.5, 7.8, 9.3)."""
 from __future__ import annotations
 
-from portal_common.problems import Problem
-
-from modules.c2_m3 import config, gateways
-from modules.c2_m3.config import MODULE
+from ..errors import Problem, problem
+from ..managers import config, neighbour_client as gateways
+from ..managers.config import MODULE
 from . import iam_access
 
 
@@ -60,8 +59,8 @@ def require_assignable(company_id: str, roles: list[str]) -> None:
     check_exist(roles)
     not_assignable = set(roles) - assignable_names(company_id)
     if not_assignable:
-        raise Problem(MODULE, 400, "role-not-assignable", retryable=False,
-                      detail=f"roles are not assignable: {sorted(not_assignable)}")
+        raise problem(400, "role-not-assignable",
+                  detail=f"roles are not assignable: {sorted(not_assignable)}")
 
 
 def _views(roles: dict[str, str | None], names: set[str]) -> list[dict]:
@@ -82,5 +81,5 @@ def list_technical_roles(*, lang: str | None = None, **_other) -> list[dict]:
     except Problem as exc:
         if exc.name != "iam-error":
             raise
-        raise Problem(MODULE, 502, "upstream-error", detail=exc.detail, retryable=True) from exc
+        raise problem(502, "upstream-error", detail=exc.detail, retryable=True) from exc
     return _views(available, set(available))
