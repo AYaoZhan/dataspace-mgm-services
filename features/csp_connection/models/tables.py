@@ -31,13 +31,17 @@ the columns themselves are plain strings, as in the spec's tables.
 from __future__ import annotations
 
 import datetime as dt
+from typing import TYPE_CHECKING
 
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from features.csp_connection.models.errors import MODULE
 from portal_common import database
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:
+    Table = SQLModel   # the real base is a subclass of SQLModel created per module at run time
+else:
+    Table = database.table_base(MODULE)
 
 
 def now() -> str:

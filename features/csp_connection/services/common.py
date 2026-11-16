@@ -33,7 +33,6 @@ from features.csp_connection.managers import store
 from features.csp_connection.managers.store import Registration
 from features.csp_connection.models import errors
 
-
 StepInputJson = dict[str, Any]    # JSON body of POST /steps/<step>, incl. processId and stepRunId
 StepState = Literal["DONE", "RUNNING"]
 

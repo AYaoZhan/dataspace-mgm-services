@@ -44,7 +44,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlmodel import Session, col, delete, func, select
+from sqlmodel import Session, SQLModel, col, delete, func, select
 
 from features.csp_connection.models.errors import MODULE
 from features.csp_connection.models.tables import (
@@ -53,7 +53,6 @@ from features.csp_connection.models.tables import (
     EarlyCompletion,
     Notification,
     Registration,
-    Table,
     now,
 )
 from portal_common import database, settings
@@ -116,7 +115,7 @@ def seed() -> None:
                                      registered_at=stamp, updated_at=stamp))
 
 
-def save(*rows: Table) -> None:
+def save(*rows: SQLModel) -> None:
     """Store changed or new rows."""
     with _session() as session:
         for row in rows:

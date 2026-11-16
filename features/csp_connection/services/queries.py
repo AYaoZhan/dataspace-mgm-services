@@ -28,31 +28,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import ValidationError
-
 from features.csp_connection.managers import csp_client, store
 from features.csp_connection.managers.store import Registration
 from features.csp_connection.models import errors
-from features.csp_connection.models.schemas import CspCompanyMatch, CspRegistration
+from features.csp_connection.models.schemas import CspCompanyMatch, CspRegistration, invalid_fields
 from features.csp_connection.services.common import COUNTRY
 
 
 def find_companies(*, ebwoid: str | None = None, euid: str | None = None, identifier: list[str] | str | None = None,
                    legalName: str | None = None, country: str | None = None) -> list[dict[str, Any]]:  # openapi names
     """Query findCompanies (README 9, 6.2): duplicate check at the CSP; one `CspCompanyMatch` per match."""
-    identifiers = [identifier] if isinstance(identifier, str) else list(identifier or [])
-    for value in identifiers:
-        kind, _, rest = value.partition(":")
-        if not kind or not rest:
-            raise errors.validation("identifier must have the form <type>:<value>")
-    if country and not COUNTRY.match(country):
-        raise errors.validation("country must be two upper-case letters")
-    if not (ebwoid or euid or identifiers or (legalName and country)):
-        raise errors.validation("ebwoid, euid, identifier, or legalName with country is required")
-    params: dict[str, Any] = {k: v for k, v in (("ebwoid", ebwoid), ("euid", euid), ("legalName", legalName),
-                                                ("country", country)) if v}
-    if identifiers:
-        params["identifier"] = identifiers
+    params = _search_params(ebwoid, euid, identifier, legalName, country)
     status, answer = csp_client.call("find-companies", "GET", "/companies", params=params)
     if status == 400:
         raise errors.validation("the CSP rejected the search parameters")
@@ -70,12 +56,28 @@ def find_companies(*, ebwoid: str | None = None, euid: str | None = None, identi
     # so a CSP answer with a missing or wrong field is 502 upstream-error both in-process and over
     # HTTP, never a 500 from the response check of FastAPI.
     for match in matches:
-        try:
-            CspCompanyMatch.model_validate(match)
-        except ValidationError as e:
-            fields = ", ".join(sorted({".".join(str(x) for x in err["loc"]) for err in e.errors()}))
-            raise errors.upstream_error(f"the CSP answered a match with a missing or invalid {fields}") from e
+        if fields := invalid_fields(CspCompanyMatch, match):
+            raise errors.upstream_error(f"the CSP answered a match with a missing or invalid {fields}")
     return matches
+
+
+def _search_params(ebwoid: str | None, euid: str | None, identifier: list[str] | str | None, legal_name: str | None,
+                   country: str | None) -> dict[str, Any]:
+    """The checked query parameters of `GET /companies` at the CSP (README 9, 11.1)."""
+    identifiers = [identifier] if isinstance(identifier, str) else list(identifier or [])
+    for value in identifiers:
+        kind, _, rest = value.partition(":")
+        if not kind or not rest:
+            raise errors.validation("identifier must have the form <type>:<value>")
+    if country and not COUNTRY.match(country):
+        raise errors.validation("country must be two upper-case letters")
+    if not (ebwoid or euid or identifiers or (legal_name and country)):
+        raise errors.validation("ebwoid, euid, identifier, or legalName with country is required")
+    params: dict[str, Any] = {k: v for k, v in (("ebwoid", ebwoid), ("euid", euid), ("legalName", legal_name),
+                                                ("country", country)) if v}
+    if identifiers:
+        params["identifier"] = identifiers
+    return params
 
 
 def registration_view(row: Registration) -> dict[str, str]:

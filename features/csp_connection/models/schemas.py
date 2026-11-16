@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from portal_common import models
 from portal_common.models import ApiModel, CountryCode, StepRequest, Uuid
@@ -155,3 +155,12 @@ class CspNotification(ApiModel):
     operation_id: str | None = None
     outcome: Outcome | None = None
     reason: str | None = None
+
+
+def invalid_fields(model: type[ApiModel], data: object) -> str | None:
+    """The fields of `data` that `model` rejects, comma-separated, or None when `data` is valid."""
+    try:
+        model.model_validate(data)
+    except ValidationError as e:
+        return ", ".join(sorted({".".join(str(x) for x in err["loc"]) for err in e.errors()}))
+    return None

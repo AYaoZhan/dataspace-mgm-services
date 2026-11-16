@@ -29,6 +29,7 @@ from __future__ import annotations
 from typing import Any
 
 from features.csp_connection.managers import store
+from features.csp_connection.managers.store import Registration
 from features.csp_connection.models import errors
 from features.csp_connection.models.errors import MODULE
 from features.csp_connection.models.schemas import NotificationType, Outcome
@@ -66,43 +67,54 @@ def _receive_notification(body: dict[str, Any]) -> dict[str, str | bool]:
         return {"notificationId": notification_id, "accepted": True}
 
     if kind_type == "OperationCompleted":
-        operation_id = require_text(body, "operationId")
-        outcome = require_text(body, "outcome")
-        if outcome == "SUCCEEDED":
-            result: Outcome = "SUCCEEDED"
-        elif outcome == "FAILED":
-            result = "FAILED"
-        else:
-            raise errors.validation("outcome must be SUCCEEDED or FAILED")
-        reason = optional_text(body, "reason")
-        if outcome == "SUCCEEDED" and not bpn:
-            raise errors.validation("bpn is required with outcome SUCCEEDED")
-        # The operation id identifies the registration; the BPN is the fallback (README 7.2 step 2),
-        # but only for a registration that still waits (PENDING): a late notification must not
-        # revive a FAILED or TRANSFERRED_AWAY company (README 6.1). An unknown one answers 404 and
-        # is not stored, so the CSP can send it again once it is known here (OPEN-QUESTIONS 9).
-        row = store.find_by_operation(operation_id) or (
-            store.find_by_bpn(bpn, status="PENDING") if bpn else None)
-        if row is None:
-            # Possibly earlier than the 202 answer of the step: keep it aside, the step applies it
-            # when it stores the operation id (OPEN-QUESTIONS 15). The answer stays 404 (README 7.2).
-            store.keep_early_completion(store.EarlyCompletion(notification_id=notification_id,
-                                                              operation_id=operation_id, outcome=result, bpn=bpn,
-                                                              reason=reason))
-            raise errors.unknown_company(f"no registration for operation {operation_id}")
-        row = complete_operation(row.company_id, result, bpn, reason)
+        row = _operation_completed(body, notification_id, bpn)
     else:
-        if not bpn:
-            raise errors.validation("bpn is required with CompanyTransferredAway")
-        # Prefer the REGISTERED row: after a company came back, an older row with the same BPN can exist.
-        row = store.find_by_bpn(bpn, status="REGISTERED") or store.find_by_bpn(bpn)
-        if row is None:
-            raise errors.unknown_company(f"no registration for BPN {bpn}")
-        if row.status != "TRANSFERRED_AWAY":
-            mark_transferred_away(row.company_id)
-            events.publish(MODULE, "CompanyTransferredAway", {"companyId": row.company_id, "bpn": bpn})
+        row = _transferred_away(bpn)
 
     # Stored only after it was processed, so a failed processing does not swallow the notification.
     store.save(store.Notification(notification_id=notification_id, type=kind_type, bpn=row.bpn))
     store.record_audit(f"notification:{kind_type}", row.company_id, row.bpn, 200)
     return {"notificationId": notification_id, "accepted": True}
+
+
+def _operation_completed(body: dict[str, Any], notification_id: str, bpn: str | None) -> Registration:
+    """`OperationCompleted` (README 7.2): ends the operation of the registration it belongs to."""
+    operation_id = require_text(body, "operationId")
+    outcome = require_text(body, "outcome")
+    if outcome == "SUCCEEDED":
+        result: Outcome = "SUCCEEDED"
+    elif outcome == "FAILED":
+        result = "FAILED"
+    else:
+        raise errors.validation("outcome must be SUCCEEDED or FAILED")
+    reason = optional_text(body, "reason")
+    if outcome == "SUCCEEDED" and not bpn:
+        raise errors.validation("bpn is required with outcome SUCCEEDED")
+    # The operation id identifies the registration; the BPN is the fallback (README 7.2 step 2),
+    # but only for a registration that still waits (PENDING): a late notification must not
+    # revive a FAILED or TRANSFERRED_AWAY company (README 6.1). An unknown one answers 404 and
+    # is not stored, so the CSP can send it again once it is known here (OPEN-QUESTIONS 9).
+    row = store.find_by_operation(operation_id) or (
+        store.find_by_bpn(bpn, status="PENDING") if bpn else None)
+    if row is None:
+        # Possibly earlier than the 202 answer of the step: keep it aside, the step applies it
+        # when it stores the operation id (OPEN-QUESTIONS 15). The answer stays 404 (README 7.2).
+        store.keep_early_completion(store.EarlyCompletion(notification_id=notification_id,
+                                                          operation_id=operation_id, outcome=result, bpn=bpn,
+                                                          reason=reason))
+        raise errors.unknown_company(f"no registration for operation {operation_id}")
+    return complete_operation(row.company_id, result, bpn, reason)
+
+
+def _transferred_away(bpn: str | None) -> Registration:
+    """`CompanyTransferredAway` (README 7.2, FRAMEWORK 5.6): the company now lives at another OSP."""
+    if not bpn:
+        raise errors.validation("bpn is required with CompanyTransferredAway")
+    # Prefer the REGISTERED row: after a company came back, an older row with the same BPN can exist.
+    row = store.find_by_bpn(bpn, status="REGISTERED") or store.find_by_bpn(bpn)
+    if row is None:
+        raise errors.unknown_company(f"no registration for BPN {bpn}")
+    if row.status != "TRANSFERRED_AWAY":
+        mark_transferred_away(row.company_id)
+        events.publish(MODULE, "CompanyTransferredAway", {"companyId": row.company_id, "bpn": bpn})
+    return row

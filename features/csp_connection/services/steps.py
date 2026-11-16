@@ -31,9 +31,9 @@ from collections.abc import Callable
 from typing import Any
 
 from features.csp_connection.managers import csp_client, store
+from features.csp_connection.managers.store import Registration
 from features.csp_connection.models import errors
 from features.csp_connection.models.errors import MODULE
-from features.csp_connection.managers.store import Registration
 from features.csp_connection.models.schemas import Membership
 from features.csp_connection.services.common import (
     COUNTRY,
