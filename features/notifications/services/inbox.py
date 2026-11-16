@@ -34,10 +34,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from features.notifications.managers import store
-from features.notifications.models import MODULE
+from features.notifications.models import errors
 from features.notifications.models.notification import Notification
 from features.notifications.services import marks
-from portal_common.problems import Problem
+from portal_common import sse
 
 # openapi `Notification`, apart from `read`, which is per person
 FIELDS = tuple(f.alias for name, f in Notification.model_fields.items() if name != "read")
@@ -62,7 +62,7 @@ def find(notification_id: str, claims: dict) -> dict:
     n = store.find(notification_id)
     if n is not None and store.visible_to(n, claims):
         return n
-    raise Problem(MODULE, 404, "not-found")
+    raise errors.not_found()
 
 
 def get(notification_id: str, claims: dict) -> dict:
@@ -80,7 +80,7 @@ def count(claims: dict) -> dict:
             "unreadInfo": sum(v["topic"] == "INFO" and not v["read"] for v in items)}
 
 
-def events():
+def events() -> sse.Broker:
     """README 7.6: the broker of the stream events of every inbox (`managers.store.BROKER`)."""
     return store.BROKER
 

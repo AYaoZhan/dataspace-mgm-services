@@ -33,7 +33,9 @@ notifications are stored at once. Logs carry rule ids and event ids only, never 
 """
 from __future__ import annotations
 
+import functools
 import logging
+from collections.abc import Callable
 
 from features.notifications.managers import config, store, worker
 from features.notifications.models.rule import Rule
@@ -63,11 +65,11 @@ def handle(event: dict) -> None:
     off = config.disabled_rules()
     for rule in rules.for_event(event_type):
         if rule.id not in off:
-            _guarded(event, f"rule {rule.id}", lambda rule=rule: _apply(rule, event))
+            _guarded(event, f"rule {rule.id}", functools.partial(_apply, rule, event))
     _guarded(event, "applicant", lambda: _forget_applicant(event_type, data))
 
 
-def _guarded(event: dict, part: str, run) -> None:
+def _guarded(event: dict, part: str, run: Callable[[], None]) -> None:
     """Run one part of the event handling; on an error log it and mark the event FAILED (README 6.4)."""
     try:
         run()

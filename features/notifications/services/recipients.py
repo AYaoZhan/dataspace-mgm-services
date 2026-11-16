@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from typing import cast
 
 from features.notifications.managers import company_users_standin, neighbour_client
 
@@ -76,8 +77,8 @@ def company_users(company_id: str | None, portal_role: str) -> list[str]:
         return []
     if neighbour_client.is_standin("c2-m2"):
         return company_users_standin.company_users(company_id, portal_role)
-    refs = neighbour_client.query("c2-m2", "list_company_user_refs", companyId=company_id, portalRole=portal_role) or []
-    return [r["userId"] for r in refs]
+    refs = neighbour_client.query("c2-m2", "list_company_user_refs", companyId=company_id, portalRole=portal_role)
+    return [r["userId"] for r in cast(list[dict], refs or [])]
 
 
 def _app_customers(app_id: str | None) -> list[str]:
@@ -92,7 +93,8 @@ def _subscription_customer(subscription_id: str | None) -> list[str]:
     """README 6.2 R12: the `Company Admin` of the customer of the subscription (C10-M1 9.2)."""
     if not subscription_id or neighbour_client.is_standin("c10-m1"):
         return []
-    subscription = neighbour_client.query("c10-m1", "get_subscription_internal", offerSubscriptionId=subscription_id)
+    subscription = cast(dict | None, neighbour_client.query("c10-m1", "get_subscription_internal",
+                                                           offerSubscriptionId=subscription_id))
     return _company_admins([subscription["customerCompanyId"]] if subscription else [])
 
 

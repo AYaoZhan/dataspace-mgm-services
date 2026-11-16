@@ -33,7 +33,7 @@ not delivered. Any other error is logged once and not repeated. Logs carry the j
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from features.notifications.managers import store
 

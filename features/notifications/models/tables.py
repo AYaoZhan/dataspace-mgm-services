@@ -30,15 +30,18 @@ model the services use with `StoredNotification.model_validate(row, from_attribu
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, Column, UniqueConstraint
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from features.notifications.models import MODULE
 from portal_common import database
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:
+    Table = SQLModel   # mypy cannot see a class made at run time; the tables are SQLModel tables either way
+else:
+    Table = database.table_base(MODULE)   # the feature's own registry and MetaData
 
 
 class NotificationRow(Table, table=True):

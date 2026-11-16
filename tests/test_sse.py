@@ -44,9 +44,8 @@ from features.notifications.managers import store as c11_store
 from features.notifications.router import router as c11_router
 from modules.c12_m1 import engine as eng
 from modules.c12_m1 import router as c12
-from portal_common import events
+from portal_common import events, problems
 from portal_common import http as phttp
-from portal_common import problems
 from tools import test_iam
 
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a

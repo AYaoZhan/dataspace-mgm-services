@@ -40,8 +40,9 @@ def is_standin(target: str) -> bool:
     return neighbours.is_standin(target)
 
 
-def query(target: str, function: str, **params) -> list | dict | None:
-    """`neighbours.query` with the retry rule of README 4: unreachable -> `store.Unavailable`."""
+def query(target: str, function: str, **params: object) -> list | dict | None:
+    """`neighbours.query` with the retry rule of README 4: unreachable -> `store.Unavailable`. The answer is the
+    JSON of the neighbour's query (a list or an object), or None."""
     try:
         return neighbours.query(MODULE, target, function, **params)
     except Problem as e:

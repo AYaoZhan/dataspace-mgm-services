@@ -31,8 +31,7 @@ another's (acceptance 13.9). Every function takes a stored notification of the c
 from __future__ import annotations
 
 from features.notifications.managers import store
-from features.notifications.models import MODULE
-from portal_common.problems import Problem
+from features.notifications.models import errors
 
 
 def is_read(n: dict, sub: str | None) -> bool:
@@ -77,7 +76,7 @@ def hide(n: dict, sub: str | None) -> None:
     """README 7.5: hide for this person; an open task gives 409 `task-open`; idempotent."""
     with store.LOCK:
         if is_open_task(store.find(n["notificationId"]) or n):   # the current `done`, not the caller's copy
-            raise Problem(MODULE, 409, "task-open")
+            raise errors.task_open()
         if not is_hidden(n, sub):
             _set(n, sub, hiddenAt=store.now())
 

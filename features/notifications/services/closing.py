@@ -43,6 +43,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from collections import deque
+from collections.abc import Callable
 
 from features.notifications.managers import store
 from features.notifications.models.rule import Rule
@@ -104,17 +105,20 @@ def handle(event: dict) -> None:
     data = event.get("data") or {}
     at = _parse(event.get("time"))
     done_at = at.isoformat()
-    for rule_id, fields in _CLOSERS.get(event.get("type"), ()):
+    for rule_id, fields in _CLOSERS.get(str(event.get("type")), ()):
         key = _key(rule_id, fields, data)
         if key is None:
             continue
-        match = dict(zip(fields, key[2]))
         # One lock with engine._store: a new task is either created after the closer is
         # remembered (and so created done) or exists before and is closed here.
         with store.LOCK:
-            store.close_tasks(rule_id, lambda n, match=match: all(n["content"].get(f) == v for f, v in match.items()),
-                              done_at=done_at)
+            store.close_tasks(rule_id, _same_object(dict(zip(fields, key[2], strict=True))), done_at=done_at)
             _remember(key, at)
+
+
+def _same_object(match: dict[str, str]) -> Callable[[dict], bool]:
+    """README 6.2 "same object": the task's `content` has the closer's values in these fields."""
+    return lambda n: all(n["content"].get(f) == v for f, v in match.items())
 
 
 def _remember(key: Key, at: dt.datetime) -> None:

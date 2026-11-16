@@ -29,9 +29,9 @@ import os
 
 import httpx
 import pytest
-from conftest import BASE
 from fastapi.testclient import TestClient
 
+from conftest import BASE
 from features import company_profile, registration
 from portal_common import event_forwarder, events, layout, neighbours, tokens
 from runtimes import __main__ as runtime_main

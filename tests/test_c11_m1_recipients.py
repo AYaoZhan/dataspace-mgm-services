@@ -28,8 +28,8 @@ C2-M2, the IT Admin fallback and the retry rule for neighbour errors (README 4).
 import os
 
 import pytest
-from conftest import needs_admin_api
 
+from conftest import needs_admin_api
 from features import notifications as c11
 from features.notifications.managers import company_users_standin, store
 from features.notifications.services import recipients

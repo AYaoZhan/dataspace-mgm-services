@@ -39,12 +39,17 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from sqlmodel import Session, delete, func, or_, select
+from sqlmodel import Session, col, delete, func, or_, select
 
 from features.notifications.models import MODULE
 from features.notifications.models.notification import NotificationCreated, NotificationDone, StoredNotification
-from features.notifications.models.tables import (ApplicantRow, DedupKeyRow, NotificationRow, NotificationStateRow,
-                                                  ProcessedEventRow)
+from features.notifications.models.tables import (
+    ApplicantRow,
+    DedupKeyRow,
+    NotificationRow,
+    NotificationStateRow,
+    ProcessedEventRow,
+)
 from portal_common import database, sse, tokens
 
 if TYPE_CHECKING:
@@ -127,7 +132,8 @@ def processed_status(event: dict) -> str | None:
 def processed_events() -> list[tuple[str, str]]:
     """The remembered events as (source, id), oldest first."""
     with _session() as session:
-        return [(r.source, r.event_id) for r in session.exec(select(ProcessedEventRow).order_by(ProcessedEventRow.seq))]
+        rows = session.exec(select(ProcessedEventRow).order_by(col(ProcessedEventRow.seq)))
+        return [(r.source, r.event_id) for r in rows]
 
 
 def dedup_keys() -> int:
@@ -145,9 +151,9 @@ def _processed(session: Session, event: dict) -> ProcessedEventRow | None:
 def _bound(session: Session, table: type[ProcessedEventRow] | type[DedupKeyRow]) -> None:
     """Keep at most `SEEN_MAX` rows of `table`, dropping the oldest (memory and table stay bounded)."""
     session.flush()
-    newest = session.exec(select(func.max(table.seq))).one()
+    newest = session.exec(select(func.max(col(table.seq)))).one()
     if newest is not None and newest > SEEN_MAX:
-        session.exec(delete(table).where(table.seq <= newest - SEEN_MAX))
+        session.exec(delete(table).where(col(table.seq) <= newest - SEEN_MAX))
 
 
 # ---------------------------------------------------------------- applicants (README 5 `applicant`)
@@ -166,7 +172,7 @@ def applicant(application_id: str) -> str | None:
 def forget_applicant(application_id: object) -> None:
     """Drop the row of the application; an `applicationId` that is not an ID raises (the event is marked FAILED)."""
     with _session() as session:
-        session.exec(delete(ApplicantRow).where(ApplicantRow.application_id == application_id))
+        session.exec(delete(ApplicantRow).where(col(ApplicantRow.application_id) == application_id))
 
 
 # ---------------------------------------------------------------- notifications (README 5, 6.2)
@@ -208,17 +214,17 @@ def add_notification(event: dict, rule: Rule, *, receiver_sub: str | None = None
 
 def close_tasks(rule_id: str, match: Callable[[dict], bool], done_at: str | None = None) -> list[dict]:
     """README 6.2: set `done` on the open tasks of `rule_id` that `match`; publish `notification-done`."""
-    closed = []
+    rows: list[NotificationRow] = []
     with _session() as session:
         open_tasks = select(NotificationRow).where(NotificationRow.rule == rule_id, NotificationRow.topic == "ACTION",
-                                                   NotificationRow.done.is_(False)).order_by(NotificationRow.seq)
+                                                   col(NotificationRow.done).is_(False)).order_by(col(NotificationRow.seq))
         for row in session.exec(open_tasks):
             if match(_record(row)):
                 row.done, row.done_at = True, done_at or now()
                 session.add(row)
-                closed.append(row)
+                rows.append(row)
         session.flush()
-        closed = [_record(row) for row in closed]
+        closed = [_record(row) for row in rows]
     for n in closed:
         BROKER.publish("notification-done", NotificationDone.model_validate(n).model_dump(mode="json"), _meta(n))
     return closed
@@ -227,7 +233,7 @@ def close_tasks(rule_id: str, match: Callable[[dict], bool], done_at: str | None
 def notifications() -> list[dict]:
     """Every notification, in the order it was stored."""
     with _session() as session:
-        return [_record(r) for r in session.exec(select(NotificationRow).order_by(NotificationRow.seq))]
+        return [_record(r) for r in session.exec(select(NotificationRow).order_by(col(NotificationRow.seq)))]
 
 
 def find(notification_id: str) -> dict | None:
@@ -240,12 +246,12 @@ def find(notification_id: str) -> dict | None:
 def inbox(claims: dict) -> list[dict]:
     """README 4 and 6.3: the caller's personal notifications and the staff ones of the permissions in the token,
     in the order they were stored (one query on the indexed receiver columns)."""
-    receivers = [NotificationRow.receiver_sub == claims.get("sub")]
+    receivers = [col(NotificationRow.receiver_sub) == claims.get("sub")]
     if permissions := list(tokens.permissions(claims)):
-        receivers.append(NotificationRow.receiver_permission.in_(permissions))
+        receivers.append(col(NotificationRow.receiver_permission).in_(permissions))
     with _session() as session:
         return [_record(r) for r in session.exec(select(NotificationRow).where(or_(*receivers))
-                                                 .order_by(NotificationRow.seq))]
+                                                 .order_by(col(NotificationRow.seq)))]
 
 
 def visible_to(n: dict, claims: dict) -> bool:
