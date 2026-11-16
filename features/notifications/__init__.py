@@ -34,7 +34,7 @@ Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and th
 calls, `reset()` and `on_event()`. The HTTP API is `features.notifications.router.router`. The work is in
 `services/` (`rules`, `engine`, `closing`, `recipients`, `inbox`, `listing`, `marks`) and `managers/`
 (`store`, the background `worker` and its `retry` policy, the neighbour client and the stand-in data).
-The delivery thread of `worker` starts on the first job, so the feature needs no `on_startup()`.
+`on_startup()` creates the tables; the delivery thread of `worker` starts on the first job.
 """
 from __future__ import annotations
 
@@ -44,7 +44,12 @@ from features.notifications.services import closing, engine
 
 NAME = "notifications"
 
-__all__ = ["MODULE", "NAME", "on_event", "reset"]
+__all__ = ["MODULE", "NAME", "on_event", "on_startup", "reset"]
+
+
+def on_startup() -> None:
+    """Create the tables of the feature's database (`models/tables.py`)."""
+    store.create_tables()
 
 
 def reset() -> None:

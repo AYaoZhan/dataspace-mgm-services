@@ -31,10 +31,11 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import Header, Query, Request, Response
 
+from features.notifications.models.notification import Notification, NotificationCount, NotificationPage, Sort, Topic
 from features.notifications.services import inbox, listing, marks
 from portal_common import sse
 from portal_common.routing import Controller, Permission
@@ -42,14 +43,14 @@ from portal_common.routing import Controller, Permission
 controller = Controller("Notifications: Inbox")
 
 
-@controller.get("")
+@controller.get("", response_model=NotificationPage)
 def list_notifications(claims: dict = Permission,
-                       topic: Literal["INFO", "ACTION"] | None = None,
+                       topic: Topic | None = None,
                        ntype: Annotated[str | None, Query(alias="type")] = None,
                        read: bool | None = None,
                        done: bool | None = None,
                        createdSince: dt.datetime | None = None,
-                       sort: Literal["createdAt.desc", "createdAt.asc"] = "createdAt.desc",
+                       sort: Sort = "createdAt.desc",
                        page: Annotated[int, Query(ge=0)] = 0,
                        size: Annotated[int, Query(ge=1, le=100)] = 20):
     """README 7.1: filters, sorting by `createdAt`, paging as in FRAMEWORK 4.1; invalid filters give 400."""
@@ -57,7 +58,7 @@ def list_notifications(claims: dict = Permission,
     return listing.list_page(inbox.own(claims), filters, newest_first=sort == "createdAt.desc", page=page, size=size)
 
 
-@controller.get("/count")
+@controller.get("/count", response_model=NotificationCount)
 def count_notifications(claims: dict = Permission):
     """README 7.2: counters of the own inbox (hidden ones left out)."""
     return inbox.count(claims)
@@ -71,7 +72,7 @@ def stream_notification_events(request: Request, claims: dict = Permission,
                         visible=inbox.stream_filter(claims), on_gap=lambda: [("resync", {})])
 
 
-@controller.get("/{notificationId}")
+@controller.get("/{notificationId}", response_model=Notification)
 def get_notification(notificationId: str, claims: dict = Permission):
     """README 7.3: one notification of the own inbox with `read` for the caller."""
     return inbox.get(notificationId, claims)

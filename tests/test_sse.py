@@ -240,7 +240,7 @@ def test_inbox_stream_created_and_done(server):
     created = erika.next()
     assert created["event"] == "notification-created" and created["data"]["type"] == "APPLICATION_SUBMITTED"
     assert "content" not in created["data"] and otto.quiet(0.3)
-    assert c11_store.notifications[0]["sourceEventId"] == trigger["id"]   # the CloudEvent `id` (FRAMEWORK 6)
+    assert c11_store.notifications()[0]["sourceEventId"] == trigger["id"]   # the CloudEvent `id` (FRAMEWORK 6)
     pid = str(uuid.uuid4())
     c11.on_event(ev("ProcessStepFailed", processId=pid, flowKey="onboarding", subjectType="APPLICATION",
                     subjectId=APPLICATION, stepKey="register-company", errorType="x", retryable=False))

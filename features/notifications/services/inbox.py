@@ -35,25 +35,26 @@ from collections.abc import Callable
 
 from features.notifications.managers import store
 from features.notifications.models import MODULE
+from features.notifications.models.notification import Notification
 from features.notifications.services import marks
 from portal_common.problems import Problem
 
-FIELDS = ("notificationId", "type", "topic", "companyId", "subjectType", "subjectId", "content", "forStaff",
-          "done", "createdAt", "doneAt")   # openapi `Notification`, apart from `read`, which is per person
+# openapi `Notification`, apart from `read`, which is per person
+FIELDS = tuple(f.alias for name, f in Notification.model_fields.items() if name != "read")
 
 
-def view(n: dict, sub: str | None) -> dict:
-    """Schema `Notification` with `read` for the calling person (README 7.3)."""
-    # `content` is copied: a view leaves the lock, and a caller that changes it must not change the inbox.
-    return {f: n[f] for f in FIELDS} | {"content": dict(n["content"]), "read": marks.is_read(n, sub)}
+def view(n: dict, state: dict) -> dict:
+    """Schema `Notification` with `read` from the person's `notification_state` row (README 7.3)."""
+    return {f: n[f] for f in FIELDS} | {"read": marks.read_in(state)}
 
 
 def own(claims: dict) -> list[dict]:
-    """README 4 and 7.1: the caller's notifications as `Notification` views, hidden ones left out."""
-    sub = claims.get("sub")
+    """README 4 and 7.1: the caller's notifications as `Notification` views, hidden ones left out; two queries,
+    however large the inbox."""
     with store.LOCK:
-        return [view(n, sub) for n in store.notifications
-                if store.visible_to(n, claims) and not marks.is_hidden(n, sub)]
+        states = store.states(claims.get("sub"))
+        return [view(n, state) for n in store.inbox(claims)
+                if not marks.hidden_in(state := states.get(n["notificationId"], {}))]
 
 
 def find(notification_id: str, claims: dict) -> dict:
@@ -67,8 +68,7 @@ def find(notification_id: str, claims: dict) -> dict:
 def get(notification_id: str, claims: dict) -> dict:
     """README 7.3: one notification of the own inbox with `read` for the caller."""
     n = find(notification_id, claims)
-    with store.LOCK:
-        return view(n, claims.get("sub"))
+    return view(n, store.state_of(notification_id, claims.get("sub")))
 
 
 def count(claims: dict) -> dict:

@@ -62,7 +62,7 @@ def ev(module: str, etype: str, time: str | None = T0, **data) -> dict:
 
 
 def of_type(ntype: str) -> list[dict]:
-    return [n for n in store.notifications if n["type"] == ntype]
+    return [n for n in store.notifications() if n["type"] == ntype]
 
 
 def submitted(time: str = T0) -> dict:
@@ -97,6 +97,7 @@ def test_subscription_request_is_a_task_for_the_provider_admin_and_activation_cl
     assert (task["subjectType"], task["subjectId"], task["companyId"]) == ("SUBSCRIPTION", SUBSCRIPTION, OSP_COMPANY)
 
     c11.on_event(subscription("SubscriptionActivated", T1))
+    [task] = of_type("SUBSCRIPTION_REQUESTED")   # a fresh read of the stored task
     assert task["done"] is True and task["doneAt"] == dt.datetime.fromisoformat(T1).isoformat()
     [info] = of_type("SUBSCRIPTION_ACTIVATED")
     assert (info["receiverSub"], info["topic"], info["done"]) == (ERIKA, "INFO", None)

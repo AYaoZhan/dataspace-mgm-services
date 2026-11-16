@@ -79,22 +79,19 @@ def _guarded(event: dict, part: str, run) -> None:
 def _remember_applicant(event_type: str, data: dict) -> None:
     """README 5 table `applicant`: the `sub` of the person who submitted the application."""
     if event_type == "ApplicationSubmitted" and data.get("applicationId") and data.get("applicantSub"):
-        with store.LOCK:
-            store.applicants[data["applicationId"]] = data["applicantSub"]
+        store.remember_applicant(data["applicationId"], data["applicantSub"])
 
 
 def _forget_applicant(event_type: str, data: dict) -> None:
     """README 5 table `applicant`: the row goes when the application has ended."""
     if event_type in _APPLICATION_ENDED:
-        with store.LOCK:
-            store.applicants.pop(data.get("applicationId"), None)
+        store.forget_applicant(data.get("applicationId"))
 
 
 def _applicant(data: dict) -> str | None:
     """README 6.1 "applicant": from the table `applicant`, else `applicantSub` of the event."""
     application_id = data.get("applicationId")
-    with store.LOCK:
-        known = store.applicants.get(application_id) if isinstance(application_id, str) else None
+    known = store.applicant(application_id) if isinstance(application_id, str) else None
     return known or data.get("applicantSub")
 
 

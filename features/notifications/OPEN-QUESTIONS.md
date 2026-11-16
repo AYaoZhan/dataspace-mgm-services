@@ -31,7 +31,7 @@ the reading this implementation uses. A spec change goes to the spec repository,
 
 | No. | Question | Spec | What this implementation does |
 |---|---|---|---|
-| 1 | Persistence | README 4, 5 | Data in memory, not in the database `c11_m1`. A restart loses the inbox, the applicants, the processed event ids and queued jobs. `RETENTION_DAYS` is not applied yet. |
+| 1 | Persistence | README 4, 5 | The tables of README 5 (`models/tables.py`) in the feature's own database (`NOTIFICATIONS_DATABASE_URL`, `C11_M1_DATABASE_URL`, `DATABASE_URL`); without a URL an in-memory SQLite database, so a restart loses the data. Remembered closing events, queued jobs and the stream replay stay in memory. `RETENTION_DAYS` is not applied yet. |
 | 2 | Subject and company of each rule | README 5 (`subject_type`, `subject_id`, `company_id`), 6.2 | 6.2 does not name them per rule. `services/rules.py` sets them per rule: the object the rule is about (for example `OFFER` / `offerId` for R6 to R8, `COMPANY` / `companyId` for R15), and the company field the recipients come from. |
 | 3 | `companyId` without a company field | README 5 | R12, R13 and R17 events carry no company field that the rule uses, so `companyId` is empty (`null`). |
 | 4 | `done` of an information | README 5, openapi `Notification.done` | `null` for topic `INFO`, in 7.1 and in `notification-created`; `true`/`false` only for tasks. |
@@ -47,3 +47,4 @@ the reading this implementation uses. A spec change goes to the spec repository,
 | 14 | Names of the neighbour addresses | README 4, FRAMEWORK 4.7 | README 4 names `APP_ACCESS_URL` (C2-M2) and `SUBSCRIPTION_URL` (C10-M1). The scaffold has one notation for every module, read by `portal_common.neighbours`: `<MODULE>_URL` (`C2_M2_URL`, `C10_M1_URL`), then `MODULE_URLS`, then `MODULE_URLS_DEFAULT` (`docs/developers/hackathon-scaffold.md`). C11-M1 follows the scaffold. |
 | 15 | `done_at` of a task | README 5, 6.2 | A task closed by its closing event gets that event's `time`. A task created as done, because its closing event arrived first, gets the time it was stored. |
 | 16 | Base path | FRAMEWORK 4.1 (`/api/c11-m1` "until the common path convention is settled") | Served under the readable feature name `/api/notifications` (ADR-0003, decision 2); `/api/c11-m1` answers 404. Problem types (`urn:c11-m1:problem:...`), event sources, permissions, the log name `portal.c11-m1` and the service account `svc-c11-m1` keep the spec id. |
+| 17 | An ID field that is not a string | README 5, FRAMEWORK 4.1 | `companyId` and `subjectId` are stored only when the event field is a string (the columns hold IDs); any other value gives `null`. `content` keeps the event data as it is. |

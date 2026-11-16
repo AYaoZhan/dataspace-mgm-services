@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets and data models of the notifications."""
+"""Models of the notifications: the API models (`notification`), the tables (`tables`) and the rule type (`rule`)."""
 from __future__ import annotations
 
 MODULE = "c11-m1"   # the spec id: Problem types, logs, permissions and svc-c11-m1 keep it
