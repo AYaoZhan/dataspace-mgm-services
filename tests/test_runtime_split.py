@@ -76,6 +76,7 @@ def _served(app) -> list[dict]:
 def test_feature_packages_are_found_by_their_readable_name():
     assert layout.features() == {
         "c1-m2": "registration",
+        "c2-m2": "app_access",
         "c1-m3": "application_review",
         "c2-m3": "technical_user",
         "c3-m1": "company_profile",

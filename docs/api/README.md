@@ -12,7 +12,7 @@ between modules in the same process. The module specifications (until they are m
 |---|---|
 | C1-M2 Registration | `/api/registration` (migrated feature, ADR-0003) |
 | C1-M3 Application Review | `/api/application-review` (migrated feature, ADR-0003) |
-| C2-M2 Users and App Access | `/api/c2-m2` |
+| C2-M2 Users and App Access | `/api/app-access` (migrated feature, ADR-0003) |
 | C2-M3 Technical Users | `/api/technical-user` (migrated feature, ADR-0003) |
 | C3-M1 Company Profile | `/api/company-profile` (migrated feature, ADR-0003) |
 | C3-M2 CSP Connection | `/api/csp-connection` (migrated feature, ADR-0003) |

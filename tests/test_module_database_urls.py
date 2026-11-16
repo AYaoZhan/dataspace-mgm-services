@@ -27,7 +27,7 @@ DATABASE_URL (README 4) only counts for a module that has no own variable set, e
 Found at the go-live of 06.11.2026: DATABASE_URL for C2-M2 switched C3-M1 to PostgreSQL as well."""
 import pytest
 
-from modules.c2_m2.c2_m2_impl.config.config import Config
+from features.app_access.managers.config.config import Config
 from portal_common import database
 
 VARIABLES = ("DATABASE_URL", "C2_M2_DATABASE_URL", "C3_M1_DATABASE_URL", "COMPANY_PROFILE_DATABASE_URL",

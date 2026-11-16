@@ -108,7 +108,7 @@ uv run uvicorn --factory scaffold.app:create_app --port 8000
 ```
 
 Databases: all modules of an installation run in one process, so each module with a database reads its own variable,
-`C2_M2_DATABASE_URL` (needed by C2-M2) and `C3_M1_DATABASE_URL` (optional, otherwise in memory). Do not set
+`C2_M2_DATABASE_URL` (optional for C2-M2, otherwise in memory; `APP_ACCESS_DATABASE_URL` also works) and `C3_M1_DATABASE_URL` (optional, otherwise in memory). Do not set
 `DATABASE_URL` in an installation: a module without its own variable falls back to it (README 4, for a module that
 runs alone), so one value would switch several modules to the same database.
 

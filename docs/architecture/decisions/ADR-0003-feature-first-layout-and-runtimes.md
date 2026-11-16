@@ -7,6 +7,7 @@ Also migrated: `application_review` (C1-M3) from `modules/c1_m3/`.
 Also migrated: `csp_connection` (C3-M2) from `modules/c3_m2/`.
 Then `notifications` (C11-M1) from `modules/c11_m1/`.
 Also migrated: `connector` (C6-M1) from `modules/c6_m1/`.
+Also migrated: `app_access` (C2-M2) from `modules/c2_m2/`.
 Also migrated: `dataspace_wallet_interface` (C4-M2) from `modules/c4_m2/`.
 Also migrated: `subscriptions` (C10-M1) from `modules/c10_m1/`.
 Also migrated: `credentials` (C4-M1) from `modules/c4_m1/`.
@@ -142,7 +143,9 @@ adapters, models, and runtimes that assemble the app.
      - `connector` keeps its register in SQLModel tables of its own database (`portal_common.database`);
      - `dataspace_wallet_interface` keeps its tables in `portal_common.database` (`models/tables.py`, repository `managers/wallet_store.py`);
      - `subscriptions` keeps its data in SQLModel tables through `portal_common.database` (`SUBSCRIPTIONS_DATABASE_URL`);
-     - C2-M2 (not migrated) reads `C2_M2_DATABASE_URL`, so in today's monolith the two no longer share one
+     - `app_access` (C2-M2) keeps its tables in SQLModel tables of its own database (`portal_common.database`), with
+       Alembic migrations on PostgreSQL, and reads `APP_ACCESS_DATABASE_URL` or `C2_M2_DATABASE_URL`, so in today's
+       monolith the two no longer share one
        database as long as the plain `DATABASE_URL` stays unset.
 
      `portal_common.database` (SQLModel engine and session per feature, URL order of decision 6) is in place.
