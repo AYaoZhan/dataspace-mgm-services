@@ -27,7 +27,7 @@ from conftest import BASE, bearer, person_token
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from portal_common import problems, spec, standin
+from portal_common import layout, problems, spec, standin
 from scaffold import app as scaffold_app
 from scaffold import registry
 
@@ -44,17 +44,16 @@ def test_every_spec_module_has_a_folder_and_a_kind():
 
 def test_feature_package_is_the_registry_entry():
     entry = next(e for e in registry.load() if e.id == "c2-m3")
-    assert entry.module.__name__ == "features.technical_users"
-    assert entry.module.MODULE == "c2-m3"
+    assert entry.kind == "feature"
+    assert entry.module.router is layout.router("c2-m3")
 
 
-def test_selected_runtime_feature_leaves_other_modules_on_fallback():
-    entries = {e.id: e for e in registry.load(("technical_users",))}
-    assert entries["c2-m3"].module.__name__ == "features.technical_users"
-    assert entries["c1-m2"].module is None
-    paths = TestClient(scaffold_app.create_app(("technical_users",)), base_url=BASE).get("/openapi.json").json()["paths"]
-    assert "/api/c2-m3/companies/{companyId}/technical-users" in paths
-    assert "/api/c1-m2/applications" in paths
+def test_selected_runtime_serves_only_its_feature(monkeypatch):
+    monkeypatch.setenv("C2_M3_URL", "in-process")   # create_app sets it for its own features; restored afterwards
+    assert {e.id for e in registry.load(("technical_user",))} == {"c2-m3"}
+    paths = TestClient(scaffold_app.create_app(("technical_user",)), base_url=BASE).get("/openapi.json").json()["paths"]
+    assert "/api/technical-user/companies/{companyId}/technical-users" in paths
+    assert not any(path.startswith(("/api/c2-m3/", "/api/registration/")) for path in paths)
 
 
 def test_every_spec_operation_is_mounted_once():
