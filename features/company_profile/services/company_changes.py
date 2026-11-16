@@ -46,7 +46,8 @@ def changed_fields(row: dict, body: dict, identifiers: list[dict] | None) -> lis
                     before and after and company_validation.same_value(before, after)):
                 changed.append(CAMEL.get(field, field))
     if identifiers is not None:
-        before = {(entry["type"], entry["value_normalized"]) for entry in company_repository.list_identifiers(row["id"])}
+        before = {(entry["type"], entry["value_normalized"])
+                  for entry in company_repository.list_identifiers(row["id"])}
         after = {(entry["type"], company_validation.value_normalized(entry["value"])) for entry in identifiers}
         if before != after:
             changed.append("identifiers")

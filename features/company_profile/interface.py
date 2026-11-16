@@ -26,21 +26,32 @@ queries of README 9 under their convention names. Other services and Process Orc
 """
 from __future__ import annotations
 
-from features.company_profile.services.company_lifecycle_service import (
-           activate_company,
-           assign_identifier,
-           create_company,
-           deactivate_company,
-           reactivate_company,
-           reject_company,
-)
-from features.company_profile.services.company_query_service import (
-           find_identifier_matches,
-           query_companies,
-           query_company,
-           query_company_role_catalog,
-)
+import functools
+
+from features.company_profile.models import wire
+from features.company_profile.services import company_lifecycle_service as lifecycle
+from features.company_profile.services import company_query_service as queries
 from features.company_profile.services.shared import MODULE
+
+
+def _json(call):
+    """An in-process call answers the JSON the HTTP API sends, so a caller never sees which way it went."""
+    @functools.wraps(call)
+    def answer(*args, **kwargs):
+        return wire(call(*args, **kwargs))
+    return answer
+
+
+create_company = _json(lifecycle.create_company)
+assign_identifier = _json(lifecycle.assign_identifier)
+activate_company = _json(lifecycle.activate_company)
+reject_company = _json(lifecycle.reject_company)
+deactivate_company = _json(lifecycle.deactivate_company)
+reactivate_company = _json(lifecycle.reactivate_company)
+query_company = _json(queries.query_company)
+query_companies = _json(queries.query_companies)
+find_identifier_matches = _json(queries.find_identifier_matches)
+query_company_role_catalog = _json(queries.query_company_role_catalog)
 
 __all__ = ["MODULE", "activate_company", "assign_identifier", "create_company", "deactivate_company",
            "find_identifier_matches", "query_companies", "query_company", "query_company_role_catalog",
