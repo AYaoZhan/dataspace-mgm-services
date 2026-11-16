@@ -42,16 +42,14 @@ from __future__ import annotations
 
 import uuid
 
-import yaml
-
 import pytest
-
-from portal_common import events, neighbours, spec
-from tools import testdata
+import yaml
 from test_c4_m2_common import (
+    API,
     COMPANIES,
     CSP_URL,
     OSP_A_ID,
+    PKG,
     companies,  # noqa: F401  (fixture)
     event_errors,
     osp_factory,  # noqa: F401  (fixture)
@@ -59,6 +57,9 @@ from test_c4_m2_common import (
     seam,
     step_input,
 )
+
+from portal_common import events, neighbours, spec
+from tools import testdata
 
 U1 = COMPANIES["u1"]
 BPN = U1["bpn"]
@@ -100,7 +101,7 @@ def _routed(r, what: str):
 
 
 def create_wallet(osp, svc, n: int = 1):
-    return _routed(osp.post("/api/c4-m2/steps/create-wallet", svc, json=step_input(U1["id"], n)), "create-wallet")
+    return _routed(osp.post(f"{API}/steps/create-wallet", svc, json=step_input(U1["id"], n)), "create-wallet")
 
 
 def issue(osp, svc, n: int = 2):
@@ -125,7 +126,7 @@ def test_create_wallet_event_has_all_required_fields_and_did_equals_wallet_info(
     assert ev["source"] == "urn:c4-m2"
     assert event_errors("c4-m2", ev) == []
     assert WALLET_CREATED_FIELDS <= set(ev["data"]), f"missing: {WALLET_CREATED_FIELDS - set(ev['data'])}"
-    info = seam("modules.c4_m2.interface").get_wallet_info(companyId=U1["id"])
+    info = seam(f"{PKG}.interface").get_wallet_info(companyId=U1["id"])
     assert ev["data"]["did"] == info["did"] == WALLET_DID
     assert ev["data"]["companyId"] == U1["id"] and ev["data"]["bpn"] == BPN and ev["data"]["provider"] == "CSP"
     assert ev["data"]["walletId"] == info["walletId"] and ev["data"]["didDocumentLocation"]
@@ -135,7 +136,7 @@ def test_c4_m1_sees_the_wallet_through_the_contract(osp_factory, companies):
     # C4-M1 README 11.2: status ACTIVE, provider, issuanceMode, did, didDocumentLocation, providerRef
     osp, svc = start(osp_factory)
     create_wallet(osp, svc)
-    info = seam("modules.c4_m2.interface").get_wallet_info(companyId=U1["id"])
+    info = seam(f"{PKG}.interface").get_wallet_info(companyId=U1["id"])
     assert info["status"] == "ACTIVE" and info["provider"] == "CSP" and info["issuanceMode"] == "HOLDER_REQUESTS"
     assert info["did"] == WALLET_DID and info["didDocumentLocation"] and info["providerRef"]
     from portal_common import neighbours
@@ -225,7 +226,7 @@ def test_onboarding_flow_register_did_gets_the_wallet_did_from_the_event_payload
     assert len(register) == 1 and register[0]["did"] == created["data"]["did"] == WALLET_DID
     assert register[0]["companyId"] == U1["id"]
     row = osp.csp.core.companies[BPN]
-    assert row["did"] == WALLET_DID == seam("modules.c4_m2.interface").get_wallet_info(companyId=U1["id"])["did"]
+    assert row["did"] == WALLET_DID == seam(f"{PKG}.interface").get_wallet_info(companyId=U1["id"])["did"]
     assert row["homeOspId"] == OSP_A_ID
     assert len(osp.events("CompanyDidRegistered")) == 1 and len(osp.events("CredentialsIssued")) == 1
     order = [e["type"] for e in events.RELAY.log
@@ -241,7 +242,7 @@ def test_create_wallet_account_after_create_wallet_publishes_wallet_account_crea
     create_wallet(osp, svc)
     companies.set_status(U1["id"], "ACTIVE")      # kit: U1 is REQUESTED at C3-M1; 8.2 needs an ACTIVE company
     tu = str(uuid.uuid4())
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", svc,
+    r = osp.post(f"{API}/steps/create-wallet-account", svc,
                  json={**step_input(U1["id"], 5), "technicalUserId": tu})
     assert r.status_code == 200, r.text
     assert r.json()["state"] == "RUNNING" and r.json()["result"]["status"] == "ACTIVE"      # CSP: ACTIVE within the call
@@ -303,7 +304,7 @@ def test_wallet_access_flow_hands_outcome_and_wallet_account_ref_to_apply_wallet
     created = osp.events("WalletAccountCreated")
     assert len(created) == 1 and created[0]["data"]["technicalUserId"] == tu
     ref = created[0]["data"]["walletAccountRef"]
-    assert ref and ref == seam("modules.c4_m2.interface").get_wallet_account_internal(technicalUserId=tu)["walletAccountRef"]
+    assert ref and ref == seam(f"{PKG}.interface").get_wallet_account_internal(technicalUserId=tu)["walletAccountRef"]
     first = calls(engine, "c4-m2.create-wallet-account")
     assert len(first) == 1 and first[0]["technicalUserId"] == tu and first[0]["companyId"] == U1["id"]
     applied = calls(engine, "c2-m3.apply-wallet-access")
@@ -321,7 +322,7 @@ def test_wallet_access_removal_flow_completes_on_wallet_account_deleted(osp_fact
     create_wallet(osp, svc)
     companies.set_status(U1["id"], "ACTIVE")
     tu = str(uuid.uuid4())
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", svc, json={**step_input(U1["id"], 5), "technicalUserId": tu})
+    r = osp.post(f"{API}/steps/create-wallet-account", svc, json={**step_input(U1["id"], 5), "technicalUserId": tu})
     assert r.status_code == 200, r.text
     ref = osp.events("WalletAccountCreated")[0]["data"]["walletAccountRef"]
     engine = engine_for(tmp_path, "wallet-access-removal", ["delete-wallet-account", "delete-technical-user"])
@@ -352,7 +353,7 @@ def test_create_wallet_failure_event_fails_the_step_through_the_engine(osp_facto
         "applicationId": str(uuid.uuid4()), "companyId": U1["id"], "kind": "ONBOARDING", "existingCompany": False,
         "applicantSub": "ebw.test-erika"}))
     assert [c for c, _ in engine.call_log] == ["c4-m2.create-wallet"], engine.call_log
-    seam("modules.c4_m2.providers").flush_stand_in()              # the SAP DIV callback (wrong DID)
+    seam(f"{PKG}.managers.providers").flush_stand_in()              # the SAP DIV callback (wrong DID)
     pump(engine, timers=False)
     failed = osp.events("DataspaceWalletFailed")
     assert len(failed) == 1 and failed[0]["data"]["reason"] == "DID_MISMATCH" and failed[0]["data"]["companyId"] == U1["id"]

@@ -84,6 +84,7 @@ def test_feature_packages_are_found_by_their_readable_name():
         "c3-m2": "csp_connection",
         "c11-m1": "notifications",
         "c6-m1": "connector",
+        "c4-m2": "dataspace_wallet_interface",
         "c10-m1": "subscriptions",
     }
     assert (registration.NAME, registration.MODULE) == ("registration", "c1-m2")

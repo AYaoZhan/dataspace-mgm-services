@@ -39,10 +39,25 @@ import jwt
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from test_c4_m2_common import (
+    API,
+    COMPANIES,
+    CSP_URL,
+    OSP_A_ID,
+    OSP_B_ID,
+    PKG,
+    SECRETS_KEY_HEX,
+    Clock,
+    assert_no_secret,
+    companies,
+    event_errors,
+    osp_factory,
+    schema_errors,
+    seam,
+    step_input,
+)
 
 from portal_common import http as phttp
-from test_c4_m2_common import (COMPANIES, CSP_URL, OSP_A_ID, OSP_B_ID, SECRETS_KEY_HEX, Clock, assert_no_secret, companies,
-                               event_errors, osp_factory, schema_errors, seam, step_input)
 from tools.keys import ec_jwk
 
 CSP_BPN = "BPNLIUK2REMLK3F4"
@@ -59,15 +74,15 @@ def create(osp, key, provider=None, n=1):
     body = step_input(cid, n, companyId=cid)
     if provider:
         body["provider"] = provider
-    return osp.post("/api/c4-m2/steps/create-wallet", osp.service("svc-c4-m2"), json=body)
+    return osp.post(f"{API}/steps/create-wallet", osp.service("svc-c4-m2"), json=body)
 
 
 def info(key):
-    return seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
+    return seam(f"{PKG}.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
 
 
 def row(key):
-    return seam("modules.c4_m2.interface").store().get_wallet(COMPANIES[key]["id"])
+    return seam(f"{PKG}.interface").store().get_wallet(COMPANIES[key]["id"])
 
 
 def wallet_events(osp):
@@ -77,7 +92,7 @@ def wallet_events(osp):
 def wallet_orders():
     # OPEN-QUESTION: the shape of providers.orders() (`provider`, `bpn`, `kind`) is the TEAM3-PLAN 12.2 convention,
     # not README text; the README only says "no second order to the stand-in".
-    return [(o["provider"], o["bpn"], o["kind"]) for o in seam("modules.c4_m2.providers").orders()]
+    return [(o["provider"], o["bpn"], o["kind"]) for o in seam(f"{PKG}.managers.providers").orders()]
 
 
 class Spy:
@@ -171,17 +186,17 @@ def test_case_08_builtin_csp_holder_access_holder_requests(osp_factory, companie
     # README 13 case 8 "holder-access returns HOLDER_REQUESTS with identityApiUrl, participantContextId and apiKey"
     osp = osp_factory()
     create(osp, "csp", "CSP")
-    access = seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
+    access = seam(f"{PKG}.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
     assert schema_errors("c4-m2", "HolderAccess", access) == []
     assert access["issuanceMode"] == "HOLDER_REQUESTS"
     assert (access["companyId"], access["bpn"], access["did"], access["provider"]) == \
            (COMPANIES["csp"]["id"], CSP_BPN, CSP_DID, "CSP")
     assert access["identityApiUrl"].startswith("http") and access["apiKey"]
     assert access["participantContextId"] == info("csp")["providerRef"]
-    store = seam("modules.c4_m2.interface").store()
+    store = seam(f"{PKG}.interface").store()
     secret = store.get_secret(info("csp")["walletId"], "HOLDER_ACCESS")             # README 8.1: stored as HOLDER_ACCESS
     assert secret and secret["client_id"] == access["participantContextId"]
-    assert seam("modules.c4_m2.crypto").decrypt(secret["secret_encrypted"], secret["nonce"], secret["key_version"]) == access["apiKey"]
+    assert seam(f"{PKG}.managers.crypto").decrypt(secret["secret_encrypted"], secret["nonce"], secret["key_version"]) == access["apiKey"]
 
 
 def test_case_08_builtin_csp_without_provider_uses_the_default_provider_csp(osp_factory, companies):
@@ -214,7 +229,7 @@ def test_case_09_identity_hub_holder_access_and_sts_access_are_stored(osp_factor
     # README 8.1: "store them encrypted as HOLDER_ACCESS and STS_ACCESS"; 9.3 HOLDER_REQUESTS with apiKey
     osp = osp_factory()
     create(osp, "ih", "IDENTITY_HUB")
-    interface, crypto = seam("modules.c4_m2.interface"), seam("modules.c4_m2.crypto")
+    interface, crypto = seam(f"{PKG}.interface"), seam(f"{PKG}.managers.crypto")
     access = interface.get_holder_access(companyId=COMPANIES["ih"]["id"])
     assert schema_errors("c4-m2", "HolderAccess", access) == []
     assert access["issuanceMode"] == "HOLDER_REQUESTS" and access["participantContextId"] == IH_BPN
@@ -275,7 +290,7 @@ def test_case_08_shared_csp_standin_holder_access(osp_factory, companies):
     osp = osp_factory(env=SHARED_CSP_ENV, csp=True)
     osp.csp_register(CSP_BPN)
     create(osp, "csp", "CSP")
-    access = seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
+    access = seam(f"{PKG}.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
     stand_in = osp.csp.wallets[CSP_BPN]
     assert schema_errors("c4-m2", "HolderAccess", access) == []
     assert access["issuanceMode"] == "HOLDER_REQUESTS"
@@ -349,7 +364,7 @@ def test_case_24_csp_409_wallet_exists_deletes_and_creates_again(osp_factory, co
                                             ("POST", wallets_url)]
     fresh = osp.csp.wallets[CSP_BPN]
     assert fresh["apiKey"] != old["apiKey"] and fresh["participantContextId"] != old["participantContextId"]
-    access = seam("modules.c4_m2.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
+    access = seam(f"{PKG}.interface").get_holder_access(companyId=COMPANIES["csp"]["id"])
     assert access["apiKey"] == fresh["apiKey"] and access["participantContextId"] == fresh["participantContextId"]
     assert info("csp")["status"] == "ACTIVE"
 
@@ -388,22 +403,22 @@ def test_case_24_csp_403_from_the_wallet_api_is_provider_rejected(osp_factory, c
 
 # ================================================================================================ case 25
 def _all_haystacks(osp, caplog, keys):
-    interface = seam("modules.c4_m2.interface")
+    interface = seam(f"{PKG}.interface")
     store = interface.store()
     http_texts = []
     for key in keys:
         cid = COMPANIES[key]["id"]
-        http_texts.append(osp.get(f"/api/c4-m2/internal/wallets/{cid}", osp.service("svc-c4-m2")).text)
-        http_texts.append(osp.get(f"/api/c4-m2/companies/{cid}/wallet", osp.person(f"p-{key}", ["IT Admin"], company_id=cid)).text)
+        http_texts.append(osp.get(f"{API}/internal/wallets/{cid}", osp.service("svc-c4-m2")).text)
+        http_texts.append(osp.get(f"{API}/companies/{cid}/wallet", osp.person(f"p-{key}", ["IT Admin"], company_id=cid)).text)
     return [caplog.text, osp.events(), store.list_audit(), store.list_step_log(), json.dumps(store.dump(), sort_keys=True),
             http_texts]
 
 
 def _collect_secrets(osp, keys):
-    interface, crypto = seam("modules.c4_m2.interface"), seam("modules.c4_m2.crypto")
+    interface, crypto = seam(f"{PKG}.interface"), seam(f"{PKG}.managers.crypto")
     store, secrets = interface.store(), []
     for key in keys:
-        r = osp.get(f"/api/c4-m2/internal/wallets/{COMPANIES[key]['id']}/holder-access", osp.service("svc-c4-m1"))
+        r = osp.get(f"{API}/internal/wallets/{COMPANIES[key]['id']}/holder-access", osp.service("svc-c4-m1"))
         assert r.status_code == 200, r.text
         access = r.json()
         secrets += [access[k] for k in ("apiKey", "clientSecret") if k in access]
@@ -420,8 +435,8 @@ def test_case_25_builtin_standins_secrets_appear_nowhere(osp_factory, companies,
     results = []
     for n, (key, provider) in enumerate(PROVIDERS, 1):
         results.append(create(osp, key, provider, n=n).text)
-    seam("modules.c4_m2.providers").flush_stand_in()
-    seam("modules.c4_m2.service").run_timer_once()
+    seam(f"{PKG}.managers.providers").flush_stand_in()
+    seam(f"{PKG}.services.wallet_service").run_timer_once()
     keys = [k for k, _ in PROVIDERS]
     assert all(info(k)["status"] == "ACTIVE" for k in keys)
     secrets = _collect_secrets(osp, keys)
@@ -430,8 +445,8 @@ def test_case_25_builtin_standins_secrets_appear_nowhere(osp_factory, companies,
     for secret in secrets + [SECRETS_KEY_HEX]:
         assert_no_secret(secret, *hay)
     # the step log really exists, so the scan above is not vacuous
-    assert len(seam("modules.c4_m2.interface").store().list_step_log()) >= 3
-    assert len(seam("modules.c4_m2.interface").store().list_audit()) >= 3                   # holder-access retrievals
+    assert len(seam(f"{PKG}.interface").store().list_step_log()) >= 3
+    assert len(seam(f"{PKG}.interface").store().list_audit()) >= 3                   # holder-access retrievals
 
 
 def test_case_25_shared_csp_standin_api_key_appears_nowhere(osp_factory, companies, caplog):
@@ -459,7 +474,7 @@ def test_case_25_failed_orders_do_not_log_secrets_either(osp_factory, companies,
     did = "did:web:div.example.org:did:" + bpn
     bad_document = {"@context": ["https://www.w3.org/ns/did/v1"], "id": did,
                     "service": [{"id": did + "#cs", "type": "CredentialService", "serviceEndpoint": "https://x.example/cs"}]}
-    callback = osp.post(f"/api/c4-m2/callbacks/sap-div/wallets/{bpn}",
+    callback = osp.post(f"{API}/callbacks/sap-div/wallets/{bpn}",
                         osp.service("sa-div-callback", ["submit_wallet_callback"]),
                         json={"did": did, "didDocument": bad_document,
                               "authenticationDetails": {"authenticationServiceUrl": "https://auth.div.example.org/oauth",
@@ -470,7 +485,7 @@ def test_case_25_failed_orders_do_not_log_secrets_either(osp_factory, companies,
     again = create(osp, "div", "SAP_DIV", n=2)
     assert again.status_code == 502, again.text
     assert row("div")["attempt"] == 2 and row("div").get("provider_ordered_at") is None
-    store = seam("modules.c4_m2.interface").store()
+    store = seam(f"{PKG}.interface").store()
     assert store.list_audit() and store.list_step_log()                           # the scan is not vacuous
     hay = [caplog.text, osp.events(), store.list_audit(), store.list_step_log(), json.dumps(store.dump(), sort_keys=True),
            first.text, callback.text, again.text]
@@ -491,7 +506,7 @@ def test_case_25_failed_ih_order_does_not_log_the_key(osp_factory, companies, ca
 def did(monkeypatch):
     monkeypatch.setenv("SAP_DIV_DID_DOCUMENT_BASE_URL", "https://div.example.org/did")
     monkeypatch.setenv("IDENTITYHUB_DID_BASE", "ih.example.org")
-    return seam("modules.c4_m2.did")
+    return seam(f"{PKG}.managers.did_resolver")
 
 
 DIV_BPN = "BPNL0000000DIV01"
@@ -705,9 +720,9 @@ def test_not_resolvable_is_retried_at_the_interval_until_it_resolves(osp_factory
     # README 6.4: "repeats every DID_VALIDATION_INTERVAL_MINUTES"; 6.10 DID check; step 4 on success
     state = {"status": 404, "body": NOT_FOUND, "requests": []}
     resolver(state)
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, f"{PKG}.services.wallet_service")
     osp = osp_factory(env=_ih_env())
-    service = seam("modules.c4_m2.service")
+    service = seam(f"{PKG}.services.wallet_service")
     create(osp, "ih", "IDENTITY_HUB")
     assert len(state["requests"]) == 1                                            # "starts immediately on entering VALIDATING"
     service.run_timer_once()
@@ -732,9 +747,9 @@ def test_not_resolvable_after_the_deadline_fails_with_did_not_resolvable(osp_fac
     # OPEN-QUESTION: DID_VALIDATION_MAX_HOURS is whole hours (1) here; README 13 case 7 says "2 minutes" (tests patch the clock)
     state = {"status": 404, "body": NOT_FOUND, "requests": []}
     resolver(state)
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, f"{PKG}.services.wallet_service")
     osp = osp_factory(env=_ih_env())
-    service = seam("modules.c4_m2.service")
+    service = seam(f"{PKG}.services.wallet_service")
     create(osp, "ih", "IDENTITY_HUB")
     for _ in range(5):                                                            # 50 minutes: still before the deadline
         clock.advance(minutes=10, seconds=1)
@@ -760,14 +775,14 @@ def test_invalid_content_fails_at_once_without_further_attempts(osp_factory, com
     del no_key["verificationMethod"]
     state = {"status": 200, "body": found(no_key), "requests": []}
     resolver(state)
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, f"{PKG}.services.wallet_service")
     osp = osp_factory(env=_ih_env())
     create(osp, "ih", "IDENTITY_HUB")
     w = info("ih")
     assert (w["status"], w["failureReason"]) == ("FAILED", "INVALID_DID_DOCUMENT")
     assert len(state["requests"]) == 1
     clock.advance(minutes=10, seconds=1)
-    seam("modules.c4_m2.service").run_timer_once()
+    seam(f"{PKG}.services.wallet_service").run_timer_once()
     assert len(state["requests"]) == 1 and len(wallet_events(osp)) == 1
     assert wallet_events(osp)[0]["data"]["reason"] == "INVALID_DID_DOCUMENT"
 
@@ -807,7 +822,7 @@ def test_wallet_orders_do_not_include_account_orders(osp_factory, companies):
     osp = osp_factory()
     create(osp, "ih", "IDENTITY_HUB")
     create(osp, "csp", "CSP", n=2)
-    assert {o["kind"] for o in seam("modules.c4_m2.providers").orders()} == {"wallet"}
+    assert {o["kind"] for o in seam(f"{PKG}.managers.providers").orders()} == {"wallet"}
 
 
 # ============================================================== README 6.4 step 1 end to end: CSP DID form
@@ -832,7 +847,7 @@ def test_csp_did_that_is_not_did_web_ends_failed_did_mismatch(osp_factory, compa
     osp.csp_register(CSP_BPN)
     r = create(osp, "csp", "CSP")
     assert r.status_code == 200 and r.json()["state"] == "RUNNING", r.text
-    seam("modules.c4_m2.service").run_timer_once()
+    seam(f"{PKG}.services.wallet_service").run_timer_once()
     w = info("csp")
     assert (w["status"], w["failureReason"]) == ("FAILED", "DID_MISMATCH")
     events = wallet_events(osp)

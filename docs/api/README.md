@@ -17,7 +17,7 @@ between modules in the same process. The module specifications (until they are m
 | C3-M1 Company Profile | `/api/company-profile` (migrated feature, ADR-0003) |
 | C3-M2 CSP Connection | `/api/csp-connection` (migrated feature, ADR-0003) |
 | C4-M1 Credentials | `/api/credentials` (migrated feature, ADR-0003) |
-| C4-M2 Dataspace Wallet Interface | `/api/c4-m2` |
+| C4-M2 Dataspace Wallet Interface | `/api/dataspace-wallet-interface` (migrated feature, ADR-0003) |
 | C6-M1 Connectors | `/api/connector` (migrated feature, ADR-0003) |
 | C8-M1 Offers | `/api/offers` (migrated feature, ADR-0003) |
 | C10-M1 Subscriptions | `/api/subscriptions` (migrated feature, ADR-0003) |
