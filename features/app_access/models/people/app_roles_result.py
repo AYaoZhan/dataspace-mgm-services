@@ -22,8 +22,8 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
-from portal_common.models import ApiModel
 from features.app_access.models.app_client.instance_client_ref import InstanceClientRef
+from portal_common.models import ApiModel
 
 
 class AppRolesResult(ApiModel):

@@ -24,8 +24,8 @@
 #################################################################################
 from __future__ import annotations
 
-from features.app_access.models.exception import UpstreamErrorException
 from features.app_access.managers.ports import SubscriptionsGateway
+from features.app_access.models.exception import UpstreamErrorException
 
 from .neighbour_gateway import NeighbourGateway
 

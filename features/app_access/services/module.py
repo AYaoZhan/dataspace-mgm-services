@@ -29,13 +29,14 @@ from __future__ import annotations
 import logging
 import threading
 
-from features.app_access.managers.config import Config
 from features.app_access.managers import database
+from features.app_access.managers.config import Config
 from features.app_access.managers.dao import sql_dao_service
 from features.app_access.managers.gateways import CompanyProfileGatewayImpl, SubscriptionsGatewayImpl
 from features.app_access.managers.iam import portal_iam
 
 from .app_client_service_impl import AppClientServiceImpl
+from .company_users_steps_impl import CompanyUsersStepsImpl
 from .context import Context
 from .invitation_cleanup_job_impl import InvitationCleanupJobImpl
 from .invitation_service_impl import InvitationServiceImpl
@@ -52,6 +53,7 @@ class C2M2Module:
                            CompanyProfileGatewayImpl())
         self.apps = AppClientServiceImpl(self.ctx)
         self.users = UserServiceImpl(self.ctx, self.apps)
+        self.company_steps = CompanyUsersStepsImpl(self.ctx, self.users)
         self.invitations = InvitationServiceImpl(self.ctx, self.users)
         self.cleanup = InvitationCleanupJobImpl(self.invitations.expire_overdue)
 

@@ -23,7 +23,6 @@
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
 from features.app_access.models.constants import InvitationEndReason, InvitationKind, InvitationStatus
-
 from portal_common.models import ApiModel
 
 

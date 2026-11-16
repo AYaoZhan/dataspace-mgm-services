@@ -27,6 +27,8 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
+from features.app_access.models.exception import TemplateMissingException
+
 from .utils.datetime_utils import now
 
 
@@ -40,3 +42,10 @@ class AppClientTemplate:
     iam_client_uuid: str | None = None
     created_at: dt.datetime = field(default_factory=now)
     changed_at: dt.datetime = field(default_factory=now)
+
+    @property
+    def client_uuid(self) -> str:
+        """The UUID of the template client in the Portal IAM, stored once 8.1 has created it."""
+        if self.iam_client_uuid is None:
+            raise TemplateMissingException(f"no client template for app {self.app_id}")
+        return self.iam_client_uuid

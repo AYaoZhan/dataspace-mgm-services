@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 from features.app_access.managers.ports import CompanyProfileGateway
+from features.app_access.models.exception import UpstreamErrorException
 
 from .neighbour_gateway import NeighbourGateway
 
@@ -38,4 +39,7 @@ class CompanyProfileGatewayImpl(NeighbourGateway, CompanyProfileGateway):
     def company(self, company_id: str) -> dict | None:
         if self.is_standin():
             return next((c for c in self.stub_items() if c["id"] == company_id), None)
-        return self.query("query_company", companyId=company_id)
+        found = self.query("query_company", companyId=company_id)
+        if isinstance(found, list):
+            raise UpstreamErrorException(f"{self.TARGET} query_company gave a list, not a company", retryable=True)
+        return found

@@ -26,8 +26,13 @@ from __future__ import annotations
 
 import abc
 
-from features.app_access.models import (AddAppRolesResult, AppInstanceClient, AppRoles, TemplateResult,
-                                           UpdateRoleDescriptionsResult)
+from features.app_access.models import (
+    AddAppRolesResult,
+    AppInstanceClient,
+    AppRoles,
+    TemplateResult,
+    UpdateRoleDescriptionsResult,
+)
 
 
 class AppClientService(abc.ABC):

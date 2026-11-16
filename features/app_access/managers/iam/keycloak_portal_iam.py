@@ -36,9 +36,13 @@ from portal_common import http, tokens
 
 PAGE = 100
 
+OK = (200, 201, 204)
+type Params = dict[str, str | int]
+
 
 class KeycloakPortalIam(PortalIam):
-    """Keycloak Admin REST API under `{IAM_URL}/admin/realms/{IAM_REALM}`, with the service account `C2_M2_CLIENT_ID`."""
+    """Keycloak Admin REST API under `{IAM_URL}/admin/realms/{IAM_REALM}`, with the service account
+    `C2_M2_CLIENT_ID`."""
 
     def __init__(self, config: Config) -> None:
         self.config = config
@@ -70,18 +74,26 @@ class KeycloakPortalIam(PortalIam):
             self._token = (body["access_token"], time.time() + int(body.get("expires_in", 60)))
         return body["access_token"]
 
-    def _call(self, method: str, path: str, ok: tuple[int, ...] = (200, 201, 204), allow_404: bool = False,
-              **kw) -> httpx.Response | None:
+    def _send(self, method: str, path: str, ok: tuple[int, ...], allow_404: bool, params: Params | None,
+              json: object) -> httpx.Response:
         url = f"{self._realm_url(admin=True)}{path}"
+        headers = {"Authorization": f"Bearer {self._access_token()}"}
         try:
-            r = http.request(method, url, headers={"Authorization": f"Bearer {self._access_token()}"}, **kw)
+            r = http.request(method, url, headers=headers, params=params, json=json)
         except httpx.HTTPError as e:
             raise iam_error(f"{method} {path}: {type(e).__name__}") from e
-        if allow_404 and r.status_code == 404:
-            return None
-        if r.status_code not in ok:
+        if r.status_code not in ok and not (allow_404 and r.status_code == 404):
             raise iam_error(f"{method} {path} answered {r.status_code}")
         return r
+
+    def _call(self, method: str, path: str, ok: tuple[int, ...] = OK, *, params: Params | None = None,
+              json: object = None) -> httpx.Response:
+        return self._send(method, path, ok, False, params, json)
+
+    def _call_or_none(self, method: str, path: str, *, params: Params | None = None) -> httpx.Response | None:
+        """None when Keycloak answers 404."""
+        r = self._send(method, path, OK, True, params, None)
+        return None if r.status_code == 404 else r
 
     def find_client(self, client_id: str) -> dict | None:
         found = self._call("GET", "/clients", params={"clientId": client_id}).json()
@@ -112,7 +124,7 @@ class KeycloakPortalIam(PortalIam):
         return self._call("GET", f"/clients/{uuid}/roles", params={"briefRepresentation": "false", "max": 1000}).json()
 
     def client_role(self, uuid: str, name: str) -> dict | None:
-        r = self._call("GET", f"/clients/{uuid}/roles/{quote(name, safe='')}", allow_404=True)
+        r = self._call_or_none("GET", f"/clients/{uuid}/roles/{quote(name, safe='')}")
         return r.json() if r is not None else None
 
     def create_client_role(self, uuid: str, name: str, description: str | None) -> None:
@@ -122,10 +134,11 @@ class KeycloakPortalIam(PortalIam):
         self._call("PUT", f"/clients/{uuid}/roles/{quote(name, safe='')}", json=representation)
 
     def users_with_client_role(self, uuid: str, name: str) -> list[dict]:
-        out, first = [], 0
+        out: list[dict] = []
+        first = 0
         while True:
-            r = self._call("GET", f"/clients/{uuid}/roles/{quote(name, safe='')}/users", allow_404=True,
-                           params={"first": first, "max": PAGE})
+            r = self._call_or_none("GET", f"/clients/{uuid}/roles/{quote(name, safe='')}/users",
+                                   params={"first": first, "max": PAGE})
             page = r.json() if r is not None else []
             if not page:
                 return out
@@ -133,17 +146,17 @@ class KeycloakPortalIam(PortalIam):
             first += PAGE
 
     def get_user(self, user_id: str) -> dict | None:
-        r = self._call("GET", f"/users/{user_id}", allow_404=True)
+        r = self._call_or_none("GET", f"/users/{user_id}")
         return r.json() if r is not None else None
 
     def update_user(self, user_id: str, representation: dict) -> None:
         self._call("PUT", f"/users/{user_id}", json=representation)
 
     def logout_user(self, user_id: str) -> None:
-        self._call("POST", f"/users/{user_id}/logout", allow_404=True)
+        self._call_or_none("POST", f"/users/{user_id}/logout")
 
     def role_mappings(self, user_id: str) -> dict | None:
-        r = self._call("GET", f"/users/{user_id}/role-mappings", allow_404=True)
+        r = self._call_or_none("GET", f"/users/{user_id}/role-mappings")
         return r.json() if r is not None else None
 
     def client_role_mappings(self, user_id: str, uuid: str) -> list[dict]:

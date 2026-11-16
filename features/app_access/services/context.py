@@ -25,17 +25,18 @@
 """What the service implementations of C2-M2 share: configuration, DAO service, Portal IAM, neighbours, events."""
 from __future__ import annotations
 
+import enum
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
-from features.app_access.models.common import Actor
-from features.app_access.models.constants import RoleKind
-from features.app_access.models.utils import MODULE
 from features.app_access.managers.config import Config
 from features.app_access.managers.config.properties import as_list
 from features.app_access.managers.dao import DaoService
+from features.app_access.managers.ports import CompanyProfileGateway, PortalIam, SubscriptionsGateway, iam_error
+from features.app_access.models.common import Actor
+from features.app_access.models.constants import RoleKind
 from features.app_access.models.internal import AppInstanceClient, AuditLogEntry, RoleAssignmentLogEntry
-from features.app_access.managers.ports import (CompanyProfileGateway, PortalIam, SubscriptionsGateway,
-                                                        iam_error)
+from features.app_access.models.utils import MODULE
 from features.app_access.services.validation import Validator, invalid
 from portal_common import events
 
@@ -88,13 +89,13 @@ class Context:
         return self._core_roles[name]
 
 
-def paginate(items: list, page: int, size: int, render) -> dict:
+def paginate[T](items: list[T], page: int, size: int, render: Callable[[T], object]) -> dict:
     """Lists as in FRAMEWORK 4.1: `{items, page, size, total}`."""
     chunk = items[page * size:(page + 1) * size]
     return {"items": [render(x) for x in chunk], "page": page, "size": size, "total": len(items)}
 
 
-def statuses(values: list[str] | str | None, allowed: type, default: list) -> set:
+def statuses[E: enum.Enum](values: list[str] | str | None, allowed: type[E], default: Iterable[E]) -> set[E]:
     """Repeatable `status` filter, validated against an enumeration."""
     given = [values] if isinstance(values, str) else list(values or [])
     try:

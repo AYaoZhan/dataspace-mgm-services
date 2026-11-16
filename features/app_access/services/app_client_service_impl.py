@@ -25,17 +25,21 @@
 """App clients and app roles: steps 8.1 to 8.7 and queries 9.1 to 9.3 (README 6.1 to 6.4)."""
 from __future__ import annotations
 
-from features.app_access.models.exception import (InstanceExistsException, InvalidStateException, NotFoundException,
-                                               RoleNotFoundException, TemplateMissingException)
-from features.app_access.models import (AddAppRolesResult, AppInstanceClient as AppInstanceClientModel,
-                                           AppRoles, TemplateResult, UpdateRoleDescriptionsResult)
+from features.app_access.managers.config.properties import as_int, as_list
+from features.app_access.models import AddAppRolesResult, AppRoles, TemplateResult, UpdateRoleDescriptionsResult
+from features.app_access.models import AppInstanceClient as AppInstanceClientModel
 from features.app_access.models.common import Actor
 from features.app_access.models.constants import InstanceClientStatus, InstanceKind
-from features.app_access.services.ports import AppClientService
-from features.app_access.managers.config.properties import as_int, as_list
+from features.app_access.models.exception import (
+    InstanceExistsException,
+    InvalidStateException,
+    NotFoundException,
+    RoleNotFoundException,
+    TemplateMissingException,
+)
+from features.app_access.models.internal import AppClientTemplate, AppInstanceClient, AppRoleRepresentation, new_id, now
 from features.app_access.services.context import Context
-from features.app_access.models.internal import (AppClientTemplate, AppInstanceClient, AppRoleRepresentation,
-                                                     new_id, now)
+from features.app_access.services.ports import AppClientService
 from features.app_access.services.validation import invalid
 
 
@@ -52,7 +56,8 @@ class AppClientServiceImpl(AppClientService):
 
     def _template_settings(self, t: AppClientTemplate) -> dict:
         return self._common() | {
-            "clientId": t.iam_client_id, "name": t.app_name, "description": f"Template of app {t.app_id}. Not for sign-in.",
+            "clientId": t.iam_client_id, "name": t.app_name,
+            "description": f"Template of app {t.app_id}. Not for sign-in.",
             "enabled": False, "publicClient": False, "standardFlowEnabled": False,
             "defaultClientScopes": [], "optionalClientScopes": []}
 
@@ -159,7 +164,7 @@ class AppClientServiceImpl(AppClientService):
         v, dao = self.ctx.validate, self.ctx.dao
         app_id = v.uuid(input, "appId")
         try:
-            kind = InstanceKind(input.get("instanceKind"))
+            kind = InstanceKind(str(input.get("instanceKind")))
         except ValueError:
             raise invalid("instanceKind: SINGLE or SUBSCRIPTION") from None
         url = v.instance_url(input)
@@ -187,7 +192,7 @@ class AppClientServiceImpl(AppClientService):
             if not any(m.get("protocolMapper") == "oidc-audience-mapper"
                        for m in self.ctx.iam.protocol_mappers(client_uuid)):
                 self.ctx.iam.create_protocol_mapper(client_uuid, self._audience_mapper(ic.iam_client_id))
-            for role in self.ctx.iam.client_roles(t.iam_client_uuid):
+            for role in self.ctx.iam.client_roles(t.client_uuid):
                 self._copy_role(client_uuid, role)
             ic.iam_client_uuid, ic.changed_at = client_uuid, now()
             dao.instance_clients.save(ic)
@@ -268,13 +273,13 @@ class AppClientServiceImpl(AppClientService):
             t = self.template(app_id)
             added, skipped = [], []
             for r in roles:
-                existing = iam.client_role(t.iam_client_uuid, r["name"])
+                existing = iam.client_role(t.client_uuid, r["name"])
                 if existing is not None and AppRoleRepresentation.descriptions(existing):
                     skipped.append(r["name"])
                     continue
-                self._ensure_role(t.iam_client_uuid, r["name"], r["descriptions"])
+                self._ensure_role(t.client_uuid, r["name"], r["descriptions"])
                 added.append(r["name"])
-            template_roles = {r["name"]: r for r in iam.client_roles(t.iam_client_uuid)}
+            template_roles = {r["name"]: r for r in iam.client_roles(t.client_uuid)}
             for ic in self.ctx.dao.instance_clients.list_of_app(app_id):
                 if ic.iam_client_uuid is None:
                     continue
@@ -294,11 +299,11 @@ class AppClientServiceImpl(AppClientService):
         iam = self.ctx.iam
         with self.ctx.dao.lock(("app", app_id)):
             t = self.template(app_id)
-            missing = [r["name"] for r in roles if iam.client_role(t.iam_client_uuid, r["name"]) is None]
+            missing = [r["name"] for r in roles if iam.client_role(t.client_uuid, r["name"]) is None]
             if missing:
                 raise RoleNotFoundException(f"roles not on the template: {missing}")
-            clients = [t.iam_client_uuid] + [ic.iam_client_uuid for ic in self.ctx.dao.instance_clients.list_of_app(app_id)
-                                             if ic.iam_client_uuid]
+            instances = self.ctx.dao.instance_clients.list_of_app(app_id)
+            clients = [t.client_uuid] + [ic.client_uuid for ic in instances if ic.iam_client_uuid]
             updated = []
             for r in roles:
                 wanted = AppRoleRepresentation.build(r["name"], r["descriptions"])
@@ -321,7 +326,7 @@ class AppClientServiceImpl(AppClientService):
         t = self.ctx.dao.templates.get(app_id)
         if t is None or t.iam_client_uuid is None:
             return None
-        return sorted((AppRoleRepresentation.to_api(r, lang) for r in self.ctx.iam.client_roles(t.iam_client_uuid)),
+        return sorted((AppRoleRepresentation.to_api(r, lang) for r in self.ctx.iam.client_roles(t.client_uuid)),
                       key=lambda r: r["name"])
 
     def list_app_roles(self, app_ids: list[str], lang: str | None) -> list[AppRoles]:

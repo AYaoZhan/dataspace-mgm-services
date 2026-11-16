@@ -23,10 +23,12 @@
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
 """Public interface of C2-M2 Users and App Access: the steps of README section 8 and the queries of
-section 9, called in-process without a token (AGENTS.md, call convention)."""
+section 9, called in-process without a token (AGENTS.md, call convention), and what the controllers need: the
+module's services and the actor of a call."""
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 
 from pydantic import BaseModel
 
@@ -34,13 +36,14 @@ from features.app_access.models.exception import C2M2BaseException
 from features.app_access.models.exception_translator import ExceptionTranslator
 from features.app_access.models.utils import MODULE
 from features.app_access.services import module
+from features.app_access.services.actors import company_actor, osp_actor, services
 from portal_common.models import StepResult
 
 __all__ = [
-    "MODULE", "add_app_roles", "assign_company_admin", "create_client_template", "create_instance_client",
-    "disable_company_users", "disable_instance_client", "enable_company_users", "enable_instance_client",
-    "get_app_instance_client", "list_app_instance_clients", "list_app_roles", "list_company_user_refs", "reset",
-    "update_instance_url", "update_role_descriptions",
+    "MODULE", "add_app_roles", "assign_company_admin", "company_actor", "create_client_template",
+    "create_instance_client", "disable_company_users", "disable_instance_client", "enable_company_users",
+    "enable_instance_client", "get_app_instance_client", "list_app_instance_clients", "list_app_roles",
+    "list_company_user_refs", "osp_actor", "reset", "services", "update_instance_url", "update_role_descriptions",
 ]
 
 
@@ -48,29 +51,39 @@ def reset() -> None:
     module.reset()
 
 
-def _json(value):
+type Json = dict[str, object]
+
+
+@contextmanager
+def _problems(is_step: bool = False) -> Iterator[None]:
+    """Errors of the implementation as Problem Details; steps always carry `retryable` (README 12)."""
+    try:
+        yield
+    except C2M2BaseException as exc:
+        raise ExceptionTranslator.to_problem(exc, is_step=is_step) from exc
+
+
+def _dump(value: BaseModel) -> Json:
     """The JSON body of the HTTP form (call convention): models as camelCase dicts."""
-    if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
-    if isinstance(value, list):
-        return [_json(v) for v in value]
-    return value
+    return value.model_dump(mode="json")
 
 
-def _step(input: dict, action: Callable[[dict], BaseModel]) -> dict:
-    """Step answer of FRAMEWORK 4.4; errors as Problem Details that always carry `retryable` (README 12)."""
-    try:
-        result = action(input if isinstance(input, dict) else {})
-    except C2M2BaseException as exc:
-        raise ExceptionTranslator.to_problem(exc, is_step=True) from exc
-    return StepResult[object](step_run_id=input.get("stepRunId"), result=_json(result)).model_dump(mode="json")
+def _step(input: dict, action: Callable[[dict], BaseModel]) -> Json:
+    """Step answer of FRAMEWORK 4.4."""
+    payload = input if isinstance(input, dict) else {}
+    with _problems(is_step=True):
+        result = action(payload)
+    return StepResult[object](step_run_id=payload.get("stepRunId"), result=_dump(result)).model_dump(mode="json")
 
 
-def _query(action: Callable[[], object]):
-    try:
-        return _json(action())
-    except C2M2BaseException as exc:
-        raise ExceptionTranslator.to_problem(exc) from exc
+def _query_one(action: Callable[[], BaseModel]) -> Json:
+    with _problems():
+        return _dump(action())
+
+
+def _query_all(action: Callable[[], Sequence[BaseModel]]) -> list[Json]:
+    with _problems():
+        return [_dump(item) for item in action()]
 
 
 def _as_list(value: list[str] | str | None) -> list[str]:
@@ -78,63 +91,63 @@ def _as_list(value: list[str] | str | None) -> list[str]:
 
 
 # -- steps (section 8) ------------------------------------------------------------------------------
-def create_client_template(input: dict) -> dict:
+def create_client_template(input: dict) -> Json:
     return _step(input, module.current().apps.create_client_template)
 
 
-def create_instance_client(input: dict) -> dict:
+def create_instance_client(input: dict) -> Json:
     return _step(input, module.current().apps.create_instance_client)
 
 
-def enable_instance_client(input: dict) -> dict:
+def enable_instance_client(input: dict) -> Json:
     return _step(input, module.current().apps.enable_instance_client)
 
 
-def disable_instance_client(input: dict) -> dict:
+def disable_instance_client(input: dict) -> Json:
     return _step(input, module.current().apps.disable_instance_client)
 
 
-def update_instance_url(input: dict) -> dict:
+def update_instance_url(input: dict) -> Json:
     return _step(input, module.current().apps.update_instance_url)
 
 
-def add_app_roles(input: dict) -> dict:
+def add_app_roles(input: dict) -> Json:
     return _step(input, module.current().apps.add_app_roles)
 
 
-def update_role_descriptions(input: dict) -> dict:
+def update_role_descriptions(input: dict) -> Json:
     return _step(input, module.current().apps.update_role_descriptions)
 
 
-def assign_company_admin(input: dict) -> dict:
-    return _step(input, module.current().users.assign_company_admin)
+def assign_company_admin(input: dict) -> Json:
+    return _step(input, module.current().company_steps.assign_company_admin)
 
 
-def disable_company_users(input: dict) -> dict:
-    return _step(input, module.current().users.disable_company_users)
+def disable_company_users(input: dict) -> Json:
+    return _step(input, module.current().company_steps.disable_company_users)
 
 
-def enable_company_users(input: dict) -> dict:
-    return _step(input, module.current().users.enable_company_users)
+def enable_company_users(input: dict) -> Json:
+    return _step(input, module.current().company_steps.enable_company_users)
 
 
 # -- queries (section 9) ----------------------------------------------------------------------------
-def list_app_roles(*, appId: list[str] | str | None = None, lang: str | None = None, **_other) -> list[dict]:
-    return _query(lambda: module.current().apps.list_app_roles(_as_list(appId), lang))
+def list_app_roles(*, appId: list[str] | str | None = None, lang: str | None = None, **_other: object) -> list[Json]:
+    return _query_all(lambda: module.current().apps.list_app_roles(_as_list(appId), lang))
 
 
 def list_app_instance_clients(*, appId: str | None = None, offerSubscriptionId: str | None = None,
                               customerCompanyId: str | None = None, instanceKind: str | None = None,
-                              status: list[str] | str | None = None, **_other) -> list[dict]:
-    return _query(lambda: module.current().apps.list_app_instance_clients(
+                              status: list[str] | str | None = None, **_other: object) -> list[Json]:
+    return _query_all(lambda: module.current().apps.list_app_instance_clients(
         app_id=appId, offer_subscription_id=offerSubscriptionId, customer_company_id=customerCompanyId,
         instance_kind=instanceKind, statuses=_as_list(status)))
 
 
-def get_app_instance_client(*, id: str) -> dict:  # noqa: A002 - openapi name
-    return _query(lambda: module.current().apps.get_app_instance_client(id))
+def get_app_instance_client(*, id: str) -> Json:  # noqa: A002 - openapi name
+    return _query_one(lambda: module.current().apps.get_app_instance_client(id))
 
 
 def list_company_user_refs(*, companyId: str | None = None, portalRole: str | None = None,
-                           status: list[str] | str | None = None, **_other) -> list[dict]:
-    return _query(lambda: module.current().users.list_company_user_refs(companyId, portalRole, status))
+                           status: list[str] | str | None = None, **_other: object) -> list[Json]:
+    return _query_all(lambda: module.current().users.list_company_user_refs(companyId, portalRole, status))

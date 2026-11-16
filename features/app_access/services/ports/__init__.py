@@ -24,7 +24,8 @@
 #################################################################################
 """Service interfaces of C2-M2, implemented in services/ and called by the controllers and interface.py."""
 from .app_client_service import AppClientService
+from .company_users_steps import CompanyUsersSteps
 from .invitation_service import InvitationService
 from .user_service import UserService
 
-__all__ = ["AppClientService", "InvitationService", "UserService"]
+__all__ = ["AppClientService", "CompanyUsersSteps", "InvitationService", "UserService"]

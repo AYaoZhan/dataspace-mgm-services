@@ -23,10 +23,9 @@
 #  Assisted-By: GitHub Copilot
 #################################################################################
 """What every controller needs: the module's services and the actor of the call."""
-from portal_common import standin
-
 from features.app_access.models.common import Actor
 from features.app_access.models.utils import MODULE
+from portal_common import standin
 
 from . import module
 

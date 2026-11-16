@@ -23,29 +23,48 @@
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
 """Accounts of people: bindings, portal roles, app roles, OSP staff (README 6.5 to 6.7, 6.10 to 6.12),
-operations 7.1 to 7.6 and 7.11 to 7.16, steps 8.8 to 8.10 and query 9.4."""
+operations 7.1 to 7.6 and 7.11 to 7.16 and query 9.4; the steps 8.8 to 8.10 are in `company_users_steps_impl.py`."""
 from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Iterator
 
-from features.app_access.models.exception import (CompanyNotActiveException, ConflictException, InvalidStateException,
-                                               LastCompanyAdminException, LastOspAdminException,
-                                               NoActiveSubscriptionException, NotFoundException,
-                                               StaffCompanyConflictException, UnknownAppRoleException,
-                                               UserAlreadyBoundException, UserNotFoundException)
-from features.app_access.models import (AppRolesResult, AssignCompanyAdminResult, CompanyAppRoles,
-                                           CompanyUser as CompanyUserModel, CompanyUserDetail, CompanyUserRef,
-                                           CompanyUsersResult, Page, StaffMember, UserAccount)
-from features.app_access.models.common import Actor
-from features.app_access.models.constants import (BindingStatus, CompanyStatus, InstanceClientStatus,
-                                                     InvitationEndReason, InvitationStatus, JoinedVia, RemovalReason,
-                                                     RoleKind)
-from features.app_access.services.ports import UserService
+from features.app_access.managers.config import Config
 from features.app_access.managers.config.properties import as_list
-from features.app_access.services.context import Context, paginate, statuses
 from features.app_access.managers.dao import DaoService
+from features.app_access.models import (
+    AppRolesResult,
+    CompanyAppRoles,
+    CompanyUserDetail,
+    CompanyUserRef,
+    Page,
+    StaffMember,
+    UserAccount,
+)
+from features.app_access.models import CompanyUser as CompanyUserModel
+from features.app_access.models.common import Actor
+from features.app_access.models.constants import (
+    BindingStatus,
+    CompanyStatus,
+    InstanceClientStatus,
+    JoinedVia,
+    RemovalReason,
+    RoleKind,
+)
+from features.app_access.models.exception import (
+    CompanyNotActiveException,
+    InvalidStateException,
+    LastCompanyAdminException,
+    LastOspAdminException,
+    NoActiveSubscriptionException,
+    NotFoundException,
+    StaffCompanyConflictException,
+    UnknownAppRoleException,
+    UserNotFoundException,
+)
 from features.app_access.models.internal import AppInstanceClient, Company, CompanyUser, SuspendedRoles, now
+from features.app_access.services.context import Context, paginate, statuses
+from features.app_access.services.ports import UserService
 from features.app_access.services.validation import Validator, invalid
 from portal_common import settings
 
@@ -60,7 +79,7 @@ class UserServiceImpl(UserService):
         self.apps = apps
 
     @property
-    def cfg(self):
+    def cfg(self) -> Config:
         return self.ctx.config
 
     @property
@@ -158,7 +177,7 @@ class UserServiceImpl(UserService):
             raise InvalidStateException("the company is deactivated")
         return current
 
-    def _set_company_status(self, company: Company, status: CompanyStatus) -> None:
+    def set_company_status(self, company: Company, status: CompanyStatus) -> None:
         company.status, company.changed_at = status, now()
         self.dao.companies.save(company)
 
@@ -169,7 +188,7 @@ class UserServiceImpl(UserService):
         return as_list(self.cfg.from_properties("staff.portal.roles"))
 
     # -- account attributes ----------------------------------------------------------------------
-    def _set_company_attributes(self, user: dict, company: Company | None) -> None:
+    def set_company_attributes(self, user: dict, company: Company | None) -> None:
         """`company_id` and `bpn` on the account (empty list removes them) and `enabled` = true (6.5)."""
         cfg = self.cfg
         want = {cfg.from_properties("company.id.attribute"): [company.company_id] if company else [],
@@ -187,7 +206,7 @@ class UserServiceImpl(UserService):
         user = self.ctx.iam.get_user(user_id)
         if user is None:
             raise UserNotFoundException("account unknown in the Portal IAM")
-        self._set_company_attributes(user, company)
+        self.set_company_attributes(user, company)
         added, removed = self.set_roles(user_id, self._company_roles(), roles)
         binding = CompanyUser(user_id, company.company_id, via, given_name=given_name, family_name=family_name,
                               invitation_id=invitation_id)
@@ -229,11 +248,11 @@ class UserServiceImpl(UserService):
         self._remove_portal_and_app_roles(binding, mappings, actor, operation)
         user = self.ctx.iam.get_user(binding.user_id)
         if user is not None:
-            self._set_company_attributes(user, None)
+            self.set_company_attributes(user, None)
         self.ctx.iam.logout_user(binding.user_id)
         self._mark_removed(binding, reason, actor, operation)
 
-    def _suspend(self, binding: CompanyUser, actor: Actor, operation: str) -> None:
+    def suspend(self, binding: CompanyUser, actor: Actor, operation: str) -> None:
         """8.9 step 4 for one binding; the saved roles are stored before anything is removed."""
         mappings = self._mappings(binding.user_id)
         if mappings is None:
@@ -248,20 +267,20 @@ class UserServiceImpl(UserService):
         self._remove_portal_and_app_roles(binding, mappings, actor, operation)
         user = self.ctx.iam.get_user(binding.user_id)
         if user is not None:
-            self._set_company_attributes(user, None)
+            self.set_company_attributes(user, None)
         self.ctx.iam.logout_user(binding.user_id)
         binding.status, binding.changed_at = BindingStatus.DISABLED, now()
         self.dao.company_users.save(binding)
         self.ctx.audit(actor, operation, binding.company_id, binding.user_id)
 
-    def _restore(self, binding: CompanyUser, company: Company, actor: Actor, operation: str) -> bool:
+    def restore(self, binding: CompanyUser, company: Company, actor: Actor, operation: str) -> bool:
         """8.10 step 3 for one binding; False if the account no longer exists."""
         iam, uid = self.ctx.iam, binding.user_id
         user = iam.get_user(uid)
         if user is None:
             self._mark_removed(binding, RemovalReason.ACCOUNT_DELETED, actor, operation)
             return False
-        self._set_company_attributes(user, company)
+        self.set_company_attributes(user, company)
         saved = binding.suspended_roles or SuspendedRoles()
         current = self.portal_roles(uid)
         portal = [r for r in saved.portal_roles if r not in current]
@@ -353,29 +372,29 @@ class UserServiceImpl(UserService):
         with self.dao.lock(("app", app_id), ("company", company_id), ("account", user_id)):
             self._binding_for_change(company_id, user_id)
             template = self.apps.template(app_id)
-            unknown = sorted(set(roles) - {r["name"] for r in iam.client_roles(template.iam_client_uuid)})
+            unknown = sorted(set(roles) - {r["name"] for r in iam.client_roles(template.client_uuid)})
             if unknown:
                 raise UnknownAppRoleException(f"roles not on the template: {unknown}")
             targets = self.apps.target_clients(company_id, app_id)
             if not targets:
                 raise NoActiveSubscriptionException("no active subscription with an active instance client")
-            client_roles = {ic.id: {r["name"]: r for r in iam.client_roles(ic.iam_client_uuid)} for ic in targets}
+            client_roles = {ic.id: {r["name"]: r for r in iam.client_roles(ic.client_uuid)} for ic in targets}
             if any(set(roles) - set(names) for names in client_roles.values()):
                 raise InvalidStateException("add-app-roles has not finished on every instance client")
             added: set[str] = set()
             removed: set[str] = set()
             try:
                 for ic in targets:
-                    current = {r["name"]: r for r in iam.client_role_mappings(user_id, ic.iam_client_uuid)}
+                    current = {r["name"]: r for r in iam.client_role_mappings(user_id, ic.client_uuid)}
                     to_add = [client_roles[ic.id][n] for n in roles if n not in current]
                     to_remove = [r for n, r in current.items() if n not in roles]
                     if to_add:
-                        iam.add_client_role_mappings(user_id, ic.iam_client_uuid, to_add)
+                        iam.add_client_role_mappings(user_id, ic.client_uuid, to_add)
                         self.log_roles(actor, operation, user_id, company_id, RoleKind.APP,
                                        [r["name"] for r in to_add], [], ic)
                         added |= {r["name"] for r in to_add}
                     if to_remove:
-                        iam.remove_client_role_mappings(user_id, ic.iam_client_uuid, to_remove)
+                        iam.remove_client_role_mappings(user_id, ic.client_uuid, to_remove)
                         self.log_roles(actor, operation, user_id, company_id, RoleKind.APP, [],
                                        [r["name"] for r in to_remove], ic)
                         removed |= {r["name"] for r in to_remove}
@@ -461,112 +480,6 @@ class UserServiceImpl(UserService):
         if added or removed:
             self.ctx.publish("OspStaffRolesChanged", {"userId": user_id, "addedRoles": added, "removedRoles": removed})
         return added, removed
-
-    # -- steps (8.8 to 8.10) ---------------------------------------------------------------------
-    def assign_company_admin(self, input: dict) -> AssignCompanyAdminResult:
-        """8.8"""
-        v, dao, operation = self.ctx.validate, self.dao, "assign-company-admin"
-        company_id = v.uuid(input, "companyId")
-        bpn = v.bpn(input)
-        user_id = v.text(input, "applicantSub")
-        actor = Actor.process(input)
-        admin = self.cfg.from_properties("company.admin.role")
-        with dao.lock(("company", company_id), ("account", user_id)):
-            company = dao.companies.get(company_id)
-            if company is not None and company.bpn != bpn:
-                raise ConflictException("the BPN differs from the stored one", retryable=False)
-            if company is not None and company.status in (CompanyStatus.DISABLING, CompanyStatus.ENABLING):
-                raise InvalidStateException(f"company status {company.status}", retryable=True)
-            user = self.ctx.iam.get_user(user_id)
-            if user is None:
-                raise UserNotFoundException("account unknown in the Portal IAM", retryable=False)
-            binding = dao.company_users.current_of(user_id)
-            if binding is not None and binding.company_id != company_id:
-                raise UserAlreadyBoundException("the account is bound to another company", retryable=False)
-            if binding is None and company_id != settings.get("ospCompanyId") and self.has_staff_role(user_id):
-                raise StaffCompanyConflictException("staff accounts bind only to the OSP company", retryable=False)
-            if company is None:
-                company = Company(company_id, bpn)
-                dao.companies.save(company)
-            elif company.status == CompanyStatus.DISABLED:   # return after a transfer (FRAMEWORK 5.6)
-                self._set_company_status(company, CompanyStatus.ACTIVE)
-            if binding is None:
-                self.bind(user_id, company, [admin], JoinedVia.ONBOARDING, actor, operation,
-                          given_name=user.get("firstName"), family_name=user.get("lastName"))
-            else:
-                restored = binding.status == BindingStatus.DISABLED
-                if restored:
-                    self._restore(binding, company, actor, operation)
-                else:
-                    self._set_company_attributes(self.ctx.iam.get_user(user_id) or user, company)
-                added = [] if admin in self.portal_roles(user_id) else [admin]
-                if added:
-                    self.ctx.iam.add_client_role_mappings(user_id, self.ctx.core_uuid, [self.ctx.core_role(admin)])
-                    self.log_roles(actor, operation, user_id, company_id, RoleKind.COMPANY_PORTAL, added, [])
-                    self.ctx.audit(actor, operation, company_id, user_id)
-                if restored:
-                    self.ctx.publish("UserAssignedToCompany", {"userId": user_id, "companyId": company_id,
-                                                               "via": str(JoinedVia.ONBOARDING),
-                                                               "portalRoles": self.company_roles(user_id)})
-                elif added:
-                    self.ctx.publish("UserRolesChanged", {"userId": user_id, "companyId": company_id,
-                                                          "addedRoles": added, "removedRoles": []})
-            return AssignCompanyAdminResult(company_id=company_id, user_id=user_id,
-                                            portal_roles=self.company_roles(user_id))
-
-    def _user_ids(self, company_id: str, status: BindingStatus) -> list[str]:
-        return sorted(b.user_id for b in self.dao.company_users.list_of_company(company_id, [status]))
-
-    def disable_company_users(self, input: dict) -> CompanyUsersResult:
-        """8.9"""
-        company_id = self.ctx.validate.uuid(input, "companyId")
-        actor, dao, operation = Actor.process(input), self.dao, "disable-company-users"
-        if company_id == settings.get("ospCompanyId"):
-            raise InvalidStateException("the OSP company is not deactivated by this step", retryable=False)
-        with dao.lock(("company", company_id)):
-            company = dao.companies.get(company_id)
-            if company is None:
-                return CompanyUsersResult(company_id=company_id, user_ids=[])
-            if company.status == CompanyStatus.ENABLING:
-                raise InvalidStateException("the company is being enabled", retryable=True)
-            if company.status == CompanyStatus.ACTIVE:
-                self._set_company_status(company, CompanyStatus.DISABLING)
-                for inv in dao.invitations.list_all():
-                    if inv.company_id == company_id and inv.status == InvitationStatus.OPEN:
-                        inv.end(InvitationStatus.REVOKED, InvitationEndReason.COMPANY_DISABLED)
-                        dao.invitations.save(inv)
-                self.ctx.audit(actor, operation, company_id, company_id)
-            if company.status == CompanyStatus.DISABLING:
-                for binding in dao.company_users.list_of_company(company_id, [BindingStatus.ACTIVE]):
-                    with dao.lock(("account", binding.user_id)):
-                        self._suspend(binding, actor, operation)
-                self._set_company_status(company, CompanyStatus.DISABLED)
-                self.ctx.publish("CompanyUsersDisabled", {
-                    "companyId": company_id, "userIds": self._user_ids(company_id, BindingStatus.DISABLED)})
-            return CompanyUsersResult(company_id=company_id,
-                                      user_ids=self._user_ids(company_id, BindingStatus.DISABLED))
-
-    def enable_company_users(self, input: dict) -> CompanyUsersResult:
-        """8.10"""
-        company_id = self.ctx.validate.uuid(input, "companyId")
-        actor, dao, operation = Actor.process(input), self.dao, "enable-company-users"
-        with dao.lock(("company", company_id)):
-            company = dao.companies.get(company_id)
-            if company is None:
-                return CompanyUsersResult(company_id=company_id, user_ids=[])
-            if company.status == CompanyStatus.DISABLING:
-                raise InvalidStateException("the company is being disabled", retryable=True)
-            announce = company.status != CompanyStatus.ACTIVE
-            if company.status == CompanyStatus.DISABLED:
-                self._set_company_status(company, CompanyStatus.ENABLING)
-            for binding in dao.company_users.list_of_company(company_id, [BindingStatus.DISABLED]):
-                with dao.lock(("account", binding.user_id)):
-                    self._restore(binding, company, actor, operation)
-            user_ids = self._user_ids(company_id, BindingStatus.ACTIVE)
-            if announce:
-                self._set_company_status(company, CompanyStatus.ACTIVE)
-                self.ctx.publish("CompanyUsersEnabled", {"companyId": company_id, "userIds": user_ids})
-            return CompanyUsersResult(company_id=company_id, user_ids=user_ids)
 
     # -- query 9.4 --------------------------------------------------------------------------------
     def list_company_user_refs(self, company_id: str | None, portal_role: str | None,

@@ -73,12 +73,8 @@ class TestIamPortalIamAdapter(PortalIam):
 
     # -- client roles --------------------------------------------------------------------------
     def client_roles(self, uuid: str) -> list[dict]:
-        roles = []
-        for r in self._iam().portal_roles:
-            roles.append({"id": f"role-{r}", "name": r})
-        for r in self._app_roles.get(uuid, []):
-            roles.append(r)
-        return roles
+        portal = [{"id": f"role-{name}", "name": name} for name in self._iam().portal_roles]
+        return portal + list(self._app_roles.get(uuid, []))
 
     def client_role(self, uuid: str, name: str) -> dict | None:
         return {"id": f"role-{name}", "name": name}

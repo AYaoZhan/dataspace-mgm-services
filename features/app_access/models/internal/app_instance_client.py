@@ -28,6 +28,7 @@ import datetime as dt
 from dataclasses import dataclass, field
 
 from features.app_access.models.constants import InstanceClientStatus, InstanceKind
+from features.app_access.models.exception import InvalidStateException
 
 from .utils.datetime_utils import iso, now
 
@@ -46,6 +47,13 @@ class AppInstanceClient:
     iam_client_uuid: str | None = None
     created_at: dt.datetime = field(default_factory=now)
     changed_at: dt.datetime = field(default_factory=now)
+
+    @property
+    def client_uuid(self) -> str:
+        """The UUID of the instance client in the Portal IAM, stored once 8.2 has created it."""
+        if self.iam_client_uuid is None:
+            raise InvalidStateException(f"instance client {self.id} has no IAM client yet", retryable=True)
+        return self.iam_client_uuid
 
     def to_api(self) -> dict:
         return {"id": self.id, "appId": self.app_id, "instanceKind": str(self.instance_kind),

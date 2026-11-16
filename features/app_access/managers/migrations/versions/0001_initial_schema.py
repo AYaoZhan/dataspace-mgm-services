@@ -39,7 +39,11 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
+def _index(table: str, column: str) -> None:
+    op.create_index(op.f(f"ix_{table}_{column}"), table, [column], unique=False)
+
+
+def _create_app_client_template() -> None:
     op.create_table('app_client_template',
     sa.Column('app_id', sa.String(), nullable=False),
     sa.Column('provider_company_id', sa.String(), nullable=False),
@@ -51,6 +55,9 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('app_id'),
     sa.UniqueConstraint('iam_client_id')
     )
+
+
+def _create_app_instance_client() -> None:
     op.create_table('app_instance_client',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('app_id', sa.String(), nullable=False),
@@ -67,9 +74,12 @@ def upgrade() -> None:
     sa.UniqueConstraint('iam_client_id'),
     sa.UniqueConstraint('offer_subscription_id')
     )
-    op.create_index(op.f('ix_app_instance_client_app_id'), 'app_instance_client', ['app_id'], unique=False)
-    op.create_index(op.f('ix_app_instance_client_created_at'), 'app_instance_client', ['created_at'], unique=False)
-    op.create_index(op.f('ix_app_instance_client_customer_company_id'), 'app_instance_client', ['customer_company_id'], unique=False)
+    _index('app_instance_client', 'app_id')
+    _index('app_instance_client', 'created_at')
+    _index('app_instance_client', 'customer_company_id')
+
+
+def _create_audit_log() -> None:
     op.create_table('audit_log',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('actor', sa.JSON(), nullable=False),
@@ -79,12 +89,18 @@ def upgrade() -> None:
     sa.Column('occurred_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_audit_log_occurred_at'), 'audit_log', ['occurred_at'], unique=False)
+    _index('audit_log', 'occurred_at')
+
+
+def _create_client_number() -> None:
     op.create_table('client_number',
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('value', sa.Integer(), nullable=False),
     sa.PrimaryKeyConstraint('name')
     )
+
+
+def _create_company() -> None:
     op.create_table('company',
     sa.Column('company_id', sa.String(), nullable=False),
     sa.Column('bpn', sa.String(), nullable=True),
@@ -93,6 +109,9 @@ def upgrade() -> None:
     sa.Column('changed_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('company_id')
     )
+
+
+def _create_company_user() -> None:
     op.create_table('company_user',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('user_id', sa.String(), nullable=False),
@@ -109,9 +128,12 @@ def upgrade() -> None:
     sa.Column('removed_at', sa.DateTime(timezone=True), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_company_user_company_id'), 'company_user', ['company_id'], unique=False)
-    op.create_index(op.f('ix_company_user_status'), 'company_user', ['status'], unique=False)
-    op.create_index(op.f('ix_company_user_user_id'), 'company_user', ['user_id'], unique=False)
+    _index('company_user', 'company_id')
+    _index('company_user', 'status')
+    _index('company_user', 'user_id')
+
+
+def _create_invitation() -> None:
     op.create_table('invitation',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('kind', sa.String(), nullable=False),
@@ -132,9 +154,12 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('code_hash')
     )
-    op.create_index(op.f('ix_invitation_company_id'), 'invitation', ['company_id'], unique=False)
-    op.create_index(op.f('ix_invitation_created_at'), 'invitation', ['created_at'], unique=False)
-    op.create_index(op.f('ix_invitation_kind'), 'invitation', ['kind'], unique=False)
+    _index('invitation', 'company_id')
+    _index('invitation', 'created_at')
+    _index('invitation', 'kind')
+
+
+def _create_role_assignment_log() -> None:
     op.create_table('role_assignment_log',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('user_id', sa.String(), nullable=False),
@@ -150,8 +175,19 @@ def upgrade() -> None:
     sa.Column('occurred_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_role_assignment_log_occurred_at'), 'role_assignment_log', ['occurred_at'], unique=False)
-    op.create_index(op.f('ix_role_assignment_log_user_id'), 'role_assignment_log', ['user_id'], unique=False)
+    _index('role_assignment_log', 'occurred_at')
+    _index('role_assignment_log', 'user_id')
+
+
+def upgrade() -> None:
+    _create_app_client_template()
+    _create_app_instance_client()
+    _create_audit_log()
+    _create_client_number()
+    _create_company()
+    _create_company_user()
+    _create_invitation()
+    _create_role_assignment_log()
 
 
 def downgrade() -> None:

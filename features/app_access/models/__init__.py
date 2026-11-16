@@ -25,14 +25,25 @@
 """Models of C2-M2 exposed outside the module (shapes of openapi.yaml)."""
 from portal_common.models import ApiModel
 
+from .app_client import AppInstanceClient, AppRole, AppRoles, CompanyAppRoles, InstanceClientRef, RoleDescription
 from .common import Actor, Page
-from .app_client import (AppInstanceClient, AppRole, AppRoles, CompanyAppRoles, InstanceClientRef,
-                         RoleDescription)
-from .people import (AppRolesResult, CompanyUser, CompanyUserDetail, CompanyUserRef, StaffMember, UserAccount,
-                     UserClientRoles)
 from .invitation import AcceptInvitationResult, Invitation, InvitationWithCode
-from .steps import (AddAppRolesResult, AssignCompanyAdminResult, CompanyUsersResult, TemplateResult,
-                    UpdateRoleDescriptionsResult)
+from .people import (
+                         AppRolesResult,
+                         CompanyUser,
+                         CompanyUserDetail,
+                         CompanyUserRef,
+                         StaffMember,
+                         UserAccount,
+                         UserClientRoles,
+)
+from .steps import (
+                         AddAppRolesResult,
+                         AssignCompanyAdminResult,
+                         CompanyUsersResult,
+                         TemplateResult,
+                         UpdateRoleDescriptionsResult,
+)
 
 __all__ = [
     "ApiModel", "Actor", "Page",

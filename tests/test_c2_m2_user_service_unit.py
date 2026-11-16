@@ -32,30 +32,61 @@ import datetime as dt
 from unittest.mock import MagicMock, call, create_autospec
 
 import pytest
-
 from c2_m2_database import _empty_c2_m2_database  # noqa: F401 - autouse: empty tables with a database
-from features.app_access.models.exception import (CompanyNotActiveException, ConflictException, IamErrorException,
-                                               InvalidStateException, LastCompanyAdminException,
-                                               LastOspAdminException, NoActiveSubscriptionException,
-                                               NotFoundException, StaffCompanyConflictException,
-                                               UnknownAppRoleException, UpstreamErrorException,
-                                               UserAlreadyBoundException, UserNotFoundException,
-                                               ValidationException)
-from features.app_access.models.constants import (ActorType, BindingStatus, CompanyStatus, InstanceClientStatus,
-                                                     InstanceKind, InvitationEndReason, InvitationStatus, JoinedVia,
-                                                     RemovalReason, RoleKind)
-from features.app_access.models.common import Actor
+
 from features.app_access.managers.config import Config
-from features.app_access.services.context import Context
-from features.app_access.managers.dao import (AppClientTemplateDao, AppInstanceClientDao, AuditLogDao, CompanyDao,
-                                          CompanyUserDao, DaoService, InvitationDao, RoleAssignmentLogDao)
+from features.app_access.managers.dao import (
+    AppClientTemplateDao,
+    AppInstanceClientDao,
+    AuditLogDao,
+    CompanyDao,
+    CompanyUserDao,
+    DaoService,
+    InvitationDao,
+    RoleAssignmentLogDao,
+)
 from features.app_access.managers.gateways import CompanyProfileGatewayImpl, SubscriptionsGatewayImpl
+from features.app_access.managers.ports import CompanyProfileGateway, Database, PortalIam, SubscriptionsGateway
+from features.app_access.models.common import Actor
+from features.app_access.models.constants import (
+    ActorType,
+    BindingStatus,
+    CompanyStatus,
+    InstanceClientStatus,
+    InstanceKind,
+    InvitationEndReason,
+    InvitationStatus,
+    JoinedVia,
+    RemovalReason,
+    RoleKind,
+)
+from features.app_access.models.exception import (
+    CompanyNotActiveException,
+    ConflictException,
+    IamErrorException,
+    InvalidStateException,
+    LastCompanyAdminException,
+    LastOspAdminException,
+    NoActiveSubscriptionException,
+    NotFoundException,
+    StaffCompanyConflictException,
+    UnknownAppRoleException,
+    UpstreamErrorException,
+    UserAlreadyBoundException,
+    UserNotFoundException,
+    ValidationException,
+)
+from features.app_access.models.internal import (
+    AppClientTemplate,
+    AppInstanceClient,
+    Company,
+    CompanyUser,
+    SuspendedRoles,
+)
 from features.app_access.services.app_client_service_impl import AppClientServiceImpl
+from features.app_access.services.company_users_steps_impl import CompanyUsersStepsImpl
+from features.app_access.services.context import Context
 from features.app_access.services.user_service_impl import UserServiceImpl
-from features.app_access.models.internal import (AppClientTemplate, AppInstanceClient, Company, CompanyUser,
-                                                     SuspendedRoles)
-from features.app_access.managers.ports import (CompanyProfileGateway, Database, PortalIam,
-                                                        SubscriptionsGateway)
 from portal_common.problems import Problem
 
 # Test data of FRAMEWORK 7a
@@ -131,6 +162,7 @@ class Harness:
         self.ctx.publish = self.published   # instead of the event relay (FRAMEWORK 6)
         self.apps = create_autospec(AppClientServiceImpl, instance=True)
         self.service = UserServiceImpl(self.ctx, self.apps)
+        self.steps = CompanyUsersStepsImpl(self.ctx, self.service)
 
         # Lock calls of every DAO in one list, to check the order of 6.14
         self.locks = MagicMock(name="locks")
@@ -579,7 +611,7 @@ def test_set_staff_roles_unknown_account(h):
 
 # -- 8.8 assign-company-admin ---------------------------------------------------------------------------
 def test_assign_company_admin_creates_company_and_binds_the_applicant(h):
-    result = h.service.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
+    result = h.steps.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
 
     saved_company = h.dao.companies.save.call_args.args[0]
     assert (saved_company.company_id, saved_company.bpn) == (MASCHINENBAU, BPN_M)
@@ -599,7 +631,7 @@ def test_assign_company_admin_is_idempotent_for_a_bound_admin(h):
         uid, attributes={"company_id": [MASCHINENBAU], "bpn": [BPN_M]})
     h.iam.role_mappings.return_value = mappings("Company Admin")
 
-    result = h.service.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
+    result = h.steps.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
 
     assert result.portal_roles == ["Company Admin"]
     h.iam.add_client_role_mappings.assert_not_called()
@@ -612,7 +644,7 @@ def test_assign_company_admin_adds_the_role_to_a_bound_member(h):
     h.dao.company_users.current_of.return_value = binding()
     h.iam.role_mappings.return_value = mappings("Member")
 
-    h.service.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
+    h.steps.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
 
     h.iam.add_client_role_mappings.assert_called_once_with(ERIKA, CORE_UUID, [role("Company Admin")])
     assert h.events("UserRolesChanged")[0]["addedRoles"] == ["Company Admin"]
@@ -630,7 +662,7 @@ def test_assign_company_admin_refusals(h, company, current, staff, error, retrya
         h.iam.role_mappings.return_value = mappings("OSP Reviewer")
 
     with pytest.raises(error) as raised:
-        h.service.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
+        h.steps.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
 
     assert raised.value.retryable is retryable
     h.dao.company_users.save.assert_not_called()
@@ -640,7 +672,7 @@ def test_assign_company_admin_unknown_applicant(h):
     h.iam.get_user.side_effect = None
     h.iam.get_user.return_value = None
     with pytest.raises(UserNotFoundException) as raised:
-        h.service.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
+        h.steps.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
     assert raised.value.retryable is False
 
 
@@ -650,7 +682,7 @@ def test_assign_company_admin_unknown_applicant(h):
     {"companyId": MASCHINENBAU, "bpn": BPN_M}])
 def test_assign_company_admin_validates_its_input(h, fields):
     with pytest.raises(ValidationException):
-        h.service.assign_company_admin(step(**fields))
+        h.steps.assign_company_admin(step(**fields))
     h.iam.get_user.assert_not_called()
 
 
@@ -658,7 +690,7 @@ def test_assign_company_admin_reactivates_a_returning_company(h):
     company = Company(MASCHINENBAU, BPN_M, status=CompanyStatus.DISABLED)
     h.dao.companies.get.return_value = company
 
-    h.service.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
+    h.steps.assign_company_admin(step(companyId=MASCHINENBAU, bpn=BPN_M, applicantSub=ERIKA))
 
     assert company.status == CompanyStatus.ACTIVE
 
@@ -675,7 +707,7 @@ def test_disable_company_users_suspends_every_binding_and_revokes_invitations(h)
     invitation = MagicMock(company_id=MASCHINENBAU, status=InvitationStatus.OPEN)
     h.dao.invitations.list_all.return_value = [invitation]
 
-    result = h.service.disable_company_users(step(companyId=MASCHINENBAU))
+    result = h.steps.disable_company_users(step(companyId=MASCHINENBAU))
 
     invitation.end.assert_called_once_with(InvitationStatus.REVOKED, InvitationEndReason.COMPANY_DISABLED)
     h.dao.invitations.save.assert_called_once_with(invitation)
@@ -689,18 +721,18 @@ def test_disable_company_users_suspends_every_binding_and_revokes_invitations(h)
 
 def test_disable_of_the_osp_company_is_refused(h):
     with pytest.raises(InvalidStateException):
-        h.service.disable_company_users(step(companyId=OSP))
+        h.steps.disable_company_users(step(companyId=OSP))
 
 
 def test_disable_of_an_unknown_company_is_empty(h):
-    assert h.service.disable_company_users(step(companyId=MASCHINENBAU)).user_ids == []
+    assert h.steps.disable_company_users(step(companyId=MASCHINENBAU)).user_ids == []
     h.published.assert_not_called()
 
 
 def test_disable_while_enabling_is_retryable(h):
     h.dao.companies.get.return_value = Company(MASCHINENBAU, BPN_M, status=CompanyStatus.ENABLING)
     with pytest.raises(InvalidStateException) as raised:
-        h.service.disable_company_users(step(companyId=MASCHINENBAU))
+        h.steps.disable_company_users(step(companyId=MASCHINENBAU))
     assert raised.value.retryable is True
 
 
@@ -713,7 +745,7 @@ def test_enable_company_users_restores_the_saved_roles(h):
         [erika] if erika.status in s else [])
     h.iam.client_role.return_value = role("Viewer", "app")
 
-    result = h.service.enable_company_users(step(companyId=MASCHINENBAU))
+    result = h.steps.enable_company_users(step(companyId=MASCHINENBAU))
 
     assert h.iam.add_client_role_mappings.call_args_list == [
         call(ERIKA, CORE_UUID, [role("Company Admin")]), call(ERIKA, IC_UUID, [role("Viewer", "app")])]
@@ -733,7 +765,7 @@ def test_enable_skips_disabled_instance_clients_and_removes_deleted_accounts(h):
         InstanceClientStatus.DISABLED)
     h.iam.get_user.side_effect = lambda uid: None if uid == MAX else keycloak_user(uid)
 
-    h.service.enable_company_users(step(companyId=MASCHINENBAU))
+    h.steps.enable_company_users(step(companyId=MASCHINENBAU))
 
     h.iam.client_role.assert_not_called()
     assert (max_.status, max_.removal_reason) == (BindingStatus.REMOVED, RemovalReason.ACCOUNT_DELETED)
@@ -743,7 +775,7 @@ def test_enable_skips_disabled_instance_clients_and_removes_deleted_accounts(h):
 def test_enable_while_disabling_is_retryable(h):
     h.dao.companies.get.return_value = Company(MASCHINENBAU, BPN_M, status=CompanyStatus.DISABLING)
     with pytest.raises(InvalidStateException) as raised:
-        h.service.enable_company_users(step(companyId=MASCHINENBAU))
+        h.steps.enable_company_users(step(companyId=MASCHINENBAU))
     assert raised.value.retryable is True
 
 

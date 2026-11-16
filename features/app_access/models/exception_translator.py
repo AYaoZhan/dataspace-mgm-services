@@ -29,17 +29,34 @@ from __future__ import annotations
 import functools
 from collections.abc import Callable
 
+from features.app_access.models.errors import problem
+from features.app_access.models.exception import (
+    C2M2BaseException,
+    CompanyNotActiveException,
+    ConflictException,
+    IamErrorException,
+    InstanceExistsException,
+    InvalidStateException,
+    InvitationNotFoundException,
+    InvitationNotOpenException,
+    LastCompanyAdminException,
+    LastOspAdminException,
+    NameMismatchException,
+    NoActiveSubscriptionException,
+    NotFoundException,
+    RoleNotFoundException,
+    StaffCompanyConflictException,
+    TemplateMissingException,
+    TooManyInvitationsException,
+    UnknownAppRoleException,
+    UpstreamErrorException,
+    UserAlreadyBoundException,
+    UserNotFoundException,
+    ValidationException,
+)
+from features.app_access.models.utils import MODULE
 from portal_common import problems
 from portal_common.problems import Problem
-
-from features.app_access.models.exception import (
-    C2M2BaseException, CompanyNotActiveException, ConflictException, IamErrorException, InstanceExistsException,
-    InvalidStateException, InvitationNotFoundException, InvitationNotOpenException, LastCompanyAdminException,
-    LastOspAdminException, NameMismatchException, NoActiveSubscriptionException, NotFoundException,
-    RoleNotFoundException, StaffCompanyConflictException, TemplateMissingException, TooManyInvitationsException,
-    UnknownAppRoleException, UpstreamErrorException, UserAlreadyBoundException, UserNotFoundException,
-    ValidationException)
-from features.app_access.models.utils import MODULE
 
 
 class ExceptionTranslator:
@@ -82,17 +99,17 @@ class ExceptionTranslator:
         if not isinstance(exc, C2M2BaseException):
             return problems.to_problem(MODULE, exc, is_step)
         status, name = cls.rule(exc)
-        ext = dict(exc.details)
+        ext: dict[str, object] = dict(exc.details)
         if is_step or exc.retryable is not None:
             ext["retryable"] = exc.retryable if exc.retryable is not None else status >= 500
-        return Problem(MODULE, status, name, detail=exc.detail, **ext)
+        return problem(status, name, detail=exc.detail, **ext)
 
 
-def translated(endpoint: Callable) -> Callable:
+def translated[**P, R](endpoint: Callable[P, R]) -> Callable[P, R]:
     """A controller operation whose service errors leave as Problem Details (the route class of `mount()` turns a
     Problem into its response, any other exception into 500)."""
     @functools.wraps(endpoint)
-    def call(*args, **kwargs):
+    def call(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
             return endpoint(*args, **kwargs)
         except C2M2BaseException as exc:

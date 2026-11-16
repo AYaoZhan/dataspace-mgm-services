@@ -28,7 +28,7 @@ MetaData (`models/tables.py`), so `alembic revision --autogenerate` compares aga
 from __future__ import annotations
 
 from alembic import context
-from sqlalchemy import func, pool, select
+from sqlalchemy import Connection, func, pool, select
 
 from features.app_access.managers.database import VERSION_TABLE
 from features.app_access.models import tables  # noqa: F401 - registers the tables in the feature's MetaData
@@ -44,7 +44,7 @@ def run_offline() -> None:
         context.run_migrations()
 
 
-def _run(connection) -> None:
+def _run(connection: Connection) -> None:
     # one transaction for all pending migrations; the lock keeps replicas that start at once apart
     if connection.dialect.name == "postgresql":
         connection.execute(select(func.pg_advisory_xact_lock(func.hashtextextended("c2_m2:migrations", 0))))

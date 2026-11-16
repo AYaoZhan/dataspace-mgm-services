@@ -26,9 +26,16 @@ from __future__ import annotations
 
 import abc
 
-from features.app_access.models import (AppRolesResult, AssignCompanyAdminResult, CompanyAppRoles, CompanyUser,
-                                           CompanyUserDetail, CompanyUserRef, CompanyUsersResult, Page, StaffMember,
-                                           UserAccount)
+from features.app_access.models import (
+    AppRolesResult,
+    CompanyAppRoles,
+    CompanyUser,
+    CompanyUserDetail,
+    CompanyUserRef,
+    Page,
+    StaffMember,
+    UserAccount,
+)
 from features.app_access.models.common import Actor
 
 
@@ -65,15 +72,6 @@ class UserService(abc.ABC):
 
     @abc.abstractmethod
     def set_staff_roles(self, user_id: str, body: dict, actor: Actor) -> StaffMember: ...
-
-    @abc.abstractmethod
-    def assign_company_admin(self, input: dict) -> AssignCompanyAdminResult: ...
-
-    @abc.abstractmethod
-    def disable_company_users(self, input: dict) -> CompanyUsersResult: ...
-
-    @abc.abstractmethod
-    def enable_company_users(self, input: dict) -> CompanyUsersResult: ...
 
     @abc.abstractmethod
     def list_company_user_refs(self, company_id: str | None, portal_role: str | None,

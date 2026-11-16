@@ -30,20 +30,32 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from features.app_access.models.exception import (CompanyNotActiveException, InvitationNotFoundException,
-                                               InvitationNotOpenException, NameMismatchException, NotFoundException,
-                                               StaffCompanyConflictException, TooManyInvitationsException,
-                                               UserAlreadyBoundException)
-from features.app_access.models import (AcceptInvitationResult, Invitation as InvitationModel,
-                                           InvitationWithCode, Page)
-from features.app_access.models.common import Actor
-from features.app_access.models.constants import (CompanyStatus, InvitationEndReason, InvitationKind,
-                                                     InvitationStatus, JoinedVia)
-from features.app_access.services.ports import InvitationService
+from features.app_access.managers.config import Config
 from features.app_access.managers.config.properties import as_bool, as_int, as_list
-from features.app_access.services.context import Context, paginate, statuses
 from features.app_access.managers.dao import DaoService
-from features.app_access.models.internal import Invitation, InvitationCode, NameCheck, now
+from features.app_access.models import AcceptInvitationResult, InvitationWithCode, Page
+from features.app_access.models import Invitation as InvitationModel
+from features.app_access.models.common import Actor
+from features.app_access.models.constants import (
+    CompanyStatus,
+    InvitationEndReason,
+    InvitationKind,
+    InvitationStatus,
+    JoinedVia,
+)
+from features.app_access.models.exception import (
+    CompanyNotActiveException,
+    InvitationNotFoundException,
+    InvitationNotOpenException,
+    NameMismatchException,
+    NotFoundException,
+    StaffCompanyConflictException,
+    TooManyInvitationsException,
+    UserAlreadyBoundException,
+)
+from features.app_access.models.internal import Company, Invitation, InvitationCode, NameCheck, now
+from features.app_access.services.context import Context, paginate, statuses
+from features.app_access.services.ports import InvitationService
 from features.app_access.services.validation import invalid
 from portal_common import settings
 
@@ -56,7 +68,7 @@ class InvitationServiceImpl(InvitationService):
         self.users = users
 
     @property
-    def cfg(self):
+    def cfg(self) -> Config:
         return self.ctx.config
 
     @property
@@ -91,7 +103,7 @@ class InvitationServiceImpl(InvitationService):
         key, allowed = self._roles_key(kind)
         roles = v.role_list(body, key, allowed)
         with self.dao.lock(self._lock(kind, company_id)):
-            if kind == InvitationKind.COMPANY:
+            if company_id is not None:   # a company invitation (staff invitations have no company)
                 self.users.ensure_company_active(company_id)
             open_now = [i for i in self.dao.invitations.list_of(kind, company_id)
                         if i.effective_status() == InvitationStatus.OPEN]
@@ -144,15 +156,15 @@ class InvitationServiceImpl(InvitationService):
             if inv.is_expired():
                 self._end(inv, InvitationStatus.EXPIRED)
                 raise InvitationNotOpenException("invitation is EXPIRED")
-            self._check_account(inv, user_id)
+            company = self._check_account(inv, user_id)
             if as_bool(self.cfg.from_properties("invitation.name.check")) and not NameCheck.matches(claims, inv):
                 inv.failed_attempts += 1
                 if inv.failed_attempts >= as_int(self.cfg.from_properties("invitation.max.failed.attempts")):
                     inv.end(InvitationStatus.REVOKED, InvitationEndReason.TOO_MANY_ATTEMPTS)
                 self.dao.invitations.save(inv)
                 raise NameMismatchException("the names in the token do not match the invitation")
-            if inv.kind == InvitationKind.COMPANY:
-                self.users.bind(user_id, self.dao.companies.get(inv.company_id), list(inv.roles),
+            if company is not None:
+                self.users.bind(user_id, company, list(inv.roles),
                                 JoinedVia.INVITATION, actor, operation, invitation_id=inv.id,
                                 given_name=claims.get("given_name"), family_name=claims.get("family_name"))
             else:
@@ -163,20 +175,22 @@ class InvitationServiceImpl(InvitationService):
             self.ctx.audit(actor, operation, inv.company_id, inv.id)
             return AcceptInvitationResult.model_validate(inv.accept_result())
 
-    def _check_account(self, inv: Invitation, user_id: str) -> None:
-        """7.10 step 4"""
+    def _check_account(self, inv: Invitation, user_id: str) -> Company | None:
+        """7.10 step 4; the company to bind the account to for a company invitation, None for a staff invitation."""
         binding = self.dao.company_users.current_of(user_id)
         osp_company = settings.get("ospCompanyId")
         if inv.kind == InvitationKind.COMPANY:
             if binding is not None:
                 raise UserAlreadyBoundException("the account is already bound to a company")
-            company = self.dao.companies.get(inv.company_id)
+            company = self.dao.companies.get(inv.company_id) if inv.company_id else None
             if company is None or company.status != CompanyStatus.ACTIVE:
                 raise CompanyNotActiveException("the company is not ACTIVE")
             if inv.company_id != osp_company and self.users.has_staff_role(user_id):
                 raise StaffCompanyConflictException("staff accounts bind only to the OSP company")
-        elif binding is not None and binding.company_id != osp_company:
+            return company
+        if binding is not None and binding.company_id != osp_company:
             raise StaffCompanyConflictException("the account is bound to a company other than the OSP company")
+        return None
 
     # -- cleanup and bootstrap ------------------------------------------------------------------------
     def expire_overdue(self) -> int:

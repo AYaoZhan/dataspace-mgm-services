@@ -34,9 +34,12 @@ import enum
 import functools
 import types
 import typing
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import AbstractContextManager
+from typing import TYPE_CHECKING
 
-from sqlmodel import SQLModel, col, select
+from sqlalchemy import ColumnElement
+from sqlmodel import Session, SQLModel, col, select
 
 from features.app_access.managers.dao.app_client_template_dao import AppClientTemplateDao
 from features.app_access.managers.dao.app_instance_client_dao import AppInstanceClientDao
@@ -49,17 +52,37 @@ from features.app_access.managers.dao.role_assignment_log_dao import RoleAssignm
 from features.app_access.managers.database import FeatureDatabase
 from features.app_access.models.common import Actor
 from features.app_access.models.constants import BindingStatus, InstanceClientStatus, InstanceKind, InvitationKind
-from features.app_access.models.internal import (AppClientTemplate, AppInstanceClient, AuditLogEntry, Company,
-                                                 CompanyUser, Invitation, RoleAssignmentLogEntry, SuspendedRoles)
-from features.app_access.models.tables import (AppClientTemplateRow, AppInstanceClientRow, AuditLogRow,
-                                               ClientNumberRow, CompanyRow, CompanyUserRow, InvitationRow,
-                                               RoleAssignmentLogRow)
+from features.app_access.models.internal import (
+    AppClientTemplate,
+    AppInstanceClient,
+    AuditLogEntry,
+    Company,
+    CompanyUser,
+    Invitation,
+    RoleAssignmentLogEntry,
+    SuspendedRoles,
+)
+from features.app_access.models.tables import (
+    AppClientTemplateRow,
+    AppInstanceClientRow,
+    AuditLogRow,
+    ClientNumberRow,
+    CompanyRow,
+    CompanyUserRow,
+    InvitationRow,
+    RoleAssignmentLogRow,
+)
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
+type Where = bool | ColumnElement[bool]   # a condition on a column (SQLModel types a column as its value)
 
 CURRENT = (BindingStatus.ACTIVE, BindingStatus.DISABLED)   # at most one binding of an account has one of them
 
 
 # -- record <-> row ----------------------------------------------------------------------------------
-def _encode(value):
+def _encode(value: object) -> object:
     if isinstance(value, enum.Enum):
         return value.value
     if isinstance(value, SuspendedRoles):
@@ -71,20 +94,21 @@ def _encode(value):
     return value
 
 
-def _decode(hint, value):
+def _decode(hint: object, value: object) -> object:
+    """A column value as the field of the record with the type `hint`."""
     if value is None:
         return None
     if typing.get_origin(hint) in (typing.Union, types.UnionType):
         hint = next(h for h in typing.get_args(hint) if h is not type(None))
     if isinstance(hint, type) and issubclass(hint, enum.Enum):
         return hint(value)
-    if hint is dt.datetime:
+    if isinstance(value, dt.datetime):
         return value if value.tzinfo else value.replace(tzinfo=dt.UTC)   # SQLite keeps no time zone
-    if hint is SuspendedRoles:
+    if hint is SuspendedRoles and isinstance(value, dict):
         return SuspendedRoles(list(value["portal_roles"]), [tuple(r) for r in value["app_roles"]])
-    if hint is Actor:
-        return Actor(**{k: _decode(h, value.get(k)) for k, h in _hints(Actor).items()})
-    if typing.get_origin(hint) is list:
+    if hint is Actor and isinstance(value, dict):
+        return _build(Actor, {k: _decode(h, value.get(k)) for k, h in _hints(Actor).items()})
+    if isinstance(value, list):
         return list(value)
     return value
 
@@ -94,53 +118,59 @@ def _hints(record_type: type) -> dict[str, object]:
     return typing.get_type_hints(record_type)
 
 
-def to_row(row_type: type[SQLModel], record) -> SQLModel:
+def _build[R](record_type: type[R], values: dict[str, object]) -> R:
+    """The record from its decoded fields (the field types are checked by `_decode`)."""
+    factory: Callable[..., R] = record_type
+    return factory(**values)
+
+
+def to_row(row_type: type[SQLModel], record: DataclassInstance) -> SQLModel:
     return row_type(**{f.name: _encode(getattr(record, f.name)) for f in dataclasses.fields(record)})
 
 
-def to_record(record_type: type, row: SQLModel | None):
+def to_record[R: DataclassInstance](record_type: type[R], row: SQLModel | None) -> R | None:
     if row is None:
         return None
     hints = _hints(record_type)
-    return record_type(**{f.name: _decode(hints[f.name], getattr(row, f.name)) for f in dataclasses.fields(record_type)})
+    fields = dataclasses.fields(record_type)
+    return _build(record_type, {f.name: _decode(hints[f.name], getattr(row, f.name)) for f in fields})
 
 
-class _SqlDao:
+class _SqlDao[R: DataclassInstance]:
     ROW: type[SQLModel]
-    RECORD: type
+    RECORD: type[R]
 
     def __init__(self, db: FeatureDatabase) -> None:
         self.db = db
 
     @contextlib.contextmanager
-    def _session(self):
+    def _session(self) -> Iterator[Session]:
         with self.db.transaction():
             yield self.db.session()
 
-    def _get(self, key: str):
+    def _get(self, key: str) -> R | None:
         with self._session() as session:
             return to_record(self.RECORD, session.get(self.ROW, key))
 
-    def _save(self, record) -> None:
+    def _save(self, record: R) -> None:
         with self._session() as session:
             session.merge(to_row(self.ROW, record))
 
-    def _all(self, *where, order=None) -> list:
-        statement = select(self.ROW).where(*where)
-        if order is not None:
-            statement = statement.order_by(order)
+    def _all(self, *where: Where, order: str) -> list[R]:
+        """The records that match, ordered by the column `order`."""
+        statement = select(self.ROW).where(*where).order_by(col(getattr(self.ROW, order)))
         with self._session() as session:
-            return [to_record(self.RECORD, row) for row in session.exec(statement)]
+            return [r for row in session.exec(statement) if (r := to_record(self.RECORD, row)) is not None]
 
-    def _first(self, *where):
+    def _first(self, *where: Where) -> R | None:
         with self._session() as session:
             return to_record(self.RECORD, session.exec(select(self.ROW).where(*where)).first())
 
 
-class SqlCompanyDao(_SqlDao, CompanyDao):
+class SqlCompanyDao(_SqlDao[Company], CompanyDao):
     ROW, RECORD = CompanyRow, Company
 
-    def lock(self, company_id: str):
+    def lock(self, company_id: str) -> AbstractContextManager[None]:
         return self.db.lock(f"c2_m2:company:{company_id}")
 
     def get(self, company_id: str) -> Company | None:
@@ -150,10 +180,10 @@ class SqlCompanyDao(_SqlDao, CompanyDao):
         self._save(company)
 
 
-class SqlCompanyUserDao(_SqlDao, CompanyUserDao):
+class SqlCompanyUserDao(_SqlDao[CompanyUser], CompanyUserDao):
     ROW, RECORD = CompanyUserRow, CompanyUser
 
-    def lock_account(self, user_id: str):
+    def lock_account(self, user_id: str) -> AbstractContextManager[None]:
         return self.db.lock(f"c2_m2:account:{user_id}")
 
     def save(self, binding: CompanyUser) -> None:
@@ -164,19 +194,19 @@ class SqlCompanyUserDao(_SqlDao, CompanyUserDao):
 
     def list_of(self, user_id: str, company_id: str) -> list[CompanyUser]:
         return self._all(CompanyUserRow.user_id == user_id, CompanyUserRow.company_id == company_id,
-                         order=CompanyUserRow.created_at)
+                         order="created_at")
 
     def list_of_company(self, company_id: str | None, statuses: Iterable[BindingStatus]) -> list[CompanyUser]:
-        where = [col(CompanyUserRow.status).in_([s.value for s in statuses])]
+        where: list[Where] = [col(CompanyUserRow.status).in_([s.value for s in statuses])]
         if company_id is not None:
             where.append(CompanyUserRow.company_id == company_id)
-        return self._all(*where, order=CompanyUserRow.created_at)
+        return self._all(*where, order="created_at")
 
 
-class SqlAppClientTemplateDao(_SqlDao, AppClientTemplateDao):
+class SqlAppClientTemplateDao(_SqlDao[AppClientTemplate], AppClientTemplateDao):
     ROW, RECORD = AppClientTemplateRow, AppClientTemplate
 
-    def lock(self, app_id: str):
+    def lock(self, app_id: str) -> AbstractContextManager[None]:
         return self.db.lock(f"c2_m2:app:{app_id}")
 
     def get(self, app_id: str) -> AppClientTemplate | None:
@@ -186,7 +216,7 @@ class SqlAppClientTemplateDao(_SqlDao, AppClientTemplateDao):
         self._save(template)
 
 
-class SqlAppInstanceClientDao(_SqlDao, AppInstanceClientDao):
+class SqlAppInstanceClientDao(_SqlDao[AppInstanceClient], AppInstanceClientDao):
     ROW, RECORD = AppInstanceClientRow, AppInstanceClient
 
     def get(self, instance_client_id: str) -> AppInstanceClient | None:
@@ -207,10 +237,10 @@ class SqlAppInstanceClientDao(_SqlDao, AppInstanceClientDao):
         return self._first(AppInstanceClientRow.iam_client_id == iam_client_id)
 
     def list_of_app(self, app_id: str) -> list[AppInstanceClient]:
-        return self._all(AppInstanceClientRow.app_id == app_id, order=AppInstanceClientRow.created_at)
+        return self._all(AppInstanceClientRow.app_id == app_id, order="created_at")
 
     def list_all(self) -> list[AppInstanceClient]:
-        return self._all(order=AppInstanceClientRow.created_at)
+        return self._all(order="created_at")
 
     def next_client_number(self) -> int:
         """The sequence `client_number` (6.1), 1, 2, ...; the row is locked until the transaction ends."""
@@ -223,13 +253,13 @@ class SqlAppInstanceClientDao(_SqlDao, AppInstanceClientDao):
             return row.value
 
 
-class SqlInvitationDao(_SqlDao, InvitationDao):
+class SqlInvitationDao(_SqlDao[Invitation], InvitationDao):
     ROW, RECORD = InvitationRow, Invitation
 
-    def lock(self, invitation_id: str):
+    def lock(self, invitation_id: str) -> AbstractContextManager[None]:
         return self.db.lock(f"c2_m2:invitation:{invitation_id}")
 
-    def lock_staff(self):
+    def lock_staff(self) -> AbstractContextManager[None]:
         return self.db.lock("c2_m2:staff:all")
 
     def get(self, invitation_id: str) -> Invitation | None:
@@ -242,33 +272,33 @@ class SqlInvitationDao(_SqlDao, InvitationDao):
         return self._first(InvitationRow.code_hash == code_hash)
 
     def list_of(self, kind: InvitationKind, company_id: str | None) -> list[Invitation]:
-        where = [InvitationRow.kind == kind.value]
+        where: list[Where] = [InvitationRow.kind == kind.value]
         if company_id is not None:
             where.append(InvitationRow.company_id == company_id)
-        return self._all(*where, order=InvitationRow.created_at)
+        return self._all(*where, order="created_at")
 
     def list_all(self) -> list[Invitation]:
-        return self._all(order=InvitationRow.created_at)
+        return self._all(order="created_at")
 
 
-class SqlAuditLogDao(_SqlDao, AuditLogDao):
+class SqlAuditLogDao(_SqlDao[AuditLogEntry], AuditLogDao):
     ROW, RECORD = AuditLogRow, AuditLogEntry
 
     def add(self, entry: AuditLogEntry) -> None:
         self._save(entry)
 
     def list_all(self) -> list[AuditLogEntry]:
-        return self._all(order=AuditLogRow.occurred_at)
+        return self._all(order="occurred_at")
 
 
-class SqlRoleAssignmentLogDao(_SqlDao, RoleAssignmentLogDao):
+class SqlRoleAssignmentLogDao(_SqlDao[RoleAssignmentLogEntry], RoleAssignmentLogDao):
     ROW, RECORD = RoleAssignmentLogRow, RoleAssignmentLogEntry
 
     def add(self, entry: RoleAssignmentLogEntry) -> None:
         self._save(entry)
 
     def list_all(self) -> list[RoleAssignmentLogEntry]:
-        return self._all(order=RoleAssignmentLogRow.occurred_at)
+        return self._all(order="occurred_at")
 
 
 def sql_dao_service(db: FeatureDatabase | None = None) -> DaoService:
