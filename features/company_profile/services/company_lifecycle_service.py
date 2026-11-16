@@ -32,13 +32,24 @@ from __future__ import annotations
 
 import json
 
-from features.company_profile.managers import config
-from features.company_profile.managers import company_repository
+from features.company_profile.managers import company_repository, config
+from features.company_profile.models.company import CompanyDetail
+from features.company_profile.models.steps import (
+    Activation,
+    AssignedIdentifier,
+    CompanyState,
+    CreatedCompany,
+    Deactivation,
+    Reactivation,
+    step_result,
+)
+from features.company_profile.models.value_sets import CompanyStatus, IdentifierSource
 from features.company_profile.services import attestation_verifier, company_validation
 from features.company_profile.services.company_changes import CORE_IDENTIFIERS, changed_fields
-from features.company_profile.services.company_views import active_roles, company_view, get_company
+from features.company_profile.services.company_views import active_roles, company_detail, get_company
 from features.company_profile.services.shared import MODULE, audit_step, utc_now
-from portal_common import events, neighbours, standin
+from portal_common import events, neighbours
+from portal_common.models import StepResult
 from portal_common.problems import Problem
 from tools import testdata
 
@@ -46,34 +57,43 @@ from tools import testdata
 # ------------------------------------------------------------------------ start and seed (README 4)
 def reset_with_seed() -> None:
     """Empty state, then the seed data of the OSP company (README 4). Seed data has no events."""
-    try:
-        company_repository.reset()
-        target = company_repository
-    except Problem as error:
-        if error.status != 501:
-            raise
-        # the start survives an unusable database; the seed then lands in memory, calls answer 501
-        target = company_repository.backend_memory()
-        target.reset()
+    company_repository.reset()
     attestation_verifier.reset()
+    seed_osp_company()
+
+
+def start() -> None:
+    """Start of the runtime: create the tables that are missing, then the seed data if it is missing."""
+    company_repository.create_tables()
+    seed_osp_company()
+
+
+def seed_osp_company() -> None:
+    """The OSP company of the seed file, written only when it does not exist yet (OPEN-QUESTIONS 9)."""
     seed = config.seed_company()
-    if not seed or target.get_company(config.osp_company_id()) is not None:
+    if not seed or company_repository.get_company(config.osp_company_id()) is not None:
         return
     address = seed.get("address") or {}
-    target.create_company({
+    company_repository.create_company({
         "id": seed["companyId"], "name": seed["name"], "bpn": seed.get("bpn"),
         "street": address.get("street"), "house_number": address.get("houseNumber"),
         "postal_code": address.get("postalCode"), "city": address.get("city"),
         "region": address.get("region"), "country_code": address.get("countryCode"),
         "status": "ACTIVE", "core_data_source": "MANUAL",
     })
-    target.set_identifiers(seed["companyId"], seed.get("identifiers") or [])
+    company_repository.set_identifiers(seed["companyId"], seed.get("identifiers") or [])
     for role in seed.get("companyRoles") or []:
-        target.add_role(seed["companyId"], role, status="ACTIVE", source_kind="SEED",
+        company_repository.add_role(seed["companyId"], role, status="ACTIVE", source_kind="SEED",
                         source_ref="ospCompanyFile")
 
 
 # ----------------------------------------------------------------------------------- steps (8.1)
+def _company_id(input: dict) -> str:
+    """The company of a step; a missing one is not found (404) like an unknown one."""
+    return str(input.get("companyId") or "")
+
+
+
 def _stub_applications() -> dict[str, dict]:
     """Built-in stand-in for C1-M2 (11.1): `STUB_APPLICATIONS_FILE` in `ApplicationInternal` form."""
     path = config.stub_applications_file()
@@ -102,15 +122,14 @@ def _application(application_id: str | None) -> dict:
     return application
 
 
-def create_company(input: dict) -> dict:
+def create_company(input: dict) -> StepResult[CreatedCompany]:
     """8.1: create the company `REQUESTED` from a submitted application of kind ONBOARDING/TRANSFER."""
-    cid, application_id = input.get("companyId"), input.get("applicationId")
+    cid, application_id = _company_id(input), input.get("applicationId")
     existing = company_repository.get_company(cid)
     if existing is not None:
         if existing["application_id"] == application_id:
-            return standin.step_reply(input, {"companyId": cid, "status": existing["status"],
-                                              "bpn": existing["bpn"],
-                                              "coreDataSource": existing["core_data_source"]})
+            return step_result(input, CreatedCompany(company_id=cid, status=existing["status"], bpn=existing["bpn"],
+                                                     core_data_source=existing["core_data_source"]))
         raise Problem(MODULE, 409, "conflict", detail="company belongs to another application",
                       retryable=False)
 
@@ -164,15 +183,14 @@ def create_company(input: dict) -> dict:
         created = get_company(cid)
         events.publish(MODULE, "CompanyCreated", {"companyId": cid, "applicationId": application_id,
                                                   "coreDataSource": created["core_data_source"]})
-    return standin.step_reply(input, {"companyId": cid, "status": created["status"],
-                                      "bpn": created["bpn"],
-                                      "coreDataSource": created["core_data_source"]})
+    return step_result(input, CreatedCompany(company_id=cid, status=created["status"], bpn=created["bpn"],
+                                             core_data_source=created["core_data_source"]))
 
 
 # ----------------------------------------------------------------------------------- steps (8.2)
-def assign_identifier(input: dict) -> dict:
+def assign_identifier(input: dict) -> StepResult[AssignedIdentifier]:
     """8.2: take over the BPN from `CompanyRegisteredAtCsp`."""
-    cid, raw = input.get("companyId"), input.get("bpn") or ""
+    cid, raw = _company_id(input), input.get("bpn") or ""
     with company_repository.lock(cid):
         row = get_company(cid)
         errors = company_validation.validate_bpn(raw)
@@ -181,7 +199,7 @@ def assign_identifier(input: dict) -> dict:
         bpn = raw.strip().upper()
         if row["bpn"]:
             if row["bpn"] == bpn:
-                return standin.step_reply(input, {"companyId": cid, "status": row["status"], "bpn": bpn})
+                return step_result(input, AssignedIdentifier(company_id=cid, status=row["status"], bpn=bpn))
             raise Problem(MODULE, 409, "bpn-mismatch", detail=f"company has {row['bpn']}",
                           retryable=False)
         if row["status"] != "REQUESTED":
@@ -193,7 +211,7 @@ def assign_identifier(input: dict) -> dict:
         company_repository.update_company(cid, bpn=bpn, bpn_assigned_at=utc_now())
         audit_step(cid, "stepAssignIdentifier", input, {"bpn": bpn})
         events.publish(MODULE, "CompanyIdentifierAssigned", {"companyId": cid, "bpn": bpn})
-    return standin.step_reply(input, {"companyId": cid, "status": row["status"], "bpn": bpn})
+    return step_result(input, AssignedIdentifier(company_id=cid, status=row["status"], bpn=bpn))
 
 
 # ----------------------------------------------------------------------------------- steps (8.3)
@@ -216,16 +234,14 @@ def _terms_of_roles() -> dict[str, set[str]]:
     return terms
 
 
-def activate_company(input: dict) -> dict:
+def activate_company(input: dict) -> StepResult[Activation]:
     """8.3: activate, taking over the consents of the application."""
-    cid, application_id = input.get("companyId"), input.get("applicationId")
+    cid, application_id = _company_id(input), input.get("applicationId")
     with company_repository.lock(cid):
         row = get_company(cid)
         if row["status"] == "ACTIVE":
-            return standin.step_reply(input, {"companyId": cid, "status": row["status"],
-                                              "bpn": row["bpn"],
-                                              "companyRoles": active_roles(cid),
-                                              "pendingCompanyRoles": []})
+            return step_result(input, Activation(company_id=cid, status=row["status"], bpn=row["bpn"],
+                                                 company_roles=active_roles(cid), pending_company_roles=[]))
         if row["status"] in ("REJECTED", "INACTIVE"):
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"], retryable=False)
         if not row["bpn"]:
@@ -266,30 +282,30 @@ def activate_company(input: dict) -> dict:
                                                    "companyRoles": sorted(active)})
         events.publish(MODULE, "CompanyActivated", {"companyId": cid, "bpn": row["bpn"],
                                                     "companyRoles": sorted(active)})
-    return standin.step_reply(input, {"companyId": cid, "status": "ACTIVE", "bpn": row["bpn"],
-                                      "companyRoles": sorted(active), "pendingCompanyRoles": pending})
+    return step_result(input, Activation(company_id=cid, status=CompanyStatus.ACTIVE, bpn=row["bpn"],
+                                         company_roles=sorted(active), pending_company_roles=pending))
 
 
 # ----------------------------------------------------------------------------------- steps (8.4)
-def reject_company(input: dict) -> dict:
+def reject_company(input: dict) -> StepResult[CompanyState]:
     """8.4: `REJECTED`, final; an assigned BPN becomes free."""
-    cid = input.get("companyId")
+    cid = _company_id(input)
     with company_repository.lock(cid):
         row = get_company(cid)
         if row["status"] == "REJECTED":
-            return standin.step_reply(input, {"companyId": cid, "status": row["status"]})
+            return step_result(input, CompanyState(company_id=cid, status=row["status"]))
         if row["status"] in ("ACTIVE", "INACTIVE"):
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"], retryable=False)
         company_repository.update_company(cid, status="REJECTED", rejected_at=utc_now())
         audit_step(cid, "stepRejectCompany", input)
         events.publish(MODULE, "CompanyRejected", {"companyId": cid})
-    return standin.step_reply(input, {"companyId": cid, "status": "REJECTED"})
+    return step_result(input, CompanyState(company_id=cid, status=CompanyStatus.REJECTED))
 
 
 # ---------------------------------------------------------------- deactivation and return (7.13, 8.5, 8.6)
-def deactivate_company(input: dict) -> dict:
+def deactivate_company(input: dict) -> StepResult[Deactivation]:
     """8.5: deactivation by Process Orchestration with reason `MANUAL` or `TRANSFERRED`."""
-    cid, reason = input.get("companyId"), input.get("reason")
+    cid, reason = _company_id(input), input.get("reason")
     with company_repository.lock(cid):
         row = get_company(cid)
         if row["status"] == "INACTIVE":
@@ -300,8 +316,8 @@ def deactivate_company(input: dict) -> dict:
                             {"deactivationReason": ["MANUAL", "TRANSFERRED"],
                              "processId": input.get("processId"),
                              "stepRunId": input.get("stepRunId")})
-            return standin.step_reply(input, {"companyId": cid, "status": row["status"],
-                                              "deactivationReason": row["deactivation_reason"]})
+            return step_result(input, Deactivation(company_id=cid, status=row["status"],
+                                                   deactivation_reason=row["deactivation_reason"]))
         if row["status"] != "ACTIVE":
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"], retryable=False)
         _check_deactivation_reason(reason)
@@ -311,23 +327,23 @@ def deactivate_company(input: dict) -> dict:
                     {"deactivationReason": reason, "processId": input.get("processId"),
                      "stepRunId": input.get("stepRunId")})
         events.publish(MODULE, "CompanyDeactivated", {"companyId": cid, "reason": reason})
-    return standin.step_reply(input, {"companyId": cid, "status": "INACTIVE",
-                                      "deactivationReason": reason})
+    return step_result(input, Deactivation(company_id=cid, status=CompanyStatus.INACTIVE,
+                                           deactivation_reason=reason))
 
 
-def _check_deactivation_reason(reason) -> None:
-    if reason not in company_repository.DEACTIVATION_REASONS:
+def _check_deactivation_reason(reason: object) -> None:
+    if reason not in company_validation.DEACTIVATION_REASONS:
         raise Problem(MODULE, 400, "validation",
                       errors=[{"field": "reason", "reason": "MANUAL or TRANSFERRED"}],
                       retryable=False)
 
 
-def deactivate_company_by_staff(companyId: str, body: dict, sub: str | None = None) -> dict:
+def deactivate_company_by_staff(companyId: str, body: dict, sub: str | None = None) -> CompanyDetail:
     """7.13: manual deactivation by OSP staff, always with a justification."""
     with company_repository.lock(companyId):
         row = get_company(companyId)
         if row["status"] == "INACTIVE":
-            return company_view(companyId, detail=True)
+            return company_detail(companyId)
         if row["status"] != "ACTIVE":
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"])
         errors = company_validation.validate_reason(body.get("reason"))
@@ -337,18 +353,33 @@ def deactivate_company_by_staff(companyId: str, body: dict, sub: str | None = No
                              deactivated_at=utc_now())
         company_repository.audit(companyId, sub, "deactivateCompany", None, {"reason": body.get("reason")})
         events.publish(MODULE, "CompanyDeactivated", {"companyId": companyId, "reason": "MANUAL"})
-    return company_view(companyId, detail=True)
+    return company_detail(companyId)
 
 
-def reactivate_company(input: dict) -> dict:
+def _reactivated_identifiers(stored: dict[str, dict], given: list[dict], verification: object) -> list[dict]:
+    """8.6: the stored identifiers with the application's values; the EBWOID never changes here, with a
+    verification only the core identifiers do, and a wallet identifier keeps its source."""
+    merged = {kind: {"type": kind, "value": entry["value"], "source": entry["source"]}
+              for kind, entry in stored.items()}
+    for entry in given:
+        kind = entry.get("type")
+        if kind == "EBWOID" or (verification == "EBW" and kind not in CORE_IDENTIFIERS):
+            continue
+        wallet = (stored.get(kind) or {}).get("source") == IdentifierSource.BUSINESS_WALLET
+        merged.pop(kind, None)
+        merged[kind] = {"type": kind, "value": entry["value"],
+                        "source": IdentifierSource.BUSINESS_WALLET if wallet else IdentifierSource.DECLARED}
+    return list(merged.values())
+
+
+def reactivate_company(input: dict) -> StepResult[Reactivation]:
     """8.6: back to ACTIVE from an approved application of the matching kind."""
-    cid, application_id = input.get("companyId"), input.get("applicationId")
+    cid, application_id = _company_id(input), input.get("applicationId")
     with company_repository.lock(cid):
         row = get_company(cid)
         if row["status"] == "ACTIVE":
-            return standin.step_reply(input, {"companyId": cid, "status": row["status"],
-                                              "bpn": row["bpn"], "companyRoles": active_roles(cid),
-                                              "changedFields": []})
+            return step_result(input, Reactivation(company_id=cid, status=row["status"], bpn=row["bpn"],
+                                                   company_roles=active_roles(cid), changed_fields=[]))
         if row["status"] != "INACTIVE":
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"], retryable=False)
 
@@ -393,20 +424,7 @@ def reactivate_company(input: dict) -> dict:
         if mismatched:
             raise Problem(MODULE, 409, "company-mismatch", fields=mismatched, retryable=False)
 
-        identifiers = list(stored.values())
-        for entry in data.get("identifiers") or []:
-            if entry.get("type") == "EBWOID":
-                continue
-            if verification == "EBW":
-                if entry.get("type") not in CORE_IDENTIFIERS:
-                    continue
-                source = "BUSINESS_WALLET" if (stored.get(entry["type"]) or {}).get("source") == "BUSINESS_WALLET" else "DECLARED"
-            else:
-                source = "DECLARED" if (stored.get(entry["type"]) or {}).get("source") != "BUSINESS_WALLET" else "BUSINESS_WALLET"
-            identifiers = [item for item in identifiers if item["type"] != entry["type"]]
-            identifiers.append({"type": entry["type"], "value": entry["value"], "source": source})
-        identifiers = [{"type": entry["type"], "value": entry["value"], "source": entry["source"]}
-                       for entry in identifiers]
+        identifiers = _reactivated_identifiers(stored, data.get("identifiers") or [], verification)
 
         errors = company_validation.validate_company(fields)
         errors += company_validation.validate_identifiers(identifiers, fields["country_code"])
@@ -435,5 +453,5 @@ def reactivate_company(input: dict) -> dict:
         roles = sorted(role for role, status in company_repository.list_roles(cid).items() if status == "ACTIVE")
         events.publish(MODULE, "CompanyReactivated",
                        {"companyId": cid, "bpn": row["bpn"], "companyRoles": roles})
-    return standin.step_reply(input, {"companyId": cid, "status": "ACTIVE", "bpn": row["bpn"],
-                                      "companyRoles": roles, "changedFields": changed})
+    return step_result(input, Reactivation(company_id=cid, status=CompanyStatus.ACTIVE, bpn=row["bpn"],
+                                           company_roles=roles, changed_fields=changed))

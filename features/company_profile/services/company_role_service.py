@@ -25,8 +25,8 @@
 """
 from __future__ import annotations
 
-from features.company_profile.managers import config
-from features.company_profile.managers import company_repository
+from features.company_profile.managers import company_repository, config
+from features.company_profile.models.company_role import AgreementConsent, CompanyRoleState
 from features.company_profile.services import company_validation
 from features.company_profile.services.company_views import get_company
 from features.company_profile.services.shared import MODULE, utc_now
@@ -46,37 +46,30 @@ def _terms() -> list[dict]:
     return [agreement for agreement in agreements if agreement.get("scope") == "COMPANY_ROLE"]
 
 
-def _role_state(company: str, lang: str) -> list[dict]:
+def _agreement(term: dict, consent: dict | None, lang: str) -> AgreementConsent:
+    titles, urls, consent = term.get("title") or {}, term.get("documentUrls") or {}, consent or {}
+    return AgreementConsent(agreement_key=term["agreementKey"], version=term["version"],
+                            name=titles.get(lang) or titles.get("en"), names=titles,
+                            document_url=urls.get(lang) or urls.get("en"),
+                            consent_status=consent.get("status"),
+                            consented_version=consent.get("agreement_version"),
+                            consented_at=consent.get("consented_at"))
+
+
+def _role_state(company: str, lang: str) -> list[CompanyRoleState]:
     """`CompanyRoleState` of 7.7: catalogue roles plus the roles the company has or had."""
     terms = _terms()
-    roles: dict[str, set[str]] = {}
-    for role in config.roles_assignable_by_company():
-        roles.setdefault(role, set())
-    for role in company_repository.list_roles(company):
-        roles.setdefault(role, set())
-    states = []
-    for role in sorted(roles):
-        entry = config.role_catalogue().get(role) or {}
-        assigned = company_repository.role_status(company, role)
-        own = {consent["agreement_key"]: consent for consent in company_repository.list_consents(company)}
-        states.append({
-            "companyRole": role, "assignableBy": entry.get("assignableBy"),
-            "status": "NONE" if assigned == "NONE" else assigned,
-            "description": config.description(role, lang) or "",
-            "agreements": [{"agreementKey": term["agreementKey"], "version": term["version"],
-                            "name": (term.get("title") or {}).get(lang) or (term.get("title") or {}).get("en"),
-                            "names": term.get("title") or {},
-                            "documentUrl": (term.get("documentUrls") or {}).get(lang)
-                            or (term.get("documentUrls") or {}).get("en"),
-                            "consentStatus": (own.get(term["agreementKey"]) or {}).get("status"),
-                            "consentedVersion": (own.get(term["agreementKey"]) or {}).get("agreement_version"),
-                            "consentedAt": (own.get(term["agreementKey"]) or {}).get("consented_at")}
-                           for term in terms if role in (term.get("companyRoles") or [])],
-        })
-    return states
+    assigned = company_repository.list_roles(company)
+    own = {consent["agreement_key"]: consent for consent in company_repository.list_consents(company)}
+    catalogue = config.role_catalogue()
+    return [CompanyRoleState(company_role=role, assignable_by=(catalogue.get(role) or {}).get("assignableBy"),
+                             status=assigned.get(role, "NONE"), description=config.description(role, lang) or "",
+                             agreements=[_agreement(term, own.get(term["agreementKey"]), lang)
+                                         for term in terms if role in (term.get("companyRoles") or [])])
+            for role in sorted(set(config.roles_assignable_by_company()) | set(assigned))]
 
 
-def list_company_roles(companyId: str, lang: str | None = None) -> list[dict]:
+def list_company_roles(companyId: str, lang: str | None = None) -> list[CompanyRoleState]:
     """7.7"""
     get_company(companyId)
     return _role_state(companyId, lang or "en")
@@ -89,7 +82,7 @@ def _terms_of(role: str, terms: list[dict]) -> dict[str, dict]:
 
 
 def add_company_role(companyId: str, body: dict, sub: str | None = None,
-                     lang: str | None = None) -> list[dict]:
+                     lang: str | None = None) -> list[CompanyRoleState]:
     """7.8"""
     role = body.get("companyRole") or ""
     with company_repository.lock(companyId):
@@ -126,7 +119,7 @@ def add_company_role(companyId: str, body: dict, sub: str | None = None,
 
 
 def remove_company_role(companyId: str, companyRole: str, sub: str | None = None,
-                        lang: str | None = None) -> list[dict]:
+                        lang: str | None = None) -> list[CompanyRoleState]:
     """7.9"""
     with company_repository.lock(companyId):
         row = get_company(companyId)
@@ -138,19 +131,18 @@ def remove_company_role(companyId: str, companyRole: str, sub: str | None = None
             raise Problem(MODULE, 409, "role-not-assignable")
         if company_repository.role_status(companyId, companyRole) != "ACTIVE":
             return _role_state(companyId, lang or "en")
-        remaining = [role for role, status in company_repository.list_roles(companyId).items()
-                     if status == "ACTIVE" and role != companyRole and config.assignable_by(role) == "COMPANY"]
-        if not remaining:
+        others = [role for role, status in company_repository.list_roles(companyId).items()
+                  if status == "ACTIVE" and role != companyRole]
+        if not any(config.assignable_by(role) == "COMPANY" for role in others):
             raise Problem(MODULE, 409, "last-role")
 
         company_repository.remove_role(companyId, companyRole)
-        for term in _terms_of(companyRole, _terms()).values():
-            others = [role for role, status in company_repository.list_roles(companyId).items()
-                      if status == "ACTIVE" and companyRole != role
-                      and term["agreementKey"] in [t["agreementKey"] for t in _terms_of(role, _terms()).values()]]
-            if not others:
-                company_repository.set_consent(companyId, term["agreementKey"], status="INACTIVE",
-                                  source_kind="COMPANY", source_ref=sub)
+        terms = _terms()
+        still_needed = {key for role in others for key in _terms_of(role, terms)}
+        for key in _terms_of(companyRole, terms):
+            if key not in still_needed:
+                company_repository.set_consent(companyId, key, status="INACTIVE",
+                                               source_kind="COMPANY", source_ref=sub)
         active = [name for name, status in company_repository.list_roles(companyId).items() if status == "ACTIVE"]
         company_repository.audit(companyId, sub, "removeCompanyRole", companyRole, {"companyRole": companyRole})
         events.publish(MODULE, "CompanyRolesChanged", {"companyId": companyId, "companyRoles": active})
