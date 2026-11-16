@@ -56,10 +56,11 @@ States: `DRAFT` -> `IN_REVIEW` (submit; an app needs planned roles) -> `ACTIVE` 
 | `managers/offer_repository.py` | reads and writes the offers in the feature's database |
 | `managers/neighbour_client.py` | C3-M1 `query_company` (in-process or over HTTP, `portal_common.neighbours`) |
 | `models/offer.py` | pydantic models: `OfferInput`, `Offer`, `AppRole`, `TechnicalUserProfile`, `OfferInternal`, `OfferEvent`, value sets |
+| `models/errors.py` | `MODULE` and the Problem factory (`urn:c8-m1:problem:<name>`) |
 | `models/tables.py` | SQLModel table `offer`; roles, profile and agreements are JSON columns of the offer |
 
 - **Interface** (`interface.py`): the query `get_offer_internal(offerId=...)`, the offer as JSON with
-  `hasTechnicalUserProfile`. Every other step or query of the spec is a stand-in function
+  `hasTechnicalUserProfile`, and the operations of people that the controllers call. Every other step or query of the spec is a stand-in function
   (`standin.missing_interface`).
 - **Events**: publishes `OfferApproved` (`offerId`, `offerType`, `providerCompanyId`, source `urn:c8-m1`); consumes
   none.

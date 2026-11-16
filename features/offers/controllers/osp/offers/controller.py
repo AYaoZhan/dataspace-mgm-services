@@ -25,7 +25,7 @@
 """Review of offers by OSP staff: approval publishes `OfferApproved`."""
 from __future__ import annotations
 
-from features.offers import services
+from features.offers import interface
 from features.offers.models import Offer
 from portal_common.routing import Controller, Permission
 
@@ -33,5 +33,5 @@ controller = Controller("Offers: OSP Review")
 
 
 @controller.post("/{offerId}/approve", response_model=Offer, summary="Approve a submitted offer")
-def approve_offer(offerId: str, claims: dict = Permission):
-    return services.approve_offer(offerId)
+def approve_offer(offerId: str, claims: dict = Permission) -> Offer:
+    return interface.approve_offer(offerId)

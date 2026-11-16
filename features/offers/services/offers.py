@@ -62,7 +62,7 @@ def create_offer(*, company_id: str | None, body: OfferInput) -> Offer:
     """A draft; the provider company needs the company role of the offer type at C3-M1 (README 6.2)."""
     role = ROLE_FOR[body.offer_type]
     company = neighbour_client.query_company(company_id) if company_id else None
-    if not company or role not in company.get("companyRoles", []):
+    if not company_id or not company or role not in company.get("companyRoles", []):
         raise problem(403, "company-role-missing", detail=f"company role {role} missing")
     is_app = body.offer_type == "APP"
     return offer_repository.save(Offer(
@@ -112,4 +112,5 @@ def approve_offer(offer_id: str) -> Offer:
 def get_offer_internal(offer_id: str) -> OfferInternal:
     """README 9.1: the offer with `hasTechnicalUserProfile`."""
     offer = get_offer(offer_id)
-    return OfferInternal(**offer.model_dump(by_alias=False), has_technical_user_profile=offer.technical_user_profile is not None)
+    has_profile = offer.technical_user_profile is not None
+    return OfferInternal(**offer.model_dump(by_alias=False), has_technical_user_profile=has_profile)

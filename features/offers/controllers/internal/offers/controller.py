@@ -32,6 +32,7 @@ from portal_common.routing import Controller, Permission
 controller = Controller("Offers: Internal")
 
 
-@controller.get("/{offerId}", response_model=OfferInternal, summary="An offer for Process Orchestration and Subscriptions")
-def get_offer_internal(offerId: str, claims: dict = Permission):
+@controller.get("/{offerId}", response_model=OfferInternal,
+                summary="An offer for Process Orchestration and Subscriptions")
+def get_offer_internal(offerId: str, claims: dict = Permission) -> dict:
     return interface.get_offer_internal(offerId=offerId)

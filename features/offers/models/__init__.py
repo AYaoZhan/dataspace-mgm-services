@@ -25,6 +25,7 @@
 """Models, value sets and Problem Details of the offers."""
 from __future__ import annotations
 
+from features.offers.models.errors import MODULE, problem
 from features.offers.models.offer import (
     AppRole,
     InstanceKind,
@@ -36,14 +37,9 @@ from features.offers.models.offer import (
     OfferType,
     TechnicalUserProfile,
 )
-from portal_common.problems import Problem
 
-MODULE = "c8-m1"
-ROLE_FOR: dict[OfferType, str] = {"APP": "APP_PROVIDER", "SERVICE": "SERVICE_PROVIDER"}   # company role an offer type needs
+# the company role that the provider needs for an offer type (README 6.2)
+ROLE_FOR: dict[OfferType, str] = {"APP": "APP_PROVIDER", "SERVICE": "SERVICE_PROVIDER"}
 
 __all__ = ["MODULE", "ROLE_FOR", "AppRole", "InstanceKind", "Offer", "OfferEvent", "OfferInput", "OfferInternal",
            "OfferStatus", "OfferType", "TechnicalUserProfile", "problem"]
-
-
-def problem(status: int, name: str, *, detail: str | None = None) -> Problem:
-    return Problem(MODULE, status, name, detail=detail)

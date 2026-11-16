@@ -25,7 +25,7 @@
 """The planned roles of an own offer, scope `company`."""
 from __future__ import annotations
 
-from features.offers import services
+from features.offers import interface
 from features.offers.models import MODULE, AppRole
 from portal_common.routing import Controller, Permission, company_scope
 
@@ -33,6 +33,6 @@ controller = Controller("Offers: Roles")
 
 
 @controller.put("", response_model=list[AppRole], summary="Replace the planned roles")
-def replace_planned_roles(offerId: str, body: list[AppRole], claims: dict = Permission):
-    company_scope(MODULE, claims, services.provider_of(offerId))
-    return services.replace_planned_roles(offerId, body)
+def replace_planned_roles(offerId: str, body: list[AppRole], claims: dict = Permission) -> list[AppRole]:
+    company_scope(MODULE, claims, interface.provider_of(offerId))
+    return interface.replace_planned_roles(offerId, body)

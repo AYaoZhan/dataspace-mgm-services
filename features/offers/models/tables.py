@@ -30,13 +30,18 @@ they are JSON columns instead of tables of their own.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON, Column
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from features.offers.models import MODULE
 from portal_common import database
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:   # for mypy the plain SQLModel base; at run time the feature's own registry and MetaData
+    Table = SQLModel
+else:
+    Table = database.table_base(MODULE)
 
 
 class OfferRow(Table, table=True):

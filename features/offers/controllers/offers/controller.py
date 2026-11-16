@@ -25,7 +25,7 @@
 """The own offers of a provider (README 6.1, 6.2), scope `company`: create, read, submit."""
 from __future__ import annotations
 
-from features.offers import services
+from features.offers import interface
 from features.offers.models import MODULE, Offer, OfferInput
 from portal_common.routing import Controller, Permission, company_scope
 
@@ -33,17 +33,17 @@ controller = Controller("Offers: Offers")
 
 
 @controller.post("", status_code=201, response_model=Offer, summary="Create an offer (company role checked at C3-M1)")
-def create_offer(body: OfferInput, claims: dict = Permission):
-    return services.create_offer(company_id=claims.get("company_id"), body=body)
+def create_offer(body: OfferInput, claims: dict = Permission) -> Offer:
+    return interface.create_offer(company_id=claims.get("company_id"), body=body)
 
 
 @controller.get("/{offerId}", response_model=Offer, summary="An own offer")
-def get_own_offer(offerId: str, claims: dict = Permission):
-    company_scope(MODULE, claims, services.provider_of(offerId))
-    return services.get_offer(offerId)
+def get_own_offer(offerId: str, claims: dict = Permission) -> Offer:
+    company_scope(MODULE, claims, interface.provider_of(offerId))
+    return interface.get_offer(offerId)
 
 
 @controller.post("/{offerId}/submit", response_model=Offer, summary="Submit an offer for review")
-def submit_offer(offerId: str, claims: dict = Permission):
-    company_scope(MODULE, claims, services.provider_of(offerId))
-    return services.submit_offer(offerId)
+def submit_offer(offerId: str, claims: dict = Permission) -> Offer:
+    company_scope(MODULE, claims, interface.provider_of(offerId))
+    return interface.submit_offer(offerId)

@@ -22,16 +22,26 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""In-process contract of the offers (call convention, AGENTS.md): `getOfferInternal` serves the lookup `offer`
-of Process Orchestration and Subscriptions. Other services and Process Orchestration import only from here; the
-logic lives in `services/`."""
+"""In-process contract of the offers (call convention, AGENTS.md): the query `getOfferInternal` serves the lookup
+`offer` of Process Orchestration and Subscriptions, and the operations of people, which only the controllers call.
+Other services and Process Orchestration import only from here; the logic lives in `services/`."""
 from __future__ import annotations
 
 from features.offers import services
 from features.offers.models import MODULE
+from features.offers.services import (
+    approve_offer,
+    create_offer,
+    get_offer,
+    provider_of,
+    put_technical_user_profile,
+    replace_planned_roles,
+    submit_offer,
+)
 from portal_common import database, standin
 
-__all__ = ["MODULE", "get_offer_internal", "reset"]
+__all__ = ["MODULE", "approve_offer", "create_offer", "get_offer", "get_offer_internal", "provider_of",
+           "put_technical_user_profile", "replace_planned_roles", "reset", "submit_offer"]
 
 
 def reset() -> None:
