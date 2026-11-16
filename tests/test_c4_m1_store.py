@@ -44,7 +44,7 @@ import pytest
 
 from test_c4_m2_common import seam
 
-STORES = ["InMemoryStore"]
+STORES = ["SqlCredentialStore"]
 T0 = dt.datetime(2026, 11, 5, 8, 0, tzinfo=dt.UTC)
 C1, C2, C3 = ("c0000001-0000-4000-8000-000000000001", "c4100004-0000-4000-8000-000000000004",
               "c4100006-0000-4000-8000-000000000006")
@@ -53,7 +53,10 @@ BPN1, BPN2, BPN3 = "BPNLIUK2REMLK3F4", "BPNL0000000000U4", "BPNL0000000000U6"
 
 @pytest.fixture(params=STORES)
 def store(request):
-    return getattr(seam("modules.c4_m1.store"), request.param)()
+    """A store on the feature's database, emptied first (the database is shared by every store of the process)."""
+    implementation = getattr(seam("features.credentials.managers.credential_store"), request.param)()
+    implementation.reset()
+    return implementation
 
 
 def t(h: float) -> dt.datetime:

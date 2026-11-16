@@ -11,16 +11,16 @@ between modules in the same process. The module specifications (until they are m
 | Module | Base path |
 |---|---|
 | C1-M2 Registration | `/api/registration` (migrated feature, ADR-0003) |
-| C1-M3 Application Review | `/api/c1-m3` |
+| C1-M3 Application Review | `/api/application-review` (migrated feature, ADR-0003) |
 | C2-M2 Users and App Access | `/api/app-access` (migrated feature, ADR-0003) |
 | C2-M3 Technical Users | `/api/technical-user` (migrated feature, ADR-0003) |
 | C3-M1 Company Profile | `/api/company-profile` (migrated feature, ADR-0003) |
 | C3-M2 CSP Connection | `/api/csp-connection` (migrated feature, ADR-0003) |
-| C4-M1 Credentials | `/api/c4-m1` |
-| C4-M2 Dataspace Wallet Interface | `/api/c4-m2` |
+| C4-M1 Credentials | `/api/credentials` (migrated feature, ADR-0003) |
+| C4-M2 Dataspace Wallet Interface | `/api/dataspace-wallet-interface` (migrated feature, ADR-0003) |
 | C6-M1 Connectors | `/api/connector` (migrated feature, ADR-0003) |
-| C8-M1 Offers | `/api/c8-m1` |
-| C10-M1 Subscriptions | `/api/c10-m1` |
+| C8-M1 Offers | `/api/offers` (migrated feature, ADR-0003) |
+| C10-M1 Subscriptions | `/api/subscriptions` (migrated feature, ADR-0003) |
 | C11-M1 Notifications | `/api/notifications` (migrated feature, ADR-0003) |
 | C12-M1 Process Orchestration | `/api/c12-m1` |
 
