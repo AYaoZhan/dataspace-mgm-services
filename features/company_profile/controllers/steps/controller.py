@@ -26,37 +26,46 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.company_profile.models.steps import (
+    Activation,
+    AssignedIdentifier,
+    CompanyState,
+    CreatedCompany,
+    Deactivation,
+    Reactivation,
+)
 from features.company_profile.services import company_lifecycle_service
+from portal_common.models import StepResult
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Company Profile: Process Steps and Queries")
 
 
 @controller.post("/create-company")
-def create_company(body: dict = Body(...), _: dict = Permission):
+def create_company(body: dict = Body(...), _: dict = Permission) -> StepResult[CreatedCompany]:
     return company_lifecycle_service.create_company(body)
 
 
 @controller.post("/assign-identifier")
-def assign_identifier(body: dict = Body(...), _: dict = Permission):
+def assign_identifier(body: dict = Body(...), _: dict = Permission) -> StepResult[AssignedIdentifier]:
     return company_lifecycle_service.assign_identifier(body)
 
 
 @controller.post("/activate-company")
-def activate_company(body: dict = Body(...), _: dict = Permission):
+def activate_company(body: dict = Body(...), _: dict = Permission) -> StepResult[Activation]:
     return company_lifecycle_service.activate_company(body)
 
 
 @controller.post("/deactivate-company")
-def deactivate_company(body: dict = Body(...), _: dict = Permission):
+def deactivate_company(body: dict = Body(...), _: dict = Permission) -> StepResult[Deactivation]:
     return company_lifecycle_service.deactivate_company(body)
 
 
 @controller.post("/reactivate-company")
-def reactivate_company(body: dict = Body(...), _: dict = Permission):
+def reactivate_company(body: dict = Body(...), _: dict = Permission) -> StepResult[Reactivation]:
     return company_lifecycle_service.reactivate_company(body)
 
 
 @controller.post("/reject-company")
-def reject_company(body: dict = Body(...), _: dict = Permission):
+def reject_company(body: dict = Body(...), _: dict = Permission) -> StepResult[CompanyState]:
     return company_lifecycle_service.reject_company(body)

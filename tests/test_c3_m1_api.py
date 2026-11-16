@@ -27,12 +27,13 @@
 Tokens come from the in-memory test IAM of the scaffold; permissions are read from the spec there.
 """
 import pytest
-from conftest import BASE, bearer, person_token
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from conftest import BASE, bearer, person_token
 from features import company_profile
 from features.company_profile.managers import company_repository
+from features.company_profile.models import wire
 from features.company_profile.router import router as company_profile_router
 from portal_common import http as phttp
 from portal_common import problems, standin
@@ -42,6 +43,19 @@ U1 = "c0000001-0000-4000-8000-000000000001"
 U2 = "c0000002-0000-4000-8000-000000000002"
 P1, P2, P3, P4 = "erika", "max", "hans", "lieschen"
 S1, S2 = "rolf", "otto"
+
+
+class wired:
+    """A service module whose answers are the JSON the HTTP API sends (`wire`), as the tests read them."""
+
+    def __init__(self, module):
+        self._module = module
+
+    def __getattr__(self, name):
+        found = getattr(self._module, name)
+        if not callable(found):
+            return found
+        return lambda *args, **kwargs: wire(found(*args, **kwargs))
 
 
 @pytest.fixture

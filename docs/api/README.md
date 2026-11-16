@@ -18,10 +18,10 @@ between modules in the same process. The module specifications (until they are m
 | C3-M2 CSP Connection | `/api/csp-connection` (migrated feature, ADR-0003) |
 | C4-M1 Credentials | `/api/c4-m1` |
 | C4-M2 Dataspace Wallet Interface | `/api/c4-m2` |
-| C6-M1 Connectors | `/api/c6-m1` |
+| C6-M1 Connectors | `/api/connector` (migrated feature, ADR-0003) |
 | C8-M1 Offers | `/api/c8-m1` |
 | C10-M1 Subscriptions | `/api/c10-m1` |
-| C11-M1 Notifications | `/api/c11-m1` |
+| C11-M1 Notifications | `/api/notifications` (migrated feature, ADR-0003) |
 | C12-M1 Process Orchestration | `/api/c12-m1` |
 
 A migrated feature (`features/<name>/`, ADR-0003) is served under its readable name instead of the spec id; the old

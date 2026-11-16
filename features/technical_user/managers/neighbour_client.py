@@ -74,9 +74,9 @@ def connector_uses(technical_user_id: str) -> bool:
     return bool(neighbours.query(MODULE, "c6-m1", "list_connectors_internal", technicalUserId=technical_user_id))
 
 
-def subscription_is_active(offer_subscription_id: str) -> bool:
-    """C10-M1 `get_subscription_internal`."""
-    if neighbours.is_standin("c10-m1"):
+def subscription_is_active(offer_subscription_id: str | None) -> bool:
+    """C10-M1 `get_subscription_internal`; an account without subscription has none that is active."""
+    if not offer_subscription_id or neighbours.is_standin("c10-m1"):
         return False
     found = neighbours.query(MODULE, "c10-m1", "get_subscription_internal", offerSubscriptionId=offer_subscription_id)
     return bool(found) and found.get("status") == "ACTIVE"

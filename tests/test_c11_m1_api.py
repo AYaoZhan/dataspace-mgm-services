@@ -32,11 +32,15 @@ import uuid
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlmodel import select
 
 from conftest import BASE, bearer, person_token
-from modules.c11_m1 import inbox, listing, marks, store, worker
-from modules.c11_m1 import router as c11
-from portal_common import events, problems, tokens
+from features import notifications as c11
+from features.notifications.managers import store, worker
+from features.notifications.models.tables import NotificationRow
+from features.notifications.router import router as c11_router
+from features.notifications.services import inbox, listing, marks
+from portal_common import database, events, problems, tokens
 from portal_common import http as phttp
 from portal_common.problems import Problem
 from tools import test_iam
@@ -44,7 +48,7 @@ from tools import test_iam
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
 COMPANY = "c0000001-0000-4000-8000-000000000001"
 CHANGE_REQUEST = "44444444-4444-4444-8444-444444444444"
-API = "/api/c11-m1/notifications"
+API = "/api/notifications/notifications"
 
 
 @pytest.fixture(autouse=True)
@@ -77,13 +81,16 @@ def three_change_requests() -> list[str]:
     """Three R5 tasks for staff with `review_company_changes`, created 09:30, 09:31 and 09:32."""
     for i in range(3):
         c11.on_event(change_request(changeRequestId=str(uuid.UUID(int=i + 1))))
-    for i, n in enumerate(store.notifications):   # fixed times make the order deterministic
-        n["createdAt"] = f"2026-11-06T09:3{i}:00+00:00"
-    return [n["notificationId"] for n in store.notifications]
+    with database.session(c11.MODULE) as session:   # fixed times make the order deterministic
+        rows = session.exec(select(NotificationRow).order_by(NotificationRow.seq)).all()
+        for i, row in enumerate(rows):
+            row.created_at = f"2026-11-06T09:3{i}:00+00:00"
+            session.add(row)
+    return [n["notificationId"] for n in store.notifications()]
 
 
 def of_type(ntype: str) -> dict:
-    [n] = [n for n in store.notifications if n["type"] == ntype]
+    [n] = [n for n in store.notifications() if n["type"] == ntype]
     return n
 
 
@@ -158,7 +165,7 @@ THREE = [view(notificationId=f"n{i}", createdAt=f"2026-11-06T09:3{i}:00+00:00") 
 
 def everything(*, newest_first: bool, page: int = 0, size: int = 20) -> dict:
     """`THREE` without filters."""
-    return listing.list_page(THREE, listing.Filters(), newest_first=newest_first, page=page, size=size)
+    return listing.list_page(THREE, listing.Filters(), newest_first=newest_first, page=page, size=size).model_dump()
 
 
 def ids(page: dict) -> list[str]:
@@ -216,7 +223,7 @@ def test_read_keeps_the_time_of_the_first_read(monkeypatch):
     monkeypatch.setattr(store, "now", lambda: "2026-11-06T11:00:00+00:00")
     marks.mark_read(n, "rolf")
     assert marks.is_read(n, "rolf")
-    assert store.state[(n["notificationId"], "rolf")]["readAt"] == "2026-11-06T10:00:00+00:00"
+    assert store.state_of(n["notificationId"], "rolf")["readAt"] == "2026-11-06T10:00:00+00:00"
 
 
 def test_unread_is_idempotent():
@@ -263,7 +270,7 @@ def test_only_a_task_that_is_not_done_is_open(topic, done, is_open):
 def client():
     app = FastAPI()
     problems.install(app)
-    for r in (test_iam.router, c11.router):
+    for r in (test_iam.router, c11_router):
         app.include_router(r)
     phttp.register_local(BASE, app)   # JWKS of the test IAM for the token check
     return TestClient(app, base_url=BASE)
