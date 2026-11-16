@@ -28,9 +28,9 @@ from __future__ import annotations
 from fastapi import Body
 
 from features.technical_user import interface
+from features.technical_user.models import validation
 from features.technical_user.models.responses import WIRE, Credentials
 from features.technical_user.models.schemas import SubscriptionCredentialsRequest
-from features.technical_user.services import validation
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Technical User: Process Steps and Queries")

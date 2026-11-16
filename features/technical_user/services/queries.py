@@ -30,9 +30,9 @@ from collections.abc import Callable
 from portal_common.models import Page
 
 from ..managers.technical_user_repository import repository
-from ..models import DEFAULT_LIST_STATUSES, TechnicalUserRecord, Viewer
+from ..models import DEFAULT_LIST_STATUSES, TechnicalUserRecord, Viewer, validation
 from ..models.responses import TechnicalUser, TechnicalUserCheck, TechnicalUserSummary
-from . import accounts, projections, state, validation
+from . import accounts, projections, state
 
 
 def _statuses(status: str | list[str] | None) -> list[str] | tuple[str, ...]:
@@ -51,18 +51,18 @@ def _page(rows: list[TechnicalUserRecord], viewer: Callable[[TechnicalUserRecord
                                       page=window.page, size=window.size, total=window.total)
 
 
-def get_technical_user(*, id: str, company_id: str, **_other) -> TechnicalUser:
+def get_technical_user(*, id: str, company_id: str, **_other: object) -> TechnicalUser:
     row = accounts.find(id)
     return projections.details(row, accounts.viewer_of(row, company_id))
 
 
-def get_any_technical_user(*, id: str, **_other) -> TechnicalUser:
+def get_any_technical_user(*, id: str, **_other: object) -> TechnicalUser:
     return projections.details(accounts.find(id), Viewer.OSP)
 
 
 def list_technical_users(*, company_id: str, page: int = 0, size: int = 20, status: str | list[str] | None = None,
                          origin: str | None = None, wallet_access: str | None = None,
-                         **_other) -> Page[TechnicalUserSummary]:
+                         **_other: object) -> Page[TechnicalUserSummary]:
     rows = repository.find(visible_to=company_id, statuses=_statuses(status), origin=origin,
                            wallet_access=wallet_access)
     return _page(rows, lambda row: _viewer(row, company_id), page=page, size=size)
@@ -75,14 +75,14 @@ def _viewer(row: TechnicalUserRecord, company_id: str) -> Viewer:
 def list_all_technical_users(*, page: int = 0, size: int = 20, company_id: str | None = None,
                              status: str | list[str] | None = None, origin: str | None = None,
                              wallet_access: str | None = None, disabled: bool | None = None,
-                             **_other) -> Page[TechnicalUserSummary]:
+                             **_other: object) -> Page[TechnicalUserSummary]:
     rows = repository.find(owner_company_id=company_id, statuses=_statuses(status), origin=origin,
                            wallet_access=wallet_access, disabled=disabled)
     return _page(rows, lambda _row: Viewer.OSP, page=page, size=size)
 
 
 def check_technical_user(*, id: str, company_id: str | None = None, offer_subscription_id: str | None = None,
-                         **_other) -> TechnicalUserCheck:
+                         **_other: object) -> TechnicalUserCheck:
     """9.1: always answers, an unknown ID gives `exists: false`."""
     row = repository.get(id)
     if row is None:

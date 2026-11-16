@@ -38,6 +38,7 @@ from ..models import (
     Status,
     SubscriptionParty,
     TechnicalUserRecord,
+    validation,
 )
 from ..models.responses import (
     CompanyTechnicalUsers,
@@ -54,7 +55,7 @@ from ..models.schemas import (
     StepTechnicalUserRef,
     role_refs,
 )
-from . import accounts, audit, iam_access, roles, state, validation
+from . import accounts, audit, iam_access, roles, state
 from .audit import Actor
 
 

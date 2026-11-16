@@ -25,6 +25,8 @@
 """Calls to the Portal IAM with the public error shape of the module (README 12)."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import httpx
 
 from ..managers import iam as iam_package
@@ -36,7 +38,7 @@ def iam() -> TechnicalUserIam:
     return iam_package.get()
 
 
-def call(function, *args, **kwargs):
+def call[**P, R](function: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
     """Runs one IAM call: unknown role -> 400 `role-not-assignable`, IAM trouble -> 502 `iam-error`."""
     try:
         return function(*args, **kwargs)

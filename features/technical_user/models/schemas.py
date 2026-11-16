@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
 #################################################################################
-"""Input of the operations and steps as in `openapi.yaml` (components/schemas); `validation.parse` turns a
+"""Input of the operations and steps as in `openapi.yaml` (components/schemas); `models.validation.parse` turns a
 failed check into 400 `validation`.
 
 The models build on `portal_common.models` (snake_case in Python, camelCase in JSON). Input is strict and

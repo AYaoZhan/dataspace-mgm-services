@@ -30,7 +30,7 @@ import contextlib
 from ..managers import config
 from ..managers import neighbour_client as gateways
 from ..managers.technical_user_repository import repository
-from ..models import Origin, TechnicalUserRecord, Viewer
+from ..models import Origin, TechnicalUserRecord, Viewer, validation
 from ..models.errors import Problem, problem
 from ..models.responses import Credentials, TechnicalUser, TechnicalUserWithCredentials
 from ..models.schemas import (
@@ -38,7 +38,7 @@ from ..models.schemas import (
     TechnicalUserCreate,
     TechnicalUserUpdate,
 )
-from . import accounts, audit, iam_access, projections, roles, state, validation
+from . import accounts, audit, iam_access, projections, roles, state
 from .audit import Actor
 
 
@@ -85,7 +85,7 @@ def _update_roles(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> tuple[
 
 
 def _update_metadata(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> bool:
-    name = data.name if "name" in data.model_fields_set else row["name"]
+    name = data.name if data.name is not None else row["name"]   # an explicit null is refused
     description = data.description if "description" in data.model_fields_set else row["description"]
     if (name, description) == (row["name"], row["description"]):
         return False
@@ -148,7 +148,8 @@ def rotate_credentials(*, id: str, company_id: str, actor_sub: str) -> Credentia
         return projections.credentials(row, secret)
 
 
-def rotate_subscription_credentials(*, id: str, offer_subscription_id: str | None = None, **other) -> Credentials:
+def rotate_subscription_credentials(*, id: str, offer_subscription_id: str | None = None,
+                                    **other: object) -> Credentials:
     request = {} if offer_subscription_id is None else {"offerSubscriptionId": offer_subscription_id}
     # the whole request is validated (undeclared fields are a 400) before the secret is touched
     subscription_id = validation.parse(SubscriptionCredentialsRequest, request | other).offer_subscription_id

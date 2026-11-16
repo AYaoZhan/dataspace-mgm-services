@@ -71,19 +71,20 @@ Callers:
 | `controllers/steps/` | `POST /steps/<step>` for the six steps of README 8 |
 | `services/commands.py`, `queries.py`, `steps.py` | operations of people (7.2, 7.4 to 7.6, 9.2), reading operations (7.1, 7.3, 7.9, 7.10, 9.1), steps (8) |
 | `services/state.py`, `accounts.py`, `roles.py` | status rules (6.1, 6.2), shared flows (lookup, visibility 6.3, creation, deletion), assignable roles (6.5) |
-| `services/audit.py`, `projections.py`, `validation.py`, `iam_access.py`, `process_stub.py` | logs and events (6.8, 10), API shapes, 400 `validation`, IAM errors (12), stand-in for Process Orchestration (11.3) |
+| `services/audit.py`, `projections.py`, `iam_access.py`, `process_stub.py` | logs and events (6.8, 10), API shapes, IAM errors (12), stand-in for Process Orchestration (11.3) |
 | `managers/technical_user_repository.py` | the only code that opens the database: rows, logs, outbox, client ID sequence, locks per key |
 | `managers/iam/` | Portal IAM: Keycloak Admin API (`keycloak.py`) or an in-memory stand-in (`memory.py`) |
 | `managers/neighbour_client.py`, `managers/data/stub-companies.json` | C3-M1, C6-M1 and C10-M1, with their built-in stand-ins |
 | `managers/config.py` | configuration (below) |
 | `models/schemas.py` | request bodies and step inputs (`TechnicalUserCreate`, `TechnicalUserUpdate`, `SubscriptionCredentialsRequest`, `Step*`) on `RequestBody` / `StepRequest` |
 | `models/responses.py` | responses and step results (`TechnicalUser`, `TechnicalUserSummary`, `Credentials`, `TechnicalUserCheck`, `AssignableRole`, ...) |
+| `models/validation.py` | `parse()`: a failed model check as 400 `validation` with a `detail` (README 12) |
 | `models/tables.py`, `models/__init__.py` | SQLModel tables; value sets (`Status`, `WalletAccess`, `Origin`, ...) and the records the services work on |
 
-Request bodies are validated in the services, not by FastAPI, so the order of the answers stays as in the spec
-(for example 404 for an unknown account before 400 for its body) and a 400 has the `detail` of README 12.
-Responses are the models of `models/responses.py` (`response_model`); an optional field that the spec leaves out
-is left unset and is not in the JSON.
+Request bodies are validated in the services (with `models/validation.py`), not by FastAPI, so the order of the
+answers stays as in the spec (for example 404 for an unknown account before 400 for its body) and a 400 has the
+`detail` of README 12. Responses are the models of `models/responses.py` (`response_model`); an optional field that
+the spec leaves out is left unset and is not in the JSON.
 
 ### Interface
 

@@ -70,12 +70,12 @@ def _views(roles: dict[str, str | None], names: set[str]) -> list[AssignableRole
                            provider_only=name in provider) for name in sorted(names)]
 
 
-def list_assignable_roles(*, company_id: str, lang: str | None = None, **_other) -> list[AssignableRole]:
+def list_assignable_roles(*, company_id: str, lang: str | None = None, **_other: object) -> list[AssignableRole]:
     available = {role["name"]: role.get("description") for role in _all_roles(lang)}
     return _views(available, assignable_names(company_id) & set(available))
 
 
-def list_technical_roles(*, lang: str | None = None, **_other) -> list[AssignableRole]:
+def list_technical_roles(*, lang: str | None = None, **_other: object) -> list[AssignableRole]:
     """9.3: an unreachable Portal IAM is 502 `upstream-error` here (README 9.3), not `iam-error`."""
     try:
         available = {role["name"]: role.get("description") for role in _all_roles(lang)}
