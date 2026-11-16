@@ -57,8 +57,8 @@ def _row(application_id: str = "a1") -> ApplicationRow:
 
 def test_the_tables_belong_to_the_feature():
     assert tables.Table.metadata is database.metadata(registration.MODULE)
-    assert set(database.metadata(registration.MODULE).tables) == {
-        "application", "application_document", "used_attestation", "audit_log", "agreement_version"}
+    assert {"application", "application_document", "used_attestation", "audit_log",
+            "agreement_version"} <= set(database.metadata(registration.MODULE).tables)
 
 
 def test_state_outlives_the_engine_and_the_terms_are_seeded_once():

@@ -58,8 +58,9 @@ def fresh(monkeypatch):
 
 
 def test_each_feature_has_its_own_tables_and_database():
-    assert set(database.metadata(A).tables) == {"test_company"}
-    assert set(database.metadata(B).tables) == {"test_application"}
+    # the real tables of the features sit in the same MetaData once their models are imported
+    assert "test_company" in database.metadata(A).tables and "test_company" not in database.metadata(B).tables
+    assert "test_application" in database.metadata(B).tables and "test_application" not in database.metadata(A).tables
     assert database.engine(A) is not database.engine(B)
 
 
