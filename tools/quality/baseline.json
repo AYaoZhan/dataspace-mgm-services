@@ -9,6 +9,26 @@
       "mypy": 1,
       "ruff": 2
     },
+    "features/company_profile": {
+      "file-size": 1,
+      "function-size": 3,
+      "layers": 13,
+      "mypy": 72,
+      "neighbours": 2,
+      "problems": 77,
+      "ruff": 22
+    },
+    "features/registration": {
+      "layers": 12,
+      "mypy": 45,
+      "problems": 44,
+      "ruff": 47
+    },
+    "features/technical_user": {
+      "layers": 2,
+      "mypy": 35,
+      "ruff": 21
+    },
     "iam": {
       "mypy": 52,
       "ruff": 56
@@ -35,16 +55,6 @@
       "problems": 9,
       "ruff": 7
     },
-    "modules/c1_m2": {
-      "contract": 50,
-      "file-size": 1,
-      "http-body": 7,
-      "http-route": 47,
-      "mypy": 45,
-      "neighbours": 1,
-      "problems": 44,
-      "ruff": 39
-    },
     "modules/c1_m3": {
       "contract": 16,
       "http-body": 2,
@@ -63,23 +73,6 @@
       "neighbours": 1,
       "problems": 1,
       "ruff": 41
-    },
-    "modules/c2_m3": {
-      "contract": 45,
-      "ruff": 2
-    },
-    "modules/c3_m1": {
-      "contract": 69,
-      "file-size": 2,
-      "function-size": 3,
-      "http-body": 14,
-      "http-route": 56,
-      "layers": 1,
-      "module-map": 1,
-      "mypy": 72,
-      "neighbours": 1,
-      "problems": 77,
-      "ruff": 19
     },
     "modules/c3_m2": {
       "file-size": 1,
@@ -124,8 +117,8 @@
       "ruff": 1
     },
     "portal_common": {
-      "mypy": 27,
-      "ruff": 9
+      "mypy": 45,
+      "ruff": 10
     },
     "root": {
       "function-size": 2,
@@ -133,16 +126,17 @@
       "ruff": 22
     },
     "scaffold": {
-      "mypy": 9,
-      "ruff": 4
+      "function-size": 1,
+      "mypy": 6,
+      "ruff": 2
     },
     "tests": {
-      "ruff": 266
+      "ruff": 273
     },
     "tools": {
       "function-size": 1,
       "mypy": 93,
-      "ruff": 24
+      "ruff": 26
     }
   }
 }

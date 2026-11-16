@@ -68,12 +68,12 @@ class Finding:
 
 
 def area_of(path: PurePosixPath) -> str | None:
-    """`modules/<id>`, a top-level code folder, `tests` or `root`; None for files the gate does not check."""
+    """`modules/<id>`, `features/<name>`, a top-level code folder, `tests` or `root`; None for files the gate does not check."""
     parts = path.parts
     if not parts or path.suffix != ".py":
         return None
-    if parts[0] == "modules" and len(parts) > 2:
-        return f"modules/{parts[1]}"
+    if parts[0] in ("modules", "features") and len(parts) > 2:
+        return f"{parts[0]}/{parts[1]}"
     if parts[0] in CODE_AREAS or parts[0] == "tests":
         return parts[0]
     if len(parts) == 1 and parts[0] in ROOT_FILES:
@@ -87,8 +87,12 @@ def area_paths(area: str) -> list[str]:
 
 def all_areas() -> list[str]:
     modules = sorted(f"modules/{p.name}" for p in (ROOT / "modules").iterdir()
-                     if p.is_dir() and not p.name.startswith(("_", ".")))
-    return [*modules, *CODE_AREAS, "tests", "root"]
+                     if p.is_dir() and not p.name.startswith(("_", "."))
+                     and any(f for f in p.iterdir() if f.suffix == ".py"))
+    features = sorted(f"features/{p.name}" for p in (ROOT / "features").iterdir()
+                      if p.is_dir() and not p.name.startswith(("_", "."))
+                      and any(f for f in p.iterdir() if f.suffix == ".py")) if (ROOT / "features").is_dir() else []
+    return [*modules, *features, *CODE_AREAS, "tests", "root"]
 
 
 def python_files(areas: Iterable[str]) -> list[PurePosixPath]:
@@ -187,6 +191,12 @@ def module_map(areas: list[str]) -> list[Finding]:
         package = mod.id.replace("-", "_")
         if package not in wanted:
             continue
+        try:
+            from portal_common import layout
+            if layout.feature(mod.id):
+                continue
+        except (ImportError, Exception):
+            pass
         result = mm.analyse(ROOT, mod)
         if result["kind"] != "team":
             continue

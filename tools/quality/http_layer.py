@@ -145,9 +145,14 @@ def _ok_schema(operation: dict) -> dict | None:
 
 def _generated(module_id: str) -> dict:
     from fastapi import FastAPI
-    router = importlib.import_module(f"modules.{module_id.replace('-', '_')}.router")
+    from portal_common import layout
+    feat = layout.feature(module_id)
+    if feat:
+        router_mod = importlib.import_module(f"features.{feat}.router")
+    else:
+        router_mod = importlib.import_module(f"modules.{module_id.replace('-', '_')}.router")
     app = FastAPI()
-    app.include_router(router.router)
+    app.include_router(router_mod.router)
     openapi: dict = app.openapi()
     return openapi
 
