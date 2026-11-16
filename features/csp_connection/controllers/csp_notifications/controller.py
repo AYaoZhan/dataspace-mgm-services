@@ -1,4 +1,5 @@
 #################################################################################
+#  Copyright (c) 2026 Technovative Solutions
 #  Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
 #  See the NOTICE file(s) distributed with this work for additional
@@ -22,3 +23,18 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Notifications of the CSP (README 7.2), called by the CSP's service account."""
+from __future__ import annotations
+
+from features.csp_connection import interface
+from features.csp_connection.models.schemas import CspNotification
+from portal_common.routing import Controller, Permission
+
+controller = Controller("CSP Connection: CSP")
+
+
+@controller.post("", operation_id="receiveCspNotification", summary="Notification from the CSP")
+def receive_csp_notification(body: CspNotification, _: dict = Permission) -> dict[str, str | bool]:
+    """README 7.2, called by the CSP's service account (`report_csp_notification`).
+    A known `notificationId` answers 200 and is not processed again."""
+    return interface.receive_csp_notification(body.to_json())

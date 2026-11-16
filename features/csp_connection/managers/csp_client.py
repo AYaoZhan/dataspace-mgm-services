@@ -33,16 +33,15 @@ Every call writes an audit entry (README 5) with the HTTP status and the CSP's e
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 import jwt
 
+from features.csp_connection.managers import config, store
+from features.csp_connection.models import errors
 from portal_common import csp, settings
 from tools.csp_standin.core import CoreServices
-
-from . import errors, store
 
 CspAnswer = tuple[int, object]   # (HTTP status, JSON body or None) of one call of the core services API
 JsonObject = dict[str, Any]
@@ -76,7 +75,7 @@ def _read_json(path: Path) -> object:
 
 def _stub_companies() -> list[JsonObject]:
     """`CSP_STUB_FILE` (README 4, 14): a list of companies, or an object with `companies`."""
-    path = os.environ.get("CSP_STUB_FILE", "")
+    path = config.csp_stub_file()
     if not path:
         return []
     try:
@@ -136,7 +135,7 @@ def call(operation: str, method: str, path: str, body: JsonObject | None = None,
     No answer from the CSP (timeout, connection, token endpoint, unreadable signing key) and, with the
     built-in stand-in, an unusable `CSP_STUB_FILE` or `ospCompanyFile`: 502 `upstream-error`,
     retryable, naming the file's variable, with an audit entry (README 12; OPEN-QUESTIONS 11)."""
-    base = os.environ.get("CSP_URL", "")
+    base = config.csp_url()
     if base:
         try:
             status, answer = csp.request(base, method, path, body, params)

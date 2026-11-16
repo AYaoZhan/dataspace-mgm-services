@@ -113,6 +113,7 @@ Problem types, events, permissions and service accounts keep the spec id. Other 
 (`create_runtime(registration, company_profile)`); `RUNTIME=<name> python -m runtimes` starts one.
 The binding folder rules of a feature (F1 to F17) are in [`features/AGENTS.md`](features/AGENTS.md); check them with
 `.claude/skills/feature-architecture/scripts/feature-check.py <feature> --strict` while you develop a feature.
+Also migrated: `csp_connection` for C3-M2, served under `/api/csp-connection`.
 
 ## Definition of done
 
