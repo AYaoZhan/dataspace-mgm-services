@@ -22,7 +22,11 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Module registry: one folder per module of the spec, `modules/<module id with _>/`.
+"""Module registry: every module of the spec, either a migrated feature `features/<name>/` (ADR-0003,
+located by `portal_common.layout`) or its hackathon folder `modules/<module id with _>/`.
+
+A feature brings its `router.py` and the lifecycle hooks of its index (`reset()`, optional
+`on_startup()` and `on_event(event)`); its kind is "feature".
 
 Contract of a module folder (a team replaces only its folder):
 - `interface.py` with a function for every step and query of the spec (README, module structure);
@@ -32,22 +36,20 @@ Contract of a module folder (a team replaces only its folder):
   module sets neither;
 - an empty `__init__.py`, no top-level modules beside the folders.
 
-The list of modules comes from the spec (every folder with an `/api/<module>` base). A module
+The list of modules comes from the spec (every folder with an `/api/<module>` base), limited to
+the features of the runtime (`runtimes/`, `ENABLED_FEATURES`; ADR-0002, ADR-0003). A module
 without a folder is still mounted, as the spec-driven fallback (every path answers 501, steps DONE).
 Every operation of the spec that a module does not implement is added from the fallback too.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
 import importlib
 import importlib.util
-import pkgutil
-from dataclasses import dataclass
-from types import ModuleType
 from collections.abc import Iterable
+from dataclasses import dataclass
+from types import ModuleType, SimpleNamespace
 
-from portal_common import spec
-import features
+from portal_common import layout, runtime, spec
 
 LAST = ("c11-m1", "c12-m1")   # subscribers that react to the events of all others
 
@@ -55,78 +57,32 @@ LAST = ("c11-m1", "c12-m1")   # subscribers that react to the events of all othe
 @dataclass
 class Entry:
     id: str
-    module: ModuleType | None   # router.py of the folder, None = spec fallback only
-    kind: str                   # "stand-in", "provided", "team" or "fallback"
+    module: ModuleType | SimpleNamespace | None   # router + lifecycle, None = spec fallback only
+    kind: str                   # "feature", "stand-in", "provided", "team" or "fallback"
 
 
-def _legacy_module(mid: str) -> ModuleType | None:
-    name = f"modules.{mid.replace('-', '_')}.router"
-    package = name.rsplit(".", 1)[0]
-    if importlib.util.find_spec(package) and importlib.util.find_spec(name):
-        return importlib.import_module(name)
-    return None
+def _feature(mid: str) -> SimpleNamespace:
+    index = layout.index(mid)
+    if index.MODULE != mid:
+        raise ValueError(f"features.{index.NAME} declares MODULE {index.MODULE!r}, the spec folder says {mid!r}")
+    hooks = {k: getattr(index, k) for k in ("reset", "on_startup", "on_event") if hasattr(index, k)}
+    return SimpleNamespace(router=layout.router(mid), **hooks)
 
 
-def _discover_features() -> dict[str, ModuleType]:
-    feature_modules = {}
-    for package in pkgutil.iter_modules(features.__path__):
-        module = importlib.import_module(f"features.{package.name}")
-        mid = getattr(module, "MODULE", None)
-        if mid:
-            if mid in feature_modules:
-                raise ValueError(f"multiple features declare module {mid}")
-            feature_modules[mid] = module
-    return feature_modules
-
-
-def _resolve_selected(selected: ModuleType | str, known_modules: dict) -> tuple[str | None, ModuleType | None]:
-    if isinstance(selected, ModuleType):
-        module = selected
-        mid = getattr(module, "MODULE", None)
-    elif selected in known_modules:
-        module = _legacy_module(selected)
-        mid = selected
-    else:
-        module = importlib.import_module(f"features.{selected}")
-        mid = getattr(module, "MODULE", None)
-    return mid, module
-
-
-def _select_features(selected_features: Iterable[ModuleType | str], known_modules: dict) -> dict[str, ModuleType]:
-    selected_modules = {}
-    for selected in selected_features:
-        mid, module = _resolve_selected(selected, known_modules)
-        if mid not in known_modules or module is None:
-            raise ValueError(f"unknown feature or module: {selected}")
-        if mid in selected_modules:
-            raise ValueError(f"multiple selected features declare module {mid}")
-        selected_modules[mid] = module
-    return selected_modules
-
-
-def _entry_module(mid: str, discovered: dict[str, ModuleType], selected: dict[str, ModuleType] | None):
-    if selected is not None:
-        return selected.get(mid)
-    return discovered.get(mid) or _legacy_module(mid)
-
-
-def _kind(module: ModuleType | None) -> str:
-    if module is None:
-        return "fallback"
-    if getattr(module, "STANDIN", False):
-        return "stand-in"
-    if getattr(module, "PROVIDED", False):
-        return "provided"
-    return "team"
-
-
-def load(selected_features: Iterable[ModuleType | str] | None = None) -> list[Entry]:
-    known_modules = spec.modules()
-    discovered = _discover_features()
-    selected = _select_features(selected_features, known_modules) if selected_features is not None else None
+def load(features: Iterable[str] | None = None) -> list[Entry]:
+    """The modules of this process: `features` (readable names or spec ids), else `ENABLED_FEATURES`, else all."""
+    enabled = runtime.enabled_modules(features)
     entries = []
-    for mid in known_modules:
-        mod = _entry_module(mid, discovered, selected)
-        kind = _kind(mod)
+    for mid in spec.modules():
+        if enabled is not None and mid not in enabled:
+            continue   # served by another runtime, reached through MODULE_URLS
+        if layout.feature(mid):
+            entries.append(Entry(mid, _feature(mid), "feature"))
+            continue
+        name = f"modules.{mid.replace('-', '_')}.router"
+        mod = importlib.import_module(name) if importlib.util.find_spec(name.rsplit(".", 1)[0]) and \
+            importlib.util.find_spec(name) else None
+        kind = ("fallback" if mod is None else "stand-in" if getattr(mod, "STANDIN", False)
+                else "provided" if getattr(mod, "PROVIDED", False) else "team")
         entries.append(Entry(mid, mod, kind))
     return sorted(entries, key=lambda e: (e.id in LAST, LAST.index(e.id) if e.id in LAST else 0, e.id))

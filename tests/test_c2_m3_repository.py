@@ -29,7 +29,7 @@ import threading
 
 import pytest
 
-from features.technical_users.managers.technical_user_repository import InMemoryTechnicalUserRepository
+from features.technical_user.managers.technical_user_repository import InMemoryTechnicalUserRepository
 
 
 class Bus:

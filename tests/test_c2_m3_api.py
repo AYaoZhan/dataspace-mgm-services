@@ -29,7 +29,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from conftest import BASE, bearer
-from modules.c2_m3 import router
+from features import technical_user
 from portal_common import events
 from portal_common import http as phttp
 from scaffold import app as scaffold_app
@@ -38,7 +38,7 @@ from tools import test_iam
 CUSTOMER = "c0000001-0000-4000-8000-000000000001"
 PROVIDER = "c0000002-0000-4000-8000-000000000002"
 SUBSCRIPTION = "0b5d7e2a-3c4f-4a1b-9e8d-7f6a5b4c3d21"
-BASE_PATH = "/api/c2-m3"
+BASE_PATH = "/api/technical-user"
 ROLE = {"name": "Dataspace Discovery"}
 
 
@@ -201,18 +201,18 @@ def test_a_failing_step_carries_retryable(client):
     assert failed.json()["type"] == "urn:c2-m3:problem:validation" and failed.json()["retryable"] is False
 
 
-def test_the_module_is_a_team_module_with_the_process_stub_hook(client, erika, monkeypatch):
+def test_the_module_is_a_feature_with_the_process_stub_hook(client, erika, monkeypatch):
     kinds = {entry["module"]: entry["kind"] for entry in client.get("/scaffold/modules").json()}
-    assert kinds["c2-m3"] == "team"
+    assert kinds["c2-m3"] == "feature"
 
     wallet = {"name": "Wallet client", "roles": [{"name": "Identity Wallet Management"}]}
     account = _create(client, erika, wallet).json()["id"]
     requested = next(event for event in events.RELAY.log if event["type"] == "WalletAccessRequested")
 
-    router.on_event(requested)
+    technical_user.on_event(requested)
     assert client.get(f"{_users(CUSTOMER)}/{account}", headers=erika).json()["walletAccess"] == "REQUESTED"
     monkeypatch.setenv("PROCESS_STUB", "true")
-    router.on_event(requested)
+    technical_user.on_event(requested)
     details = client.get(f"{_users(CUSTOMER)}/{account}", headers=erika).json()
     assert (details["status"], details["walletAccess"]) == ("ACTIVE", "ACTIVE")
     assert details["walletAccountRef"] == f"stub-{account}"

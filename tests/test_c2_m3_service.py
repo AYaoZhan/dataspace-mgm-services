@@ -26,10 +26,10 @@ from __future__ import annotations
 
 import pytest
 
-from features.technical_users.managers import iam
-from features.technical_users import services as service
-from features.technical_users.managers.iam import IamError
-from features.technical_users.managers.technical_user_repository import repository
+from features.technical_user.managers import iam
+from features.technical_user import services as service
+from features.technical_user.managers.iam import IamError
+from features.technical_user.managers.technical_user_repository import repository
 from portal_common import events
 from portal_common.problems import Problem
 
@@ -320,7 +320,7 @@ def test_a_subscription_has_one_account_per_party(c2m3):
 def test_client_is_removed_when_saving_the_account_fails(c2m3, monkeypatch):
     def fail(*_args, **_kwargs):
         raise RuntimeError("database down")
-    monkeypatch.setattr("features.technical_users.services.audit.record", fail)
+    monkeypatch.setattr("features.technical_user.services.audit.record", fail)
     with pytest.raises(RuntimeError):
         _create_own()
     assert not repository.find()
