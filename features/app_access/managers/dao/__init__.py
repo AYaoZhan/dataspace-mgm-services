@@ -30,8 +30,8 @@ from .company_dao import CompanyDao
 from .company_user_dao import CompanyUserDao
 from .dao_service import DaoService
 from .invitation_dao import InvitationDao
-from .memory import memory_dao_service
 from .role_assignment_log_dao import RoleAssignmentLogDao
+from .sql import sql_dao_service
 
 __all__ = ["AppClientTemplateDao", "AppInstanceClientDao", "AuditLogDao", "CompanyDao", "CompanyUserDao",
-           "DaoService", "InvitationDao", "RoleAssignmentLogDao", "memory_dao_service"]
+           "DaoService", "InvitationDao", "RoleAssignmentLogDao", "sql_dao_service"]

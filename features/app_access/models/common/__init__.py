@@ -22,9 +22,9 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
-"""Generic wrappers: list pages and step answers, and the actor of a change."""
-from .actor import Actor
-from .page import Page
-from .step_result import StepResult
+"""The actor of a change, and the list page of FRAMEWORK 4.1 (the shared `portal_common.models.Page`)."""
+from portal_common.models import Page
 
-__all__ = ["Actor", "Page", "StepResult"]
+from .actor import Actor
+
+__all__ = ["Actor", "Page"]

@@ -65,8 +65,8 @@ Who calls it:
 |---|---|
 | `controllers/` | HTTP only, one folder per path segment of `/api/app-access`: `companies/` (users, portal roles, app roles, invitations of one company), `invitations/` (`/invitations/accept`), `osp/` (users, companies, staff, staff invitations), `internal/` (queries), `steps/` (Process Orchestration). Mounted and checked against the spec by `portal_common.routing.mount()`. |
 | `services/` | business rules: `user_service_impl.py` (bindings, portal and staff roles, app roles), `invitation_service_impl.py` (invitations, bootstrap), `app_client_service_impl.py` (templates, instance clients), `invitation_cleanup_job_impl.py`, `validation.py`, `context.py` (shared context, audit and role logs), `module.py` (wiring), `actors.py` (scope and actor of a call), `ports/` (service interfaces) |
-| `managers/` | state and adapters: `config/` (`application.properties`, read through `Config`), `dao/` (DAO interfaces, `memory.py`, PostgreSQL DAOs in `impl/`, row mappers and Alembic migrations in `jdbc/`), `postgres_database.py`, `iam/` (Keycloak Admin API or the in-memory test IAM), `gateways/` (C3-M1 and C10-M1 through `portal_common.neighbours`), `data/` (stand-in companies and subscriptions), `ports/` (adapter interfaces) |
-| `models/` | pydantic models of the API (`ApiModel`, camelCase in JSON): people, invitations, app clients, step results, pages; value sets in `constants/`; internal records in `internal/`; exceptions in `exception/` and their Problem Details in `exception_translator.py` |
+| `managers/` | state and adapters: `config/` (`application.properties`, read through `Config`), `dao/` (DAO interfaces and their implementation on the SQLModel tables in `sql.py`, the only code with database sessions), `database.py` (`portal_common.database` sessions, transactions, advisory locks), `migrations/` (Alembic, PostgreSQL), `iam/` (Keycloak Admin API or the in-memory test IAM), `gateways/` (C3-M1 and C10-M1 through `portal_common.neighbours`), `data/` (stand-in companies and subscriptions), `ports/` (adapter interfaces) |
+| `models/` | pydantic models of the responses on `portal_common.models.ApiModel` (camelCase in JSON): people, invitations, app clients, step results; `Page` and `StepResult` from `portal_common.models`; value sets in `constants/`; the SQLModel tables in `tables.py`; the internal records the services work on in `internal/`; exceptions in `exception/` and their Problem Details in `exception_translator.py` |
 
 ### In-process interface
 
@@ -86,11 +86,13 @@ Published with source `urn:c2-m2` (README 10): `UserAssignedToCompany`, `UserRem
 ### Configuration and persistence
 
 `managers/config/application.properties` maps the variables of README section 4 (`C2_M2_CONFIG_FILE` names another
-file): `C2_M2_DATABASE_URL` (or `DATABASE_URL`), `IAM_URL`, `IAM_REALM`, `C2_M2_CLIENT_ID`, `C2_M2_CLIENT_SECRET`,
+file): `APP_ACCESS_DATABASE_URL`, `C2_M2_DATABASE_URL` or `DATABASE_URL`, `IAM_URL`, `IAM_REALM`, `C2_M2_CLIENT_ID`, `C2_M2_CLIENT_SECRET`,
 `PORTAL_CORE_CLIENT_ID`, the role names, the invitation limits (`INVITATION_TTL_HOURS`, `INVITATION_MAX_OPEN`, ...),
-`BOOTSTRAP_ADMIN_FILE`, the client ID prefixes and scopes, `LANGUAGES` and `QUERY_MAX_APPS`. With a database URL the
-data is in PostgreSQL (SQLAlchemy with `pg8000`, schema upgraded by Alembic at start, version table
-`alembic_version_c2_m2`); without it, in memory. Without `IAM_URL` the in-memory test IAM stands in for Keycloak.
+`BOOTSTRAP_ADMIN_FILE`, the client ID prefixes and scopes, `LANGUAGES` and `QUERY_MAX_APPS`. The data is in the
+SQLModel tables of `models/tables.py` (`portal_common.database`): with a database URL in PostgreSQL (driver `pg8000`,
+schema upgraded by Alembic at start, version table `alembic_version_c2_m2`), without one in a private in-memory
+SQLite database, which starts empty and is emptied by `reset()`; bootstrap and invitation cleanup only run with a
+database URL. Without `IAM_URL` the in-memory test IAM stands in for Keycloak.
 Neighbours come from `C3_M1_URL`, `C10_M1_URL` or `MODULE_URLS`; an empty address uses the stand-in data.
 
 ### Run and test

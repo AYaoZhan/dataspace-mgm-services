@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from fastapi import Query
 
+from features.app_access.models import CompanyUser, CompanyUserDetail, Page as Paged
 from features.app_access.models.exception_translator import translated
 from features.app_access.services.actors import company_actor, services
 from portal_common.routing import Controller, Page, Permission, Size
@@ -34,7 +35,8 @@ from portal_common.routing import Controller, Page, Permission, Size
 controller = Controller("App Access: Company Users")
 
 
-@controller.get("", operation_id="listCompanyUsers", summary="List the people of the company")
+@controller.get("", operation_id="listCompanyUsers", response_model=Paged[CompanyUser],
+                summary="List the people of the company")
 @translated
 def list_company_users(companyId: str, page: int = Page, size: int = Size,
                        status: list[str] | None = Query(None, description="May be given several times."),
@@ -43,7 +45,7 @@ def list_company_users(companyId: str, page: int = Page, size: int = Size,
     return services().users.list_company_users(companyId, status, page, size)
 
 
-@controller.get("/{userId}", operation_id="getCompanyUser",
+@controller.get("/{userId}", operation_id="getCompanyUser", response_model=CompanyUserDetail,
                 summary="One person of the company with portal roles and app roles")
 @translated
 def get_company_user(companyId: str, userId: str, claims: dict = Permission):

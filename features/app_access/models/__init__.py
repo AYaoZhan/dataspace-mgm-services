@@ -23,8 +23,9 @@
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
 """Models of C2-M2 exposed outside the module (shapes of openapi.yaml)."""
-from .api_model import ApiModel
-from .common import Actor, Page, StepResult
+from portal_common.models import ApiModel
+
+from .common import Actor, Page
 from .app_client import (AppInstanceClient, AppRole, AppRoles, CompanyAppRoles, InstanceClientRef,
                          RoleDescription)
 from .people import (AppRolesResult, CompanyUser, CompanyUserDetail, CompanyUserRef, StaffMember, UserAccount,
@@ -34,7 +35,7 @@ from .steps import (AddAppRolesResult, AssignCompanyAdminResult, CompanyUsersRes
                     UpdateRoleDescriptionsResult)
 
 __all__ = [
-    "ApiModel", "Actor", "Page", "StepResult",
+    "ApiModel", "Actor", "Page",
     "CompanyUser", "CompanyUserDetail", "CompanyUserRef", "UserAccount", "UserClientRoles", "AppRolesResult",
     "StaffMember",
     "Invitation", "InvitationWithCode", "AcceptInvitationResult",

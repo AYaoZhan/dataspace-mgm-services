@@ -22,39 +22,14 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
-"""C2-M2 tests that run against the database of `DATABASE_URL` start with empty tables, like the in-memory
-data of the other modules. Only the test database is emptied; the schema and its Alembic version stay."""
-import os
-
+"""C2-M2 tests start with empty tables, in the private in-memory database or in the database of
+`C2_M2_DATABASE_URL` / `DATABASE_URL` (only use a test database there: its tables are dropped and recreated)."""
 import pytest
 
 from features.app_access.services import module
 
 
-def _truncate(url: str) -> None:
-    from sqlalchemy import create_engine, text
-
-    from features.app_access.managers.postgres_database import VERSION_TABLE, sqlalchemy_url
-    engine = create_engine(sqlalchemy_url(url))
-    try:
-        with engine.begin() as conn:
-            tables = [r[0] for r in conn.execute(text(
-                "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename <> :v"),
-                {"v": VERSION_TABLE})]
-            if tables:
-                conn.execute(text(f"TRUNCATE {', '.join(f'"{t}"' for t in tables)} RESTART IDENTITY CASCADE"))
-            # standalone sequences such as `client_number` (6.1) are not owned by a table
-            for (seq,) in conn.execute(text(
-                    "SELECT sequencename FROM pg_sequences WHERE schemaname = current_schema()")):
-                conn.execute(text(f'ALTER SEQUENCE "{seq}" RESTART'))
-    finally:
-        engine.dispose()
-
-
 @pytest.fixture(autouse=True)
 def _empty_c2_m2_database():
-    url = os.environ.get("C2_M2_DATABASE_URL") or os.environ.get("DATABASE_URL")
-    if url:
-        module.reset()
-        _truncate(url)
+    module.reset()
     yield

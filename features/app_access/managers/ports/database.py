@@ -22,35 +22,14 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
+"""The unit of work of the module's own database `c2_m2` (README 4, 6.14), as the DAOs and `DaoService` need it."""
 from __future__ import annotations
 
 import abc
-from collections.abc import Sequence
 from contextlib import AbstractContextManager
-from pathlib import Path
 
 
 class Database(abc.ABC):
-    """The module's own database `c2_m2` (README 4, `DATABASE_URL`); rows as dicts keyed by column name."""
-
-    @abc.abstractmethod
-    def query(self, sql: str, params: Sequence = ()) -> list[dict]: ...
-
-    def query_one(self, sql: str, params: Sequence = ()) -> dict | None:
-        rows = self.query(sql, params)
-        return rows[0] if rows else None
-
-    @abc.abstractmethod
-    def execute(self, sql: str, params: Sequence = ()) -> None: ...
-
-    @abc.abstractmethod
-    def upsert(self, table: str, key: str, columns: Sequence[str], params: Sequence,
-               casts: dict[str, str] | None = None) -> None: ...
-
-    @abc.abstractmethod
-    def migrate(self, location: Path) -> None:
-        """Brings the schema to the newest version of the migrations in `location`."""
-
     @abc.abstractmethod
     def transaction(self) -> AbstractContextManager[None]:
         """One transaction for everything inside; nested calls join the open one."""

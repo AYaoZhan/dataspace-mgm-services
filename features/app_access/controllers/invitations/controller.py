@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.app_access.models import AcceptInvitationResult
 from features.app_access.models.exception_translator import translated
 from features.app_access.services.actors import services
 from portal_common.routing import Controller, Permission
@@ -34,7 +35,8 @@ from portal_common.routing import Controller, Permission
 controller = Controller("App Access: Invitations")
 
 
-@controller.post("/accept", operation_id="acceptInvitation", summary="Accept an invitation with the code")
+@controller.post("/accept", operation_id="acceptInvitation", response_model=AcceptInvitationResult,
+                 summary="Accept an invitation with the code")
 @translated
 def accept_invitation(body: dict = Body(...), claims: dict = Permission):
     # Scope `own`: the service acts only on the account of `sub` in the claims (README 7.10).

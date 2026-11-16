@@ -22,33 +22,33 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
-"""Alembic environment of the database c2_m2: the connection of `PostgresDatabase.migrate`, or DATABASE_URL (CLI)."""
+"""Alembic environment of the database c2_m2: the connection of `database.create_schema()`, or the feature's
+database URL (CLI: APP_ACCESS_DATABASE_URL, C2_M2_DATABASE_URL or DATABASE_URL). The target is the feature's own
+MetaData (`models/tables.py`), so `alembic revision --autogenerate` compares against the SQLModel tables."""
 from __future__ import annotations
 
-import os
-
 from alembic import context
-from sqlalchemy import create_engine, pool
+from sqlalchemy import func, pool, select
 
-from features.app_access.managers.postgres_database import VERSION_TABLE, sqlalchemy_url
+from features.app_access.managers.database import VERSION_TABLE
+from features.app_access.models import tables  # noqa: F401 - registers the tables in the feature's MetaData
+from features.app_access.models.utils import MODULE
+from portal_common import database
 
-MIGRATION_LOCK = "SELECT pg_advisory_xact_lock(hashtextextended('c2_m2:migrations', 0))"
-
-
-def _url():
-    return sqlalchemy_url(os.environ.get("C2_M2_DATABASE_URL") or os.environ.get("DATABASE_URL") or "")
+TARGET = database.metadata(MODULE)
 
 
 def run_offline() -> None:
-    context.configure(url=_url(), literal_binds=True, version_table=VERSION_TABLE)
+    context.configure(url=database.url(MODULE), target_metadata=TARGET, literal_binds=True, version_table=VERSION_TABLE)
     with context.begin_transaction():
         context.run_migrations()
 
 
 def _run(connection) -> None:
     # one transaction for all pending migrations; the lock keeps replicas that start at once apart
-    connection.exec_driver_sql(MIGRATION_LOCK)
-    context.configure(connection=connection, version_table=VERSION_TABLE)
+    if connection.dialect.name == "postgresql":
+        connection.execute(select(func.pg_advisory_xact_lock(func.hashtextextended("c2_m2:migrations", 0))))
+    context.configure(connection=connection, target_metadata=TARGET, version_table=VERSION_TABLE)
     with context.begin_transaction():
         context.run_migrations()
     connection.commit()
@@ -59,7 +59,8 @@ def run_online() -> None:
     if connection is not None:
         _run(connection)
         return
-    with create_engine(_url(), poolclass=pool.NullPool).connect() as connection:
+    from sqlalchemy import create_engine
+    with create_engine(database.url(MODULE), poolclass=pool.NullPool).connect() as connection:
         _run(connection)
 
 

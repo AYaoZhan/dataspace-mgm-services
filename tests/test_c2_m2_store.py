@@ -16,12 +16,13 @@
 #
 #  SPDX-License-Identifier: Apache-2.0
 #################################################################################
-"""Tests for C2-M2 in-memory DAO service and TestIamPortalIamAdapter."""
+"""Tests of the C2-M2 DAOs on the SQLModel tables (private in-memory database) and of TestIamPortalIamAdapter."""
 from __future__ import annotations
 
 import datetime as dt
 
 from c2_m2_database import _empty_c2_m2_database  # noqa: F401 - autouse: empty tables with a database
+from features.app_access.models.common import Actor
 from features.app_access.models.constants import (
     BindingStatus,
     CompanyStatus,
@@ -31,9 +32,10 @@ from features.app_access.models.constants import (
     JoinedVia,
 )
 from features.app_access.managers.config import Config
-from features.app_access.managers.dao.memory import memory_dao_service
+from features.app_access.managers.dao import sql_dao_service
 from features.app_access.managers.iam.test_iam_portal_iam import TestIamPortalIamAdapter
 from features.app_access.models.internal import (
+    SuspendedRoles,
     AppClientTemplate,
     AppInstanceClient,
     AuditLogEntry,
@@ -45,8 +47,8 @@ from features.app_access.models.internal import (
 from tools import test_iam
 
 
-def test_memory_company_dao():
-    dao = memory_dao_service()
+def test_sql_company_dao():
+    dao = sql_dao_service()
     cid = "c0000001-0000-4000-8000-000000000001"
     assert dao.companies.get(cid) is None
 
@@ -66,8 +68,8 @@ def test_memory_company_dao():
     assert dao.companies.get(cid).status == CompanyStatus.DISABLED
 
 
-def test_memory_company_user_dao():
-    dao = memory_dao_service()
+def test_sql_company_user_dao():
+    dao = sql_dao_service()
     uid = "u0000001-0000-4000-8000-000000000001"
     cid = "c0000001-0000-4000-8000-000000000001"
     assert dao.company_users.current_of(uid) is None
@@ -93,8 +95,8 @@ def test_memory_company_user_dao():
     assert dao.company_users.current_of(uid) is None
 
 
-def test_memory_app_client_daos():
-    dao = memory_dao_service()
+def test_sql_app_client_daos():
+    dao = sql_dao_service()
     app_id = "app-001"
     assert dao.templates.get(app_id) is None
 
@@ -132,8 +134,8 @@ def test_memory_app_client_daos():
     assert num2 == num1 + 1
 
 
-def test_memory_invitation_dao():
-    dao = memory_dao_service()
+def test_sql_invitation_dao():
+    dao = sql_dao_service()
     inv = Invitation(
         kind=InvitationKind.STAFF,
         company_id=None,
@@ -151,9 +153,9 @@ def test_memory_invitation_dao():
     assert len(dao.invitations.list_all()) == 1
 
 
-def test_memory_logs_daos():
-    dao = memory_dao_service()
-    audit_entry = AuditLogEntry(actor="system", operation="test", company_id="c1", object_id="obj1")
+def test_sql_logs_daos():
+    dao = sql_dao_service()
+    audit_entry = AuditLogEntry(actor=Actor.system(), operation="test", company_id="c1", object_id="obj1")
     dao.audit_log.add(audit_entry)
     assert len(dao.audit_log.list_all()) == 1
 
@@ -164,7 +166,7 @@ def test_memory_logs_daos():
         iam_client_id="portal-core",
         role_name="Company Admin",
         action="ADDED",
-        actor="system",
+        actor=Actor.system(),
         operation="assign-company-admin",
     )
     dao.role_log.add(role_entry)
@@ -205,3 +207,37 @@ def test_test_iam_portal_iam_adapter():
     adapter.remove_client_role_mappings(uid, adapter.CORE_UUID, [{"name": "Company Admin"}])
     mappings_after = adapter.client_role_mappings(uid, adapter.CORE_UUID)
     assert not any(r["name"] == "Company Admin" for r in mappings_after)
+
+
+def test_records_survive_the_round_trip_through_the_tables():
+    """Value sets, JSON columns and aware timestamps come back as they were saved."""
+    dao = sql_dao_service()
+    binding = CompanyUser(user_id="u9", company_id="c9", joined_via=JoinedVia.ONBOARDING,
+                          status=BindingStatus.DISABLED,
+                          suspended_roles=SuspendedRoles(["Company Admin"], [("app-1", "Viewer")]))
+    dao.company_users.save(binding)
+    assert dao.company_users.current_of("u9") == binding
+    actor = Actor.process({"processId": "p1", "stepRunId": "s1"})
+    dao.audit_log.add(AuditLogEntry(actor=actor, operation="op", company_id="c9", object_id=None))
+    assert dao.audit_log.list_all()[0].actor == actor
+
+
+def test_the_initial_migration_creates_the_tables_of_the_models(tmp_path, monkeypatch):
+    """`managers/migrations` (PostgreSQL) and `models/tables.py` (SQLite) describe the same schema."""
+    from alembic import command
+    from alembic.autogenerate import compare_metadata
+    from alembic.config import Config as AlembicConfig
+    from alembic.migration import MigrationContext
+    from sqlalchemy import create_engine
+
+    from features.app_access.managers.database import MIGRATIONS_DIR, VERSION_TABLE
+    from portal_common import database
+
+    url = f"sqlite:///{tmp_path / 'c2_m2.db'}"
+    monkeypatch.setenv("C2_M2_DATABASE_URL", url)
+    config = AlembicConfig()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    command.upgrade(config, "head")
+    with create_engine(url).connect() as connection:
+        diff = compare_metadata(MigrationContext.configure(connection), database.metadata("c2-m2"))
+    assert [d for d in diff if not (d[0] == "remove_table" and d[1].name == VERSION_TABLE)] == []

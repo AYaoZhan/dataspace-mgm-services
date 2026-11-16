@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from fastapi import Query
 
+from features.app_access.models import CompanyUser, Page as Paged, UserAccount
 from features.app_access.models.exception_translator import translated
 from features.app_access.services.actors import services
 from portal_common.routing import Controller, Page, Permission, Size
@@ -34,7 +35,8 @@ from portal_common.routing import Controller, Page, Permission, Size
 controller = Controller("App Access: OSP Users")
 
 
-@controller.get("", operation_id="listUsers", summary="List the people of all companies")
+@controller.get("", operation_id="listUsers", response_model=Paged[CompanyUser],
+                summary="List the people of all companies")
 @translated
 def list_users(page: int = Page, size: int = Size, companyId: str | None = Query(None),
                status: list[str] | None = Query(None, description="May be given several times."),
@@ -42,7 +44,7 @@ def list_users(page: int = Page, size: int = Size, companyId: str | None = Query
     return services().users.list_company_users(companyId, status, page, size)
 
 
-@controller.get("/{userId}", operation_id="getUserAccount",
+@controller.get("/{userId}", operation_id="getUserAccount", response_model=UserAccount,
                 summary="Any account of the installation, also without a company")
 @translated
 def get_user_account(userId: str, claims: dict = Permission):

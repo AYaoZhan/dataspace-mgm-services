@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5-5)
 #################################################################################
-"""State and adapters of App Access (spec C2-M2): configuration (`config/`, `application.properties`), the DAOs with
-their in-memory and PostgreSQL implementations and Alembic migrations (`dao/`), the database (`postgres_database.py`),
+"""State and adapters of App Access (spec C2-M2): configuration (`config/`, `application.properties`), the DAOs on the
+SQLModel tables (`dao/`), the database and its locks (`database.py`), the Alembic migrations (`migrations/`),
 the Portal IAM adapters (`iam/`), the neighbour gateways with their stand-in data (`gateways/`, `data/`) and the
 interfaces they implement (`ports/`)."""

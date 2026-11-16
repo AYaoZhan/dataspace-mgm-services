@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.app_access.models import AppRolesResult
 from features.app_access.models.exception_translator import translated
 from features.app_access.services.actors import company_actor, services
 from portal_common.routing import Controller, Permission
@@ -34,7 +35,8 @@ from portal_common.routing import Controller, Permission
 controller = Controller("App Access: Company App Roles")
 
 
-@controller.put("", operation_id="setUserAppRoles", summary="Set the app roles of a person for an app")
+@controller.put("", operation_id="setUserAppRoles", response_model=AppRolesResult,
+                summary="Set the app roles of a person for an app")
 @translated
 def set_user_app_roles(companyId: str, userId: str, appId: str, body: dict = Body(...), claims: dict = Permission):
     actor = company_actor(claims, companyId)

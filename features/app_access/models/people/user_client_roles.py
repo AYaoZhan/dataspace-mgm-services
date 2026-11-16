@@ -24,7 +24,7 @@
 #################################################################################
 from features.app_access.models.constants import InstanceClientStatus
 
-from features.app_access.models.api_model import ApiModel
+from portal_common.models import ApiModel
 
 
 class UserClientRoles(ApiModel):

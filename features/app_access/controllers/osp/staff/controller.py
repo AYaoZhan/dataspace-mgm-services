@@ -25,6 +25,7 @@
 """The OSP staff (README 7.15), scope `osp`."""
 from __future__ import annotations
 
+from features.app_access.models import Page as Paged, StaffMember
 from features.app_access.models.exception_translator import translated
 from features.app_access.services.actors import services
 from portal_common.routing import Controller, Page, Permission, Size
@@ -32,7 +33,7 @@ from portal_common.routing import Controller, Page, Permission, Size
 controller = Controller("App Access: OSP Staff")
 
 
-@controller.get("", operation_id="listStaff", summary="List the OSP staff")
+@controller.get("", operation_id="listStaff", response_model=Paged[StaffMember], summary="List the OSP staff")
 @translated
 def list_staff(page: int = Page, size: int = Size, claims: dict = Permission):
     return services().users.list_staff(page, size)

@@ -30,12 +30,10 @@ import logging
 import threading
 
 from features.app_access.managers.config import Config
-from features.app_access.managers.dao.impl import postgres_dao_service
-from features.app_access.managers.dao.jdbc import MIGRATIONS_DIR
-from features.app_access.managers.dao.memory import memory_dao_service
+from features.app_access.managers import database
+from features.app_access.managers.dao import sql_dao_service
 from features.app_access.managers.gateways import CompanyProfileGatewayImpl, SubscriptionsGatewayImpl
 from features.app_access.managers.iam import portal_iam
-from features.app_access.managers.postgres_database import PostgresDatabase
 
 from .app_client_service_impl import AppClientServiceImpl
 from .context import Context
@@ -49,14 +47,8 @@ log = logging.getLogger(__name__)
 class C2M2Module:
     def __init__(self, config: Config | None = None) -> None:
         config = config or Config()
-        database_url = config.from_properties("database.url")
-        if database_url:
-            db = PostgresDatabase(database_url)
-            db.migrate(MIGRATIONS_DIR)
-            dao_service = postgres_dao_service(db)
-        else:
-            dao_service = memory_dao_service()
-        self.ctx = Context(config, portal_iam(config), dao_service, SubscriptionsGatewayImpl(),
+        database.create_schema()
+        self.ctx = Context(config, portal_iam(config), sql_dao_service(), SubscriptionsGatewayImpl(),
                            CompanyProfileGatewayImpl())
         self.apps = AppClientServiceImpl(self.ctx)
         self.users = UserServiceImpl(self.ctx, self.apps)
@@ -90,13 +82,14 @@ def reset() -> None:
         if _current is not None:
             _current.close()
         _current = None
+        database.reset_schema()
 
 
 def on_startup() -> None:
-    """Bootstrap and invitation cleanup at the start of a runtime. Without a database the installation still
-    starts; calls of C2-M2 fail until C2_M2_DATABASE_URL (or DATABASE_URL) is set."""
+    """Bootstrap and invitation cleanup at the start of a runtime; both only with a database URL (README 4),
+    otherwise the data lives in the private in-memory database and starts empty."""
     if not Config().from_properties("database.url"):
-        log.warning("C2-M2 has no database (C2_M2_DATABASE_URL or DATABASE_URL, README 4): "
+        log.warning("C2-M2 has no database URL (APP_ACCESS_DATABASE_URL, C2_M2_DATABASE_URL or DATABASE_URL): "
                     "bootstrap and invitation cleanup skipped")
         return
     current().on_startup()

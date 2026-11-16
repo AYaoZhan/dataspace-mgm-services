@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from fastapi import Body, Query
 
+from features.app_access.models import Invitation, InvitationWithCode, Page as Paged
 from features.app_access.models.constants import InvitationKind
 from features.app_access.models.exception_translator import translated
 from features.app_access.services.actors import company_actor, services
@@ -35,7 +36,8 @@ from portal_common.routing import Controller, Page, Permission, Size
 controller = Controller("App Access: Company Invitations")
 
 
-@controller.get("", operation_id="listInvitations", summary="List the invitations of the company")
+@controller.get("", operation_id="listInvitations", response_model=Paged[Invitation],
+                summary="List the invitations of the company")
 @translated
 def list_invitations(companyId: str, page: int = Page, size: int = Size,
                      status: list[str] | None = Query(None, description="May be given several times."),
@@ -44,7 +46,8 @@ def list_invitations(companyId: str, page: int = Page, size: int = Size,
     return services().invitations.list(InvitationKind.COMPANY, companyId, status, page, size)
 
 
-@controller.post("", status_code=201, operation_id="createInvitation", summary="Invite a person to the company")
+@controller.post("", status_code=201, operation_id="createInvitation", response_model=InvitationWithCode,
+                 summary="Invite a person to the company")
 @translated
 def create_invitation(companyId: str, body: dict = Body(...), claims: dict = Permission):
     actor = company_actor(claims, companyId)

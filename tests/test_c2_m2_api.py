@@ -24,8 +24,6 @@
 #################################################################################
 """HTTP tests of App Access (C2-M2) under /api/app-access: the controller tree against the spec, tokens, scope,
 validation and Problem Details, inside the installation and as its own runtime."""
-import os
-
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
@@ -41,10 +39,6 @@ from scaffold.app import create_app, reset_all
 API = "/api/app-access"
 COMPANY = "c0000001-0000-4000-8000-000000000001"
 USER = "5a1c0001-0000-4000-8000-000000000001"
-
-needs_database = pytest.mark.skipif(not (os.environ.get("C2_M2_DATABASE_URL") or os.environ.get("DATABASE_URL")),
-                                    reason="C2-M2 needs its PostgreSQL: set C2_M2_DATABASE_URL (README 4)")
-
 
 def operations(document):
     return {
@@ -159,7 +153,6 @@ def test_scaffold_preserves_complete_api_without_fallback_duplicates(client):
                 assert "stand-in" not in document["paths"][path][method].get("summary", "")
 
 
-@needs_database
 @needs_admin_api
 def test_delete_answers_204_without_body(client):
     interface.assign_company_admin({

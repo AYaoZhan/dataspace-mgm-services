@@ -34,6 +34,7 @@ from features.app_access.models.exception import C2M2BaseException
 from features.app_access.models.exception_translator import ExceptionTranslator
 from features.app_access.models.utils import MODULE
 from features.app_access.services import module
+from portal_common.models import StepResult
 
 __all__ = [
     "MODULE", "add_app_roles", "assign_company_admin", "create_client_template", "create_instance_client",
@@ -62,7 +63,7 @@ def _step(input: dict, action: Callable[[dict], BaseModel]) -> dict:
         result = action(input if isinstance(input, dict) else {})
     except C2M2BaseException as exc:
         raise ExceptionTranslator.to_problem(exc, is_step=True) from exc
-    return {"stepRunId": input.get("stepRunId"), "state": "DONE", "result": _json(result)}
+    return StepResult[object](step_run_id=input.get("stepRunId"), result=_json(result)).model_dump(mode="json")
 
 
 def _query(action: Callable[[], object]):
