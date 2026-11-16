@@ -104,7 +104,8 @@ def create_wallet(osp, svc, n: int = 1):
 
 
 def issue(osp, svc, n: int = 2):
-    return _routed(osp.post("/api/c4-m1/steps/issue-credentials", svc, json=step_input(U1["id"], n)), "issue-credentials")
+    return _routed(osp.post("/api/credentials/steps/issue-credentials", svc, json=step_input(U1["id"], n)),
+                   "issue-credentials")
 
 
 def wallet_created(osp) -> dict:
@@ -151,8 +152,8 @@ def test_credentials_are_issued_exactly_once_after_the_wallet_is_created(osp_fac
     create_wallet(osp, svc)
     r = issue(osp, svc)
     assert r.status_code == 200 and r.json()["state"] == "RUNNING"
-    seam("modules.c4_m1.service").flush_timers()
-    body = osp.get(f"/api/c4-m1/internal/companies/{U1['id']}/credentials", svc).json()
+    seam("features.credentials.services.credential_service").flush_timers()
+    body = osp.get(f"/api/credentials/internal/companies/{U1['id']}/credentials", svc).json()
     assert {c["credentialType"]: c["status"] for c in body["credentials"]} == {"BPN": "ISSUED", "MEMBERSHIP": "ISSUED"}
     assert body["run"]["status"] == "DONE"
     done = osp.events("CredentialsIssued")
@@ -160,7 +161,7 @@ def test_credentials_are_issued_exactly_once_after_the_wallet_is_created(osp_fac
     assert sorted(done[0]["data"]["credentialTypes"]) == ["BPN", "MEMBERSHIP"] and done[0]["data"]["companyId"] == U1["id"]
     assert event_errors("c4-m1", done[0]) == []
     # the OSP sees what C4-M1 took from the wallet contract (README 5: wallet_provider, holder_did)
-    items = osp.get("/api/c4-m1/credentials", osp.person("p2-osp", ["OSP Admin"]), params={"companyId": U1["id"]})
+    items = osp.get("/api/credentials/credentials", osp.person("p2-osp", ["OSP Admin"]), params={"companyId": U1["id"]})
     assert {(i["route"], i["walletProvider"], i["holderDid"]) for i in items.json()["items"]} == {("STUB", "CSP", WALLET_DID)}
     assert issue(osp, svc, 3).json()["state"] == "DONE" and len(osp.events("CredentialsIssued")) == 1
 
@@ -169,7 +170,7 @@ def test_event_order_wallet_created_before_credentials_issued(osp_factory, compa
     osp, svc = start(osp_factory)
     create_wallet(osp, svc)
     issue(osp, svc)
-    seam("modules.c4_m1.service").flush_timers()
+    seam("features.credentials.services.credential_service").flush_timers()
     types = [e["type"] for e in events.RELAY.log if e["type"] in ("DataspaceWalletCreated", "CredentialsIssued")]
     assert types == ["DataspaceWalletCreated", "CredentialsIssued"]
 
@@ -196,7 +197,7 @@ def mini_flow(tmp_path):
 def pump(engine, timers: bool = True) -> None:
     """Hands the events of the relay to the engine and fires the STUB issuer timers (C4-M1; `timers=False` for
     flows that do not touch C4-M1) until nothing changes."""
-    flush = seam("modules.c4_m1.service").flush_timers if timers else (lambda: None)
+    flush = seam("features.credentials.services.credential_service").flush_timers if timers else (lambda: None)
     seen = -1
     while seen != len(events.RELAY.log):
         seen = len(events.RELAY.log)

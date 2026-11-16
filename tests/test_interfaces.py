@@ -99,8 +99,8 @@ def _foreign(source: str, package: str, owners: dict[str, str] | None = None) ->
 
 
 def test_import_check_itself():
-    ok = "from modules.c10_m1.interface import list_subscriptions\nfrom ..c10_m1 import interface\n" \
-         "import modules.c10_m1.interface\nfrom . import router\n" \
+    ok = "from features.subscriptions.interface import find_subscriptions\n" \
+         "import features.subscriptions.interface\nfrom . import router\n" \
          "from features.registration.interface import get_application_internal"
     assert _foreign(ok, "modules.c3_m2") == []
     own = "from features.company_profile import company_service\n" \
@@ -110,8 +110,9 @@ def test_import_check_itself():
           "from modules import c10_m1\nimport modules.c10_m1\n" \
           "from features.registration import application_service\n" \
           "from features.registration.managers import application_repository\n" \
-          "from modules.c1_m2.interface import get_application_internal"   # migrated: stale path
-    assert len(_foreign(bad, "modules.c3_m2")) == 8
+          "from modules.c1_m2.interface import get_application_internal\n" \
+          "from modules.c10_m1.interface import find_subscriptions"   # migrated: stale paths
+    assert len(_foreign(bad, "modules.c3_m2")) == 9
     # relative imports in a sub-package resolve against that sub-package (#67)
     nested_ok = "from .. import errors\nfrom ...sub import helper"
     assert _foreign(nested_ok, "modules.c2_m2.subpkg.dao") == []

@@ -79,9 +79,12 @@ def test_feature_packages_are_found_by_their_readable_name():
         "c1-m3": "application_review",
         "c2-m3": "technical_user",
         "c3-m1": "company_profile",
+        "c4-m1": "credentials",
+        "c8-m1": "offers",
         "c3-m2": "csp_connection",
         "c11-m1": "notifications",
         "c6-m1": "connector",
+        "c10-m1": "subscriptions",
     }
     assert (registration.NAME, registration.MODULE) == ("registration", "c1-m2")
     assert (company_profile.NAME, company_profile.MODULE) == ("company_profile", "c3-m1")

@@ -226,7 +226,7 @@ def onboarding(t: Target, base: str, applicant: str, reviewer: str, admin: str, 
             claims.get("company_id") == cid and claims.get("bpn") == c.get("bpn")
             and "manage_company_users" in claims["resource_access"]["portal-core"]["roles"],
             json.dumps({k: claims.get(k) for k in ("company_id", "bpn")}))
-    r = t.call("GET", f"{base}/api/c4-m1/companies/{cid}/credentials", tok)
+    r = t.call("GET", f"{base}/api/credentials/companies/{cid}/credentials", tok)
     creds = r.json() if r.status_code == 200 else []
     t.check("C4-M1: credentials BPN and MEMBERSHIP ISSUED",
             {x["credentialType"]: x["status"] for x in creds} == {"BPN": "ISSUED", "MEMBERSHIP": "ISSUED"}, json.dumps(creds))
@@ -268,33 +268,33 @@ def scenario_3(t: Target) -> None:
         return
     # Complete for submit (C8-M1 6.2): descriptions, a privacy policy, planned roles and a CONTRACT document.
     # The spec names no values for privacy policies yet; COMPANY_DATA is the value of the current portal.
-    r = t.call("POST", f"{base}/api/c8-m1/offers", pia, json={
+    r = t.call("POST", f"{base}/api/offers/offers", pia, json={
         "offerType": "APP", "name": "Demo App", "instanceKind": "MULTI", "privacyPolicies": ["COMPANY_DATA"],
         "descriptions": [{"lang": "en", "short": "Demo app of the hackathon", "long": "Shows offer, approval and subscription."}]})
     if not t.check("C8-M1: provider (OSP company, APP_PROVIDER) creates an app offer", r.status_code == 201, r.text[:200]):
         return
     oid = r.json()["offerId"]
-    t.call("PUT", f"{base}/api/c8-m1/offers/{oid}/roles", pia,
+    t.call("PUT", f"{base}/api/offers/offers/{oid}/roles", pia,
            json=[{"name": n, "descriptions": [{"lang": "en", "text": n}]} for n in ("Viewer", "Editor")])
-    t.call("PUT", f"{base}/api/c8-m1/offers/{oid}/technical-user-profile", pia,
+    t.call("PUT", f"{base}/api/offers/offers/{oid}/technical-user-profile", pia,
            json={"name": "connector-sync", "roles": [{"name": "Dataspace Discovery"}]})
-    t.call("POST", f"{base}/api/c8-m1/offers/{oid}/documents", pia, data={"documentType": "CONTRACT"},
+    t.call("POST", f"{base}/api/offers/offers/{oid}/documents", pia, data={"documentType": "CONTRACT"},
            files={"file": ("contract.pdf", b"%PDF-1.4 demo contract", "application/pdf")})
-    r = t.call("POST", f"{base}/api/c8-m1/offers/{oid}/submit", pia)
+    r = t.call("POST", f"{base}/api/offers/offers/{oid}/submit", pia)
     t.check("C8-M1: submit -> IN_REVIEW", r.status_code == 200 and r.json()["status"] == "IN_REVIEW", r.text[:200])
-    r = t.call("POST", f"{base}/api/c8-m1/osp/offers/{oid}/approve", t.token(base, "otto"))
+    r = t.call("POST", f"{base}/api/offers/osp/offers/{oid}/approve", t.token(base, "otto"))
     t.check("C8-M1: OSP Admin approves -> ACTIVE, OfferApproved", r.status_code == 200 and r.json()["status"] == "ACTIVE")
     p = t.process(base, "otto", "app-approval", oid, ("COMPLETED", "FAILED"))
     t.check("C12 app-approval: C2-M2 create-client-template with the roles of the offer (lookup offer)",
             p and p["status"] == "COMPLETED" and t.step_result(base, "otto", p, "create-client-template")["state"] == "DONE",
             t.trace(p))
     prov = f"{base}/test-tools/provider"
-    r = t.call("PUT", f"{base}/api/c10-m1/provider-configuration", pia, json={
+    r = t.call("PUT", f"{base}/api/subscriptions/provider-configuration", pia, json={
         "setupUrl": f"{prov}/setup", "callbackUrl": f"{prov}/callback", "tokenUrl": f"{prov}/token",
         "clientId": "portal", "clientSecret": "test-only-provider-secret"})
     t.check("C10-M1: provider stores its provider configuration", r.status_code == 200, r.text[:200])
     erika = t.token(base, "erika")
-    r = t.call("POST", f"{base}/api/c10-m1/subscriptions", erika, json={"offerId": oid, "agreementConsents": []})
+    r = t.call("POST", f"{base}/api/subscriptions/subscriptions", erika, json={"offerId": oid, "agreementConsents": []})
     if not t.check("C10-M1: customer (scenario 1 company) subscribes", r.status_code == 201, r.text[:200]):
         return
     sid = r.json()["offerSubscriptionId"]
@@ -304,7 +304,7 @@ def scenario_3(t: Target) -> None:
     t.check("C12 notify-provider: provider system receives setup with the customer's name",
             p and p["status"] == "COMPLETED" and setup.get("customerName") == "Beispiel Maschinenbau GmbH",
             t.trace(p) + f" setup={setup}")
-    r = t.call("POST", f"{base}/api/c10-m1/subscriptions/{sid}/start-setup", pia,
+    r = t.call("POST", f"{base}/api/subscriptions/subscriptions/{sid}/start-setup", pia,
                json={"instanceUrl": "https://demo-app.customer.example"})
     t.check("C10-M1: provider starts the setup -> SubscriptionSetupStarted", r.status_code == 202, r.text[:200])
     p = t.process(base, "otto", "subscription-setup", sid, ("WAITING", "FAILED"))
@@ -312,7 +312,7 @@ def scenario_3(t: Target) -> None:
     t.check("C12 subscription-setup: instance client (C2-M2) and technical user (C2-M3) DONE, WAITING for activation",
             p and p["status"] == "WAITING" and st.get("create-instance-client") == "DONE"
             and st.get("create-technical-user") == "DONE", t.trace(p))
-    r = t.call("POST", f"{base}/api/c10-m1/subscriptions/{sid}/activate", pia)
+    r = t.call("POST", f"{base}/api/subscriptions/subscriptions/{sid}/activate", pia)
     t.check("C10-M1: provider activates (setup WAITING at C12) -> SubscriptionActivated", r.status_code == 200, r.text[:200])
     p = t.process(base, "otto", "subscription-setup", sid, ("COMPLETED", "FAILED"))
     t.check("C12: enable-instance-client and send-activation-callback -> COMPLETED", p and p["status"] == "COMPLETED",
@@ -323,7 +323,7 @@ def scenario_3(t: Target) -> None:
     t.check("provider callback: client ID of the instance, technical user with a secret, instance URL",
             bool(body.get("clientId")) and bool((body.get("technicalUser") or {}).get("clientId")) and cb.get("hasSecret")
             and body.get("instanceUrl") == "https://demo-app.customer.example", json.dumps(body))
-    s = t.call("GET", f"{base}/api/c10-m1/subscriptions/{sid}", erika).json()
+    s = t.call("GET", f"{base}/api/subscriptions/subscriptions/{sid}", erika).json()
     t.check("C10-M1: customer sees the subscription ACTIVE, setup COMPLETED",
             s.get("status") == "ACTIVE" and s.get("setupStatus") == "COMPLETED", json.dumps(s))
 
