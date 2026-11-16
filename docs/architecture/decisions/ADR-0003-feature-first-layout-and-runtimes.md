@@ -3,6 +3,7 @@
 **Status:** proposed (9 Nov 2026, updated 13 Nov 2026), proof of concept with the onboarding: the features `registration` (C1-M2) and
 `company_profile` (C3-M1), migrated from the hackathon folders `modules/c1_m2/` and `modules/c3_m1/`; then
 `technical_user` (C2-M3) from `modules/c2_m3/`.
+Also migrated: `connector` (C6-M1) from `modules/c6_m1/`.
 **Builds on:** [ADR-0002](ADR-0002-runtime-per-module.md) (one image, many runtimes), the call convention of
 `AGENTS.md`, and the layered backend of the Eclipse Tractus-X Industry Core Hub (`controllers/`, `services/`,
 `managers/`, `models/`, `runtimes/`).
@@ -128,6 +129,7 @@ adapters, models, and runtimes that assemble the app.
        reads `COMPANY_PROFILE_DATABASE_URL`, then `C3_M1_DATABASE_URL`, then `DATABASE_URL`, and runs on a private
        in-memory SQLite database without one; the tables are created at start (no migrations yet);
      - `registration` and `technical_user` keep their data in memory;
+     - `connector` keeps its register in SQLModel tables of its own database (`portal_common.database`);
      - C2-M2 (not migrated) reads `C2_M2_DATABASE_URL`, so in today's monolith the two no longer share one
        database as long as the plain `DATABASE_URL` stays unset.
 
