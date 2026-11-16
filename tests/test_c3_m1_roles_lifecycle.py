@@ -24,7 +24,7 @@
 #################################################################################
 """Company roles with consents, deactivation, return and transfer (README 7.7-7.9, 7.13, 8.5, 8.6, 13.19-13.22, 13.26, 13.27)."""
 import pytest
-from test_c3_m1_api import S2, U1, U2, active, call, client  # noqa: F401
+from test_c3_m1_api import S2, U1, U2, active, call, client, wired  # noqa: F401
 from test_c3_m1_attestation import _keys  # noqa: F401  (fixture: attestation environment)
 from test_c3_m1_steps import A1, A3, ADDRESS, CONSENTS, P1, U3, _c1_m2, seed, step  # noqa: F401  (_c1_m2: fixture)
 
@@ -37,6 +37,11 @@ from features.company_profile.services import (
 )
 from portal_common import events
 from portal_common.problems import Problem
+
+change_request_service = wired(change_request_service)
+company_lifecycle_service = wired(company_lifecycle_service)
+company_role_service = wired(company_role_service)
+company_service = wired(company_service)
 
 A5 = "a0000005-0000-4000-8000-000000000005"
 A6 = "a0000006-0000-4000-8000-000000000006"

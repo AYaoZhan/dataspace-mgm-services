@@ -90,7 +90,7 @@ def register_at_csp(osp, svc) -> None:
     onboarding flow: C3-M2 then knows it as REGISTERED, the precondition of register-did (8.3). The CSP stand-in
     derives the BPN from the EBWOID of testdata (`BPNLIUK2REMLK3F4`)."""
     company = testdata.applicant_companies()["maschinenbau"]
-    r = osp.post("/api/c3-m2/steps/register-company", svc, json=step_input(
+    r = osp.post("/api/csp-connection/steps/register-company", svc, json=step_input(
         U1["id"], 90, legalName=company["legalName"], country="DE", ebwoid=company["ebwoid"]))
     assert r.status_code == 200 and r.json()["result"]["bpn"] == BPN, r.text
 

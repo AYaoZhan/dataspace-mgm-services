@@ -291,7 +291,7 @@ def test_event_published_before_running_answer_still_completes(engine, fake, mon
 
 def test_fails_on_event_fails_the_step(engine, fake, monkeypatch):
     monkeypatch.setenv("C3_M2_URL", FAKE)
-    fake.answers["/api/c3-m2/steps/register-company"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
+    fake.answers["/api/csp-connection/steps/register-company"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
     _approve(engine)
     engine.on_event(ev("CompanyRegistrationAtCspFailed", companyId=COMPANY, reason="registered-at-other-osp"))
     p = proc_of(engine, "onboarding")

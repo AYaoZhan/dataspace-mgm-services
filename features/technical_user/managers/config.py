@@ -59,6 +59,11 @@ def client_id_prefix() -> str:
     return os.environ.get("TECHNICAL_USER_CLIENT_ID_PREFIX", "sa")
 
 
+def process_stub() -> bool:
+    """`PROCESS_STUB=true`: the module replays the wallet flows itself (README 11.3)."""
+    return os.environ.get("PROCESS_STUB", "false").lower() == "true"
+
+
 def role_assignments() -> dict[str, list[str]]:
     """`ROLE_ASSIGNMENT_FILE` (company role -> assignable roles, 6.5) or the initial values."""
     configured = os.environ.get("ROLE_ASSIGNMENT_FILE")
