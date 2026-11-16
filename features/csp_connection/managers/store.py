@@ -26,7 +26,7 @@
 """Own data of C3-M2 (README 5), in memory for the hackathon.
 
 One dataclass per table (`csp_registration`, `csp_connector`, `csp_notification`, `audit_entry`),
-with the column names of README 5. `interface.registration_view` maps a registration to the
+with the column names of README 5. `services.queries.registration_view` maps a registration to the
 camelCase of the API. Nothing here holds company data beyond the BPN, and the audit log holds no
 response content and no tokens (README 5).
 

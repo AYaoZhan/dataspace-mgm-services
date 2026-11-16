@@ -373,7 +373,8 @@ def test_fallback_router_mounts_every_spec_operation(monkeypatch):
     monkeypatch.setattr(standin, "interface_function",
                         lambda module, name: standin._standin_function(standin._interface_operations(module)[name]))
     app = _iam_app()
-    implemented = APIRouter(prefix="/api/c3-m2")
+    base = spec.module("c3-m2").base_path   # /api/csp-connection since the migration (ADR-0003)
+    implemented = APIRouter(prefix=base)
 
     @implemented.post("/steps/register-did")
     def own():
@@ -383,15 +384,15 @@ def test_fallback_router_mounts_every_spec_operation(monkeypatch):
     app.include_router(standin.fallback_router("c3-m2", implemented))
     c = TestClient(app, base_url=BASE)
     tok = bearer(tokens.service_token("c12-m1"))
-    r = c.post("/api/c3-m2/steps/transfer-company", headers=tok,   # stand-in interface function of C3-M2
+    r = c.post(f"{base}/steps/transfer-company", headers=tok,   # stand-in interface function of C3-M2
                json={"processId": "p", "stepRunId": "s", "companyId": "c", "bpn": "BPNL000000000001"})
     assert r.status_code == 200 and r.json() == {"stepRunId": "s", "state": "DONE", "result": {"bpn": "BPNL000000000001"}}
-    assert c.post("/api/c3-m2/steps/register-did", headers=tok, json={}).json() == {"own": True}
-    r = c.get("/api/c3-m2/companies/c", headers=bearer(person_token("otto")))
+    assert c.post(f"{base}/steps/register-did", headers=tok, json={}).json() == {"own": True}
+    r = c.get(f"{base}/companies/c", headers=bearer(person_token("otto")))
     assert r.status_code == 501 and r.json()["type"] == "urn:c3-m2:problem:not-implemented"
-    assert c.post("/api/c3-m2/steps/register-company", json={}).status_code == 401
+    assert c.post(f"{base}/steps/register-company", json={}).status_code == 401
     paths = c.get("/openapi.json").json()["paths"]
-    n = sum(len(v) for k, v in paths.items() if k.startswith("/api/c3-m2"))
+    n = sum(len(v) for k, v in paths.items() if k.startswith(base))
     assert n == len(spec.module("c3-m2").operations)
 
 

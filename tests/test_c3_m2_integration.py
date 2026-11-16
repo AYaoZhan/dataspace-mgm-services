@@ -27,7 +27,7 @@
 module of the repository, C12 with its worker and the event relay) plus the shared CSP stand-in
 with `asyncOperations`. The CSP answers register-company with 202. The test only plays the CSP's
 operator, who finishes the operation at the CSP (`POST /admin/operations/{id}/complete` of the
-stand-in); the CSP then calls back POST /api/c3-m2/csp-notifications itself, with the token of its
+stand-in); the CSP then calls back POST /api/csp-connection/csp-notifications itself, with the token of its
 service account `sa-csp` from the Portal IAM, and Process Orchestration finishes the onboarding
 (README 4, 7.2, 8.1, 13 case 4; FRAMEWORK 5.2). Scenario 1 of demo.py drives it and checks it."""
 import contextlib
@@ -40,7 +40,7 @@ from fastapi.testclient import TestClient
 import demo
 from conftest import BASE, needs_admin_api
 from modules.c12_m1 import engine as eng
-from modules.c3_m2 import store
+from features.csp_connection.managers import store
 from portal_common import csp as csp_client
 from portal_common import http as phttp
 from scaffold import app as scaffold_app
@@ -48,7 +48,7 @@ from tools.csp_standin.app import create_app as create_csp
 from tools.keys import ec_jwk
 
 CSP = "http://csp.test"
-NOTIFICATIONS = f"{BASE}/api/c3-m2/csp-notifications"
+NOTIFICATIONS = f"{BASE}/api/csp-connection/csp-notifications"
 
 
 def csp_operator(csp, stop: threading.Event) -> None:

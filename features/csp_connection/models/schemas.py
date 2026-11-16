@@ -26,14 +26,14 @@
 """The API contract of C3-M2 as Pydantic models: one class per schema in `components.schemas` of
 `spec/C3-M2-CSPConnection/openapi.yaml`, with the same names and fields (camelCase, as on the wire).
 
-The router uses them so that FastAPI validates every HTTP request (400 `validation` as Problem
+The controllers use them so that FastAPI validates every HTTP request (400 `validation` as Problem
 Details, never 422) and Swagger UI at `/docs` shows the real fields. `interface.py` keeps plain
 dicts: Process Orchestration calls the interface functions in-process with dicts (call convention
 of AGENTS.md), and the interface checks its input itself.
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -154,3 +154,8 @@ class CspNotification(BaseModel):
     operationId: str | None = None
     outcome: Literal["SUCCEEDED", "FAILED"] | None = None
     reason: str | None = None
+
+
+def plain(body: BaseModel) -> dict[str, Any]:
+    """A validated request body as the plain JSON dict the interface functions take."""
+    return body.model_dump(mode="json", exclude_none=True)
