@@ -260,7 +260,8 @@ def _approve(engine):
 
 def test_running_step_completed_by_event_and_withdrawal_after_approval_does_not_end(engine, fake, monkeypatch):
     monkeypatch.setenv("C4_M2_URL", FAKE)
-    fake.answers["/api/c4-m2/steps/create-wallet"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
+    fake.answers["/api/dataspace-wallet-interface/steps/create-wallet"] = lambda b: (
+        200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
     _approve(engine)
     p = proc_of(engine, "onboarding")
     assert step(p, "create-wallet")["state"] == "AWAITING_EVENT" and p["status"] == "RUNNING"
@@ -280,7 +281,7 @@ def test_event_published_before_running_answer_still_completes(engine, fake, mon
         events.publish("c4-m2", "DataspaceWalletCreated", {"companyId": COMPANY, "did": "did:web:early"})
         return 200, {"stepRunId": b["stepRunId"], "state": "RUNNING"}
 
-    fake.answers["/api/c4-m2/steps/create-wallet"] = early
+    fake.answers["/api/dataspace-wallet-interface/steps/create-wallet"] = early
     events.RELAY.subscribe("c12", eng.on_event)
     _approve(engine)
     events.RELAY.drain()
@@ -343,7 +344,7 @@ def test_when_not_met_skips_the_step(engine):
 
 def test_failed_lookup_is_an_error_not_found_false(engine, fake, monkeypatch):
     monkeypatch.setenv("C8_M1_URL", FAKE)
-    fake.answers["/api/c8-m1/internal/offers/7c1d9e3a-2b4f-4a6c-8d0e-5f1a2b3c4d5e"] = (
+    fake.answers["/api/offers/internal/offers/7c1d9e3a-2b4f-4a6c-8d0e-5f1a2b3c4d5e"] = (
         403, {"type": "urn:c8-m1:problem:forbidden", "status": 403})
     p = _offer_approved(engine)
     sr = step(p, "create-client-template")
@@ -355,7 +356,7 @@ def test_failed_lookup_is_an_error_not_found_false(engine, fake, monkeypatch):
 def test_lookup_5xx_is_retried_and_404_is_found_false(engine, fake, monkeypatch):
     monkeypatch.setenv("C2_M2_URL", FAKE)
     answers = iter([(503, {"type": "x"}), (200, [])])
-    fake.answers["/api/c2-m2/internal/app-instance-clients"] = lambda b: next(answers)
+    fake.answers["/api/app-access/internal/app-instance-clients"] = lambda b: next(answers)
     engine.on_event(ev("SubscriptionDeactivated", offerSubscriptionId="s1"))
     p = proc_of(engine, "subscription-ended")
     sr = step(p, "disable-instance-client")
@@ -435,7 +436,7 @@ def test_in_process_step_calls_the_interface_function(engine, monkeypatch):
 
 
 def test_in_process_lookup_calls_the_interface_function(engine, monkeypatch):
-    from modules.c8_m1 import interface as c8_m1
+    from features.offers import interface as c8_m1
     seen = {}
 
     def get_offer_internal(*, offerId):

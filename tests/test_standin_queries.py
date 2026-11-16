@@ -61,8 +61,8 @@ QUERIES = sorted(neighbour_queries())
 
 
 def kit_owned(target: str) -> bool:
-    """Stand-ins and Process Orchestration (spec kind "Provided", now the feature `process_orchestration`)."""
-    return target == "c12-m1" or next(e.kind for e in registry.load() if e.id == target) in ("stand-in", "provided")
+    """Stand-ins, provided modules and migrated features (whose interface keeps the stand-in fallback)."""
+    return next(e.kind for e in registry.load() if e.id == target) in ("stand-in", "provided", "feature")
 
 
 def test_section_11_is_parsed():
