@@ -60,12 +60,14 @@ company; any other company gets 404, and only the provider may start the setup o
 | `controllers/steps/` | `POST /steps/notify-provider`, `POST /steps/send-activation-callback` |
 | `services/subscriptions.py` | subscribe, visibility, start setup, activate, setup status, events |
 | `services/provider_configuration.py` | validation and storage of the provider configuration (secret never returned) |
+| `services/validation.py` | checks interface input against the models (400 `validation`, as over HTTP) |
 | `services/steps.py` | the two steps: setup notice and activation callback to the provider system |
 | `services/queries.py` | the queries of section 9 |
-| `managers/store.py` | in-memory state: subscriptions and provider configurations by id |
+| `managers/subscription_repository.py` | the subscriptions in the feature's database: save, get by id, find by customer, offer and status |
+| `managers/provider_configuration_repository.py` | the provider configurations (with secret) in the feature's database |
 | `managers/provider_client.py` | client-credentials token at the provider's `tokenUrl`, then POST to `setupUrl` / `callbackUrl` |
 | `managers/neighbour_client.py` | queries to C8-M1 (offer), C12-M1 (processes), C3-M1 (customer name), C2-M3 (rotated secret) |
-| `models/` | the spec id and the pydantic models of requests, step inputs and answers |
+| `models/` | pydantic models on `portal_common.models`: `subscription.py` (spec id, value sets, `SubscriptionRef`, `SubscriptionInternal`, `Subscription`), `requests.py` (`SubscribeRequest`, `StartSetupRequest`, the step inputs `SubscriptionStep` and `ActivationCallbackStep`), `provider_configuration.py` (input, answer without secret, stored form), `tables.py` (SQLModel tables `subscription` and `provider_configuration`) |
 
 In-process interface (`interface.py`): the steps `notify_provider(input)` and `send_activation_callback(input)`,
 the queries `find_subscriptions(customerCompanyId=, offerId=, status=)` and
@@ -75,9 +77,14 @@ stand-in functions (`standin.missing_interface`).
 Events published (source `urn:c10-m1`): `SubscriptionRequested`, `SubscriptionSetupStarted`,
 `SubscriptionActivated`. The feature consumes no events.
 
-Configuration: none of its own; neighbours are reached through `portal_common.neighbours` (`C3_M1_URL`, `C8_M1_URL`,
-`C12_M1_URL`, `C2_M3_URL` or `MODULE_URLS`). Persistence: memory only, so a restart loses subscriptions and
-provider secrets.
+Configuration: neighbours are reached through `portal_common.neighbours` (`C3_M1_URL`, `C8_M1_URL`, `C12_M1_URL`,
+`C2_M3_URL` or `MODULE_URLS`); the database through `portal_common.database`.
+
+Persistence: the feature's own database with SQLModel tables (`models/tables.py`), opened only by the repositories in
+`managers/`. The URL is `SUBSCRIPTIONS_DATABASE_URL`, then `C10_M1_DATABASE_URL`, then `DATABASE_URL`; without one
+the feature runs on a private in-memory SQLite database (tests, `demo.py`). The index creates the tables in
+`on_startup()` and `reset()` empties them. The provider secret is stored in plain text; the encryption with
+`ENCRYPTION_KEY` of README 4 is not implemented yet.
 
 Run it alone and test it:
 

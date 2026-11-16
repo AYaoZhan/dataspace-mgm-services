@@ -31,7 +31,7 @@ from fastapi.testclient import TestClient
 
 from conftest import BASE, bearer
 from features.subscriptions import interface
-from features.subscriptions.managers import neighbour_client, store
+from features.subscriptions.managers import neighbour_client, provider_configuration_repository, subscription_repository
 from portal_common import events
 from portal_common import http as phttp
 from portal_common.problems import Problem
@@ -127,11 +127,14 @@ def test_provider_configuration_hides_the_secret(client, pia):
     stored = client.put(f"{BASE_PATH}/provider-configuration", headers=pia, json=CONFIGURATION)
     assert stored.status_code == 200, stored.text
     assert "clientSecret" not in stored.json() and stored.json()["setupUrl"] == CONFIGURATION["setupUrl"]
-    assert store.provider_config[PROVIDER]["clientSecret"] == provider_double.CLIENT_SECRET
+    assert stored.json()["companyId"] == PROVIDER and stored.json()["clientSecretSet"] is True
+    assert provider_configuration_repository.get(PROVIDER).client_secret == provider_double.CLIENT_SECRET
 
     incomplete = client.put(f"{BASE_PATH}/provider-configuration", headers=pia, json={"setupUrl": "x"})
     assert incomplete.status_code == 400
     assert incomplete.json()["type"] == "urn:c10-m1:problem:validation"
+    unknown = client.put(f"{BASE_PATH}/provider-configuration", headers=pia, json=CONFIGURATION | {"extra": 1})
+    assert unknown.status_code == 400   # additionalProperties: false
     assert client.put(f"{BASE_PATH}/provider-configuration", json=CONFIGURATION).status_code == 401
 
 
@@ -148,13 +151,26 @@ def test_subscribe_and_visibility(client, erika, pia, hans):
 
 
 def test_subscribe_rejects_inactive_and_own_offers(client, erika, pia, neighbours):
-    own = client.post(f"{BASE_PATH}/subscriptions", headers=pia, json={"offerId": OFFER})
+    body = {"offerId": OFFER, "agreementConsents": []}
+    own = client.post(f"{BASE_PATH}/subscriptions", headers=pia, json=body)
     assert own.status_code == 409 and own.json()["type"] == "urn:c10-m1:problem:own-offer"
     neighbours["offer"]["status"] = "INACTIVE"
-    inactive = client.post(f"{BASE_PATH}/subscriptions", headers=erika, json={"offerId": OFFER})
+    inactive = client.post(f"{BASE_PATH}/subscriptions", headers=erika, json=body)
     assert inactive.status_code == 409 and inactive.json()["type"] == "urn:c10-m1:problem:offer-not-active"
-    unknown = client.post(f"{BASE_PATH}/subscriptions", headers=erika, json={"offerId": "nope"})
+    unknown = client.post(f"{BASE_PATH}/subscriptions", headers=erika, json=body | {"offerId": OTHER})
     assert unknown.status_code == 409
+
+
+def test_request_bodies_follow_the_spec(client, erika, pia):
+    for wrong in ({"offerId": "nope", "agreementConsents": []}, {"offerId": OFFER},
+                  {"offerId": OFFER, "agreementConsents": [], "extra": 1}):
+        reply = client.post(f"{BASE_PATH}/subscriptions", headers=erika, json=wrong)
+        assert reply.status_code == 400 and reply.json()["type"] == "urn:c10-m1:problem:validation", wrong
+    sid = _subscribe(client, erika)["offerSubscriptionId"]
+    plain_http = client.post(f"{BASE_PATH}/subscriptions/{sid}/start-setup", headers=pia,
+                             json={"instanceUrl": "http://app.example"})
+    assert plain_http.status_code == 400   # InstanceUrl: https only
+    assert client.post(f"{BASE_PATH}/subscriptions/{sid}/start-setup", headers=pia).status_code == 202   # no body
 
 
 def test_start_setup_and_activate_follow_the_setup_process(client, erika, pia, neighbours):
@@ -203,8 +219,11 @@ def test_steps_call_the_provider_system(client, erika, pia):
     assert body["technicalUser"] == {"clientId": "sa-tu1", "clientSecret": "rotated-secret"}
 
     missing = client.post(f"{BASE_PATH}/steps/notify-provider", headers=_service("c12-m1"),
-                          json=step | {"offerSubscriptionId": "unknown"})
+                          json=step | {"offerSubscriptionId": OTHER})
     assert missing.status_code == 404
+    invalid = client.post(f"{BASE_PATH}/steps/notify-provider", headers=_service("c12-m1"),
+                          json={"offerSubscriptionId": sid})
+    assert invalid.status_code == 400   # processId and stepRunId are required
 
 
 def test_internal_queries_are_served_by_the_fallback(client, erika):
@@ -234,23 +253,28 @@ def test_interface_queries(client, erika):
 
 def test_interface_steps_without_configuration(client, erika, neighbours):
     sid = _subscribe(client, erika)["offerSubscriptionId"]
-    step = {"stepRunId": "run-1", "offerSubscriptionId": sid}
+    step = {"processId": OTHER, "stepRunId": OFFER, "offerSubscriptionId": sid}
     with pytest.raises(Problem) as unconfigured:
         interface.notify_provider(step)
     assert unconfigured.value.status == 409
     # without a callbackUrl nothing is sent and no secret is rotated
     assert interface.send_activation_callback(step | {"technicalUsers": [{"technicalUserId": "tu1"}]}) == \
-        {"stepRunId": "run-1", "state": "DONE", "result": {}}
+        {"stepRunId": OFFER, "state": "DONE", "result": {}}
     assert neighbours["rotated"] == []
     with pytest.raises(Problem) as missing:
-        interface.send_activation_callback({"offerSubscriptionId": "unknown"})
+        interface.send_activation_callback(step | {"offerSubscriptionId": OTHER})
     assert missing.value.status == 404
+    with pytest.raises(Problem) as invalid:
+        interface.notify_provider({"offerSubscriptionId": sid})
+    assert invalid.value.status == 400
 
 
-def test_interface_reset_and_standin_functions(client, erika):
-    _subscribe(client, erika)
+def test_interface_reset_and_standin_functions(client, erika, pia):
+    client.put(f"{BASE_PATH}/provider-configuration", headers=pia, json=CONFIGURATION)
+    sid = _subscribe(client, erika)["offerSubscriptionId"]
+    assert subscription_repository.get(sid).status == "REQUESTED"
     interface.reset()
-    assert store.subscriptions == {} and store.provider_config == {}
+    assert subscription_repository.get(sid) is None and provider_configuration_repository.get(PROVIDER) is None
     assert interface.MODULE == "c10-m1"
     with pytest.raises(AttributeError):
         interface.no_such_function   # noqa: B018 - only the steps and queries of the spec exist

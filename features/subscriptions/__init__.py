@@ -24,20 +24,24 @@
 #################################################################################
 """Subscriptions (spec C10-M1): subscriptions of a company to the offers of a provider, app path of
 FRAMEWORK 5.8 (provider configuration, subscribe, start setup, activate) and the steps `notify-provider` and
-`send-activation-callback` of Process Orchestration. This is still the stand-in of the module: provider secrets
-stay in memory.
+`send-activation-callback` of Process Orchestration.
 
-Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hook a runtime
-calls, `reset()`. The HTTP API is `features.subscriptions.router.router`.
+Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
+calls, `on_startup()` and `reset()`. The HTTP API is `features.subscriptions.router.router`.
 """
 from __future__ import annotations
 
 from features.subscriptions import services
 from features.subscriptions.models.subscription import MODULE
+from portal_common import database
 
 NAME = "subscriptions"
 
-__all__ = ["MODULE", "NAME", "reset"]
+__all__ = ["MODULE", "NAME", "on_startup", "reset"]
+
+
+def on_startup() -> None:
+    database.create_tables(MODULE)
 
 
 def reset() -> None:

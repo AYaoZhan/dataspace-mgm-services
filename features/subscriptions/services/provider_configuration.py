@@ -22,18 +22,25 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Configuration of a provider: where the subscriptions notify it (`setupUrl`, `callbackUrl`) and how they get a
-token (`tokenUrl`, `clientId`, `clientSecret`). The secret stays in memory and is never returned."""
+"""Configuration of a provider: where the subscriptions notify it and how they get a token. The secret stays in
+memory and is never returned."""
 from __future__ import annotations
 
-from features.subscriptions.managers import store
-from features.subscriptions.models.subscription import MODULE, PROVIDER_CONFIGURATION_FIELDS
+from datetime import UTC, datetime
+
+from features.subscriptions.managers import provider_configuration_repository
+from features.subscriptions.models.provider_configuration import (
+    ProviderConfiguration,
+    ProviderConfigurationInput,
+    StoredProviderConfiguration,
+)
+from features.subscriptions.models.subscription import MODULE
 from portal_common.problems import Problem
 
 
-def put_provider_configuration(company_id: str | None, body: dict) -> dict:
-    missing = [k for k in PROVIDER_CONFIGURATION_FIELDS if not body.get(k)]
-    if missing or not company_id:
-        raise Problem(MODULE, 400, "validation", missing=missing)
-    store.provider_config[company_id] = dict(body)
-    return {k: v for k, v in body.items() if k != "clientSecret"}
+def put_provider_configuration(company_id: str | None, body: ProviderConfigurationInput) -> ProviderConfiguration:
+    if not company_id:
+        raise Problem(MODULE, 400, "validation", detail="the token names no company")
+    stored = StoredProviderConfiguration(company_id=company_id, updated_at=datetime.now(UTC), **body.model_dump())
+    provider_configuration_repository.save(stored)
+    return stored.public()

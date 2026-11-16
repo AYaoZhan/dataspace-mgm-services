@@ -22,4 +22,4 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets of the subscriptions."""
+"""Models of the subscriptions: the spec id, value sets and the pydantic models of `openapi.yaml`."""

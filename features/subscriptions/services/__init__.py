@@ -25,15 +25,17 @@
 """Business logic of the subscriptions, without HTTP: called by the controllers and by `interface.py`."""
 from __future__ import annotations
 
-from features.subscriptions.managers import store
+from features.subscriptions.models.subscription import MODULE
 from features.subscriptions.services.provider_configuration import put_provider_configuration
 from features.subscriptions.services.queries import find_subscriptions, get_subscription_internal
 from features.subscriptions.services.steps import notify_provider, send_activation_callback
 from features.subscriptions.services.subscriptions import activate, get_subscription, start_setup, subscribe
+from portal_common import database
 
 __all__ = ["activate", "find_subscriptions", "get_subscription", "get_subscription_internal", "notify_provider",
            "put_provider_configuration", "reset", "send_activation_callback", "start_setup", "subscribe"]
 
 
 def reset() -> None:
-    store.reset()
+    """Empty tables (tests, `/scaffold/reset`)."""
+    database.reset_tables(MODULE)

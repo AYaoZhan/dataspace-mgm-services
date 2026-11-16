@@ -25,7 +25,7 @@
 """In-process contract of the subscriptions (call convention, AGENTS.md): the steps `notify-provider` and
 `send-activation-callback` (client ID of the instance and a rotated secret of the technical user to the provider's
 `callbackUrl`, C10-M1 11.2) and the queries of section 9 under their convention names. Other modules and Process
-Orchestration import only from here; the logic lives in `services/`."""
+Orchestration import only from here and get JSON (camelCase dicts); the logic lives in `services/`."""
 from __future__ import annotations
 
 from features.subscriptions import services
@@ -50,12 +50,13 @@ def send_activation_callback(input: dict) -> dict:
 def find_subscriptions(*, customerCompanyId: str | None = None, offerId: str | None = None,
                        status: list[str] | str | None = None, **_other) -> list[dict]:
     """9.1: `SubscriptionRef` of the matching subscriptions."""
-    return services.find_subscriptions(customerCompanyId=customerCompanyId, offerId=offerId, status=status)
+    found = services.find_subscriptions(customerCompanyId=customerCompanyId, offerId=offerId, status=status)
+    return [s.model_dump(mode="json") for s in found]
 
 
 def get_subscription_internal(*, offerSubscriptionId: str) -> dict:
     """9.2: `SubscriptionInternal`."""
-    return services.get_subscription_internal(offerSubscriptionId=offerSubscriptionId)
+    return services.get_subscription_internal(offerSubscriptionId=offerSubscriptionId).model_dump(mode="json")
 
 
 __getattr__ = standin.missing_interface(MODULE)   # steps and queries not implemented yet: stand-in

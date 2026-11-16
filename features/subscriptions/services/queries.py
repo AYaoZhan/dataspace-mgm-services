@@ -22,27 +22,24 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The queries of the subscriptions for other modules (C10-M1 section 9)."""
+"""The queries of the subscriptions for other modules (section 9)."""
 from __future__ import annotations
 
-from features.subscriptions.managers import store
-from features.subscriptions.models.subscription import INTERNAL_FIELDS, MODULE, REF_FIELDS
+from features.subscriptions.managers import subscription_repository
+from features.subscriptions.models.subscription import MODULE, SubscriptionInternal, SubscriptionRef
 from portal_common.problems import Problem
 
 
 def find_subscriptions(*, customerCompanyId: str | None = None, offerId: str | None = None,
-                       status: list[str] | str | None = None) -> list[dict]:
-    """9.1: `SubscriptionRef` of the matching subscriptions."""
-    wanted = [status] if isinstance(status, str) else status or []
-    return [{k: s[k] for k in REF_FIELDS}
-            for s in store.subscriptions.values()
-            if (not customerCompanyId or s["customerCompanyId"] == customerCompanyId)
-            and (not offerId or s["offerId"] == offerId) and (not wanted or s["status"] in wanted)]
+                       status: list[str] | str | None = None) -> list[SubscriptionRef]:
+    """9.1: the matching subscriptions, filtered in the database (indexed columns)."""
+    statuses = [status] if isinstance(status, str) else status or []
+    return [s.ref() for s in subscription_repository.find(customerCompanyId, offerId, statuses)]
 
 
-def get_subscription_internal(*, offerSubscriptionId: str) -> dict:
-    """9.2: `SubscriptionInternal`."""
-    s = store.subscriptions.get(offerSubscriptionId)
+def get_subscription_internal(*, offerSubscriptionId: str) -> SubscriptionInternal:
+    """9.2: one subscription by id."""
+    s = subscription_repository.get(offerSubscriptionId)
     if not s:
         raise Problem(MODULE, 404, "not-found")
-    return {k: s[k] for k in INTERNAL_FIELDS}
+    return s

@@ -22,42 +22,58 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The steps of the subscriptions in the flows of Process Orchestration: `notify-provider` and
+"""The steps of the subscriptions in the flows of Process Orchestration (section 8): `notify-provider` and
 `send-activation-callback` (client ID of the instance and a rotated secret of the technical user to the provider's
-`callbackUrl`, C10-M1 11.2)."""
+`callbackUrl`, 11.2)."""
 from __future__ import annotations
 
-from features.subscriptions.managers import neighbour_client, provider_client, store
-from features.subscriptions.models.subscription import MODULE
-from portal_common import standin
+from features.subscriptions.managers import (
+    neighbour_client,
+    provider_client,
+    provider_configuration_repository,
+    subscription_repository,
+)
+from features.subscriptions.models.requests import ActivationCallbackStep, SubscriptionStep
+from features.subscriptions.models.subscription import MODULE, SubscriptionInternal
+from features.subscriptions.services.validation import parse
+from portal_common.models import StepResult
 from portal_common.problems import Problem
 
 
-def notify_provider(input: dict) -> dict:
-    s = store.subscriptions.get(input.get("offerSubscriptionId"))
+def _subscription(step: SubscriptionStep) -> SubscriptionInternal:
+    s = subscription_repository.get(step.offer_subscription_id)
     if not s:
         raise Problem(MODULE, 404, "not-found", retryable=False)
-    customer = neighbour_client.query_company(s["customerCompanyId"])
-    provider_client.call(s["providerCompanyId"], "setup", {
-        "offerSubscriptionId": s["offerSubscriptionId"], "offerId": s["offerId"], "customerCompanyId": s["customerCompanyId"],
+    return s
+
+
+def _done(step: SubscriptionStep) -> dict:
+    return StepResult[dict].done(step, {}).to_json()
+
+
+def notify_provider(input: dict | SubscriptionStep) -> dict:
+    step = parse(SubscriptionStep, input)
+    s = _subscription(step)
+    customer = neighbour_client.query_company(s.customer_company_id)
+    provider_client.call(s.provider_company_id, "setup", {
+        "offerSubscriptionId": s.offer_subscription_id, "offerId": s.offer_id,
+        "customerCompanyId": s.customer_company_id,
         "customerName": customer.get("name"), "customerCountry": (customer.get("address") or {}).get("countryCode"),
-        "setupExpected": s["offerType"] == "APP"})
-    return standin.step_reply(input)
+        "setupExpected": s.offer_type == "APP"})
+    return _done(step)
 
 
-def send_activation_callback(input: dict) -> dict:
-    s = store.subscriptions.get(input.get("offerSubscriptionId"))
-    if not s:
-        raise Problem(MODULE, 404, "not-found", retryable=False)
-    client_id = input.get("clientId")   # iamClientId of the instance client (C10-M1 8.2)
-    config = store.provider_config.get(s["providerCompanyId"])
-    if not config or not config.get("callbackUrl"):
-        return standin.step_reply(input)    # without a callbackUrl: nothing to do
+def send_activation_callback(input: dict | ActivationCallbackStep) -> dict:
+    step = parse(ActivationCallbackStep, input)
+    s = _subscription(step)
+    config = provider_configuration_repository.get(s.provider_company_id)
+    if not config or not config.callback_url:
+        return _done(step)    # without a callbackUrl: nothing to do
     technical_user = None
-    for acc in input.get("technicalUsers") or []:
-        r = neighbour_client.rotate_subscription_credentials(acc["technicalUserId"], s["offerSubscriptionId"])
+    for account in step.technical_users:   # one rotation per account, the callback names the last one (11.2)
+        r = neighbour_client.rotate_subscription_credentials(account.technical_user_id, s.offer_subscription_id)
         technical_user = {"clientId": r["iamClientId"], "clientSecret": r["secret"]}
-    provider_client.call(s["providerCompanyId"], "callback", {"offerSubscriptionId": s["offerSubscriptionId"],
-                                                              "instanceUrl": s["instanceUrl"], "clientId": client_id,
-                                                              "technicalUser": technical_user})
-    return standin.step_reply(input)
+    provider_client.call(s.provider_company_id, "callback", {
+        "offerSubscriptionId": s.offer_subscription_id, "instanceUrl": s.instance_url, "clientId": step.client_id,
+        "technicalUser": technical_user})
+    return _done(step)

@@ -22,4 +22,5 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""State and adapters of the subscriptions: the in-memory store, the provider client and the neighbours."""
+"""State and adapters of the subscriptions: the repositories of the own database, the provider client and the
+neighbours."""

@@ -22,13 +22,22 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""In-memory state of the stand-in: the subscriptions and the provider configurations (with secret)."""
+"""The provider configurations in the feature's database, with their secrets; never returned over the API."""
 from __future__ import annotations
 
-subscriptions: dict[str, dict] = {}     # offerSubscriptionId -> subscription
-provider_config: dict[str, dict] = {}   # providerCompanyId -> configuration (with secret)
+from features.subscriptions.models.provider_configuration import StoredProviderConfiguration
+from features.subscriptions.models.subscription import MODULE
+from features.subscriptions.models.tables import ProviderConfigurationRow
+from portal_common import database
 
 
-def reset() -> None:
-    subscriptions.clear()
-    provider_config.clear()
+def save(configuration: StoredProviderConfiguration) -> None:
+    """Insert or replace the configuration of the provider company."""
+    with database.session(MODULE) as session:
+        session.merge(ProviderConfigurationRow(**configuration.model_dump(by_alias=False)))
+
+
+def get(company_id: str) -> StoredProviderConfiguration | None:
+    with database.session(MODULE) as session:
+        row = session.get(ProviderConfigurationRow, company_id)
+        return StoredProviderConfiguration.model_validate(row, from_attributes=True) if row else None

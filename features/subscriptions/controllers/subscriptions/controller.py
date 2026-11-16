@@ -25,29 +25,29 @@
 """Subscriptions of the app path of FRAMEWORK 5.8: subscribe, read, start setup, activate."""
 from __future__ import annotations
 
-from fastapi import Body
-
 from features.subscriptions import services
+from features.subscriptions.models.requests import StartSetupRequest, SubscribeRequest
+from features.subscriptions.models.subscription import Subscription
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Subscriptions: Subscriptions")
 
 
-@controller.post("", status_code=201)
-def subscribe(body: dict = Body(...), claims: dict = Permission):
-    return services.subscribe(claims, body)
+@controller.post("", status_code=201, response_model=Subscription)
+def subscribe(body: SubscribeRequest, claims: dict = Permission):
+    return services.subscribe(claims.get("company_id"), body)
 
 
-@controller.get("/{offerSubscriptionId}")
+@controller.get("/{offerSubscriptionId}", response_model=Subscription)
 def get_subscription(offerSubscriptionId: str, claims: dict = Permission):
-    return services.get_subscription(claims, offerSubscriptionId)
+    return services.get_subscription(claims.get("company_id"), offerSubscriptionId)
 
 
-@controller.post("/{offerSubscriptionId}/start-setup", status_code=202)
-def start_setup(offerSubscriptionId: str, body: dict = Body(default={}), claims: dict = Permission):
-    return services.start_setup(claims, offerSubscriptionId, body)
+@controller.post("/{offerSubscriptionId}/start-setup", status_code=202, response_model=Subscription)
+def start_setup(offerSubscriptionId: str, body: StartSetupRequest | None = None, claims: dict = Permission):
+    return services.start_setup(claims.get("company_id"), offerSubscriptionId, body or StartSetupRequest())
 
 
-@controller.post("/{offerSubscriptionId}/activate")
+@controller.post("/{offerSubscriptionId}/activate", response_model=Subscription)
 def activate(offerSubscriptionId: str, claims: dict = Permission):
-    return services.activate(claims, offerSubscriptionId)
+    return services.activate(claims.get("company_id"), offerSubscriptionId)

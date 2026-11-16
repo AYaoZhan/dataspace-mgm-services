@@ -22,78 +22,81 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Subscriptions of the app path of FRAMEWORK 5.8: subscribe, start setup, activate (only when the setup process at
-C12-M1 is not `RUNNING` or `FAILED`, 6.3). A subscription is visible to its customer and to the provider of the
-offer; another company gets 404."""
+"""Subscriptions of the app path of FRAMEWORK 5.8: subscribe, start setup, activate (refused while the setup process
+at C12-M1 is `RUNNING` or `FAILED`, 6.3). A subscription is visible to its customer and to the provider of the
+offer; another company gets 404, and only the provider may start the setup or activate (403)."""
 from __future__ import annotations
 
 import uuid
 
-from features.subscriptions.managers import neighbour_client, store
-from features.subscriptions.models.subscription import EVENT_FIELDS, MODULE
+from features.subscriptions.managers import neighbour_client, subscription_repository
+from features.subscriptions.models.requests import StartSetupRequest, SubscribeRequest
+from features.subscriptions.models.subscription import MODULE, Subscription, SubscriptionInternal
 from portal_common import events
 from portal_common.problems import Problem
 
+_ACTIVATION_REFUSED = {"RUNNING": "setup-not-finished", "FAILED": "setup-failed"}
 
-def _visible(claims: dict, sid: str, provider_only: bool = False) -> dict:
-    s = store.subscriptions.get(sid)
-    cid = claims.get("company_id")
-    if not s or cid not in (s["providerCompanyId"], s["customerCompanyId"]):
+
+def _visible(company_id: str | None, sid: str, provider_only: bool = False) -> SubscriptionInternal:
+    s = subscription_repository.get(sid)
+    if not s or company_id not in (s.provider_company_id, s.customer_company_id):
         raise Problem(MODULE, 404, "not-found")
-    if provider_only and cid != s["providerCompanyId"]:
+    if provider_only and company_id != s.provider_company_id:
         raise Problem(MODULE, 403, "forbidden")
     return s
 
 
-def _event_fields(s: dict) -> dict:
-    """Content of the subscription events (C10-M1 section 10)."""
-    return {k: s[k] for k in EVENT_FIELDS}
-
-
 def _setup_status(sid: str) -> str | None:
+    """Status of the `subscription-setup` process of the subscription at C12-M1, None without one."""
     procs = neighbour_client.find_processes_of_subscription(sid)
-    setup = next((p for p in procs if p["flowKey"] == "subscription-setup"), None)
-    return setup["status"] if setup else None
+    return next((p["status"] for p in procs if p["flowKey"] == "subscription-setup"), None)
 
 
-def subscribe(claims: dict, body: dict) -> dict:
-    cid = claims.get("company_id")
-    offer = neighbour_client.get_offer_internal(body.get("offerId"))
+def _view(s: SubscriptionInternal, setup_status: str | None = None) -> Subscription:
+    return Subscription(**s.model_dump(), setup_status=setup_status)
+
+
+def subscribe(company_id: str | None, body: SubscribeRequest) -> Subscription:
+    if not company_id:
+        raise Problem(MODULE, 403, "forbidden", detail="the token names no company")
+    offer = neighbour_client.get_offer_internal(body.offer_id)
     if not offer or offer["status"] != "ACTIVE":
         raise Problem(MODULE, 409, "offer-not-active")
-    if offer["providerCompanyId"] == cid:
+    if offer["providerCompanyId"] == company_id:
         raise Problem(MODULE, 409, "own-offer")
-    s = {"offerSubscriptionId": str(uuid.uuid4()), "offerId": offer["offerId"], "offerType": offer["offerType"],
-         "instanceKind": offer.get("instanceKind"), "customerCompanyId": cid,
-         "providerCompanyId": offer["providerCompanyId"], "status": "REQUESTED", "instanceUrl": None}
-    store.subscriptions[s["offerSubscriptionId"]] = s
-    events.publish(MODULE, "SubscriptionRequested", _event_fields(s))
-    return s
+    s = SubscriptionInternal(offer_subscription_id=str(uuid.uuid4()), offer_id=offer["offerId"],
+                             offer_type=offer["offerType"], instance_kind=offer.get("instanceKind"),
+                             customer_company_id=company_id, provider_company_id=offer["providerCompanyId"],
+                             status="REQUESTED")
+    subscription_repository.save(s)
+    events.publish(MODULE, "SubscriptionRequested", s.event_data())
+    return _view(s)
 
 
-def get_subscription(claims: dict, sid: str) -> dict:
-    s = _visible(claims, sid)
-    return s | {"setupStatus": _setup_status(s["offerSubscriptionId"])}
+def get_subscription(company_id: str | None, sid: str) -> Subscription:
+    s = _visible(company_id, sid)
+    return _view(s, _setup_status(sid))
 
 
-def start_setup(claims: dict, sid: str, body: dict) -> dict:
-    s = _visible(claims, sid, provider_only=True)
-    if s["status"] != "REQUESTED":
+def start_setup(company_id: str | None, sid: str, body: StartSetupRequest) -> Subscription:
+    s = _visible(company_id, sid, provider_only=True)
+    if s.status != "REQUESTED":
         raise Problem(MODULE, 409, "invalid-state")
-    s["status"], s["instanceUrl"] = "PENDING", body.get("instanceUrl")
-    events.publish(MODULE, "SubscriptionSetupStarted", {**_event_fields(s), "instanceUrl": s["instanceUrl"]})
-    return s
+    s.status, s.instance_url = "PENDING", body.instance_url
+    subscription_repository.save(s)
+    events.publish(MODULE, "SubscriptionSetupStarted", s.event_data(instanceUrl=s.instance_url))
+    return _view(s)
 
 
-def activate(claims: dict, sid: str) -> dict:
-    s = _visible(claims, sid, provider_only=True)
-    if s["status"] != "PENDING":
+def activate(company_id: str | None, sid: str) -> Subscription:
+    s = _visible(company_id, sid, provider_only=True)
+    if s.status != "PENDING":
         raise Problem(MODULE, 409, "invalid-state")
-    status = _setup_status(sid)
-    if status == "RUNNING":
-        raise Problem(MODULE, 409, "setup-not-finished")
-    if status == "FAILED":
-        raise Problem(MODULE, 409, "setup-failed")
-    s["status"] = "ACTIVE"
-    events.publish(MODULE, "SubscriptionActivated", {**_event_fields(s), "instanceKind": s["instanceKind"]})
-    return s
+    refused = _ACTIVATION_REFUSED.get(_setup_status(sid))
+    if refused:
+        raise Problem(MODULE, 409, refused)
+    s.status = "ACTIVE"
+    subscription_repository.save(s)
+    events.publish(MODULE, "SubscriptionActivated", s.event_data(instanceKind=s.instance_kind))
+    return _view(s)
