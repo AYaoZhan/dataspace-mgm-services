@@ -40,6 +40,8 @@ from . import interface, service
 from .interface import MODULE
 
 router = standin.router(MODULE)
+# standin.router() tags every router "<module> (stand-in)" in Swagger; C4-M2 is implemented.
+router.tags = ["c4-m2 Dataspace Wallet Interface"]
 
 
 def reset() -> None:

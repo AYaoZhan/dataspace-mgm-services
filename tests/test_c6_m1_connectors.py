@@ -506,3 +506,12 @@ def test_malformed_endpoint_is_neither_stored_nor_published(api, endpoint):
                                       "https://edc.example/a%20b"])
 def test_valid_endpoints_are_accepted(api, endpoint):
     assert register(api, endpoint=endpoint).status_code == 201
+
+
+def test_swagger_tags_c6_m1_as_implemented_not_as_stand_in():
+    """standin.router() tags its routes "<module> (stand-in)"; the implemented C6-M1 must not show so."""
+    app = FastAPI()
+    app.include_router(c6.router)
+    tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
+    assert tags == {"c6-m1 Connectors"}
+
