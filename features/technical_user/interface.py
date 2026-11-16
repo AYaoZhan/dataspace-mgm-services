@@ -23,8 +23,10 @@
 #  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
 #################################################################################
 """In-process contract of the technical users (call convention, AGENTS.md): the steps of README 8 and the queries
-of README 9 under their convention names, and the operations of people, which only the controllers call.
-Other services and Process Orchestration import only from here; the logic lives in `services/`."""
+of README 9 under their convention names, and the operations of people. Other services and Process Orchestration
+import only from here; the answers are JSON (camelCase), as over HTTP, so a caller validates them with its own
+models. The controllers call these functions too and declare the response models of `models/responses.py`; the
+logic lives in `services/`."""
 from __future__ import annotations
 
 from features.technical_user import services

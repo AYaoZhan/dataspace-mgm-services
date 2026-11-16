@@ -29,49 +29,60 @@ from fastapi import Body, Query
 from fastapi.responses import JSONResponse, Response
 
 from features.technical_user import interface
-from features.technical_user.models.errors import MODULE
 from features.technical_user.models import Origin, Status, WalletAccess
+from features.technical_user.models.errors import MODULE
+from features.technical_user.models.responses import (
+    WIRE,
+    AssignableRole,
+    TechnicalUser,
+    TechnicalUserSummary,
+    TechnicalUserWithCredentials,
+)
+from portal_common import models
 from portal_common.routing import Controller, Page, Permission, Size, company_scope
 
 controller = Controller("Technical User: Technical Users")
 LANG = Query("de", pattern="^[a-z]{2}$")
 
 
-@controller.get("", summary="List the technical users visible to the company")
+@controller.get("", summary="List the technical users visible to the company",
+                response_model=models.Page[TechnicalUserSummary], **WIRE)
 def list_technical_users(companyId: str, page: int = Page, size: int = Size,
                          status: list[Status] | None = Query(None), origin: Origin | None = None,
-                         walletAccess: WalletAccess | None = None, claims: dict = Permission):
+                         walletAccess: WalletAccess | None = None, claims: dict = Permission) -> dict:
     company_scope(MODULE, claims, companyId)
     return interface.list_technical_users(company_id=companyId, page=page, size=size, status=status,
                                           origin=origin, wallet_access=walletAccess)
 
 
-@controller.post("", status_code=201, summary="Create a technical user")
-def create_technical_user(companyId: str, body: dict = Body(...), claims: dict = Permission):
+@controller.post("", status_code=201, summary="Create a technical user",
+                 response_model=TechnicalUserWithCredentials, **WIRE)
+def create_technical_user(companyId: str, body: dict = Body(...), claims: dict = Permission) -> dict:
     company_scope(MODULE, claims, companyId)
     return interface.create_technical_user(company_id=companyId, body=body, actor_sub=claims["sub"])
 
 
-@controller.get("/assignable-roles", summary="Roles that the company can assign")
-def list_assignable_roles(companyId: str, lang: str = LANG, claims: dict = Permission):
+@controller.get("/assignable-roles", summary="Roles that the company can assign",
+                response_model=list[AssignableRole], **WIRE)
+def list_assignable_roles(companyId: str, lang: str = LANG, claims: dict = Permission) -> list[dict]:
     company_scope(MODULE, claims, companyId)
     return interface.list_assignable_roles(company_id=companyId, lang=lang)
 
 
-@controller.get("/{id}", summary="Details of a technical user")
-def get_technical_user(companyId: str, id: str, claims: dict = Permission):
+@controller.get("/{id}", summary="Details of a technical user", response_model=TechnicalUser, **WIRE)
+def get_technical_user(companyId: str, id: str, claims: dict = Permission) -> dict:
     company_scope(MODULE, claims, companyId)
     return interface.get_technical_user(id=id, company_id=companyId)
 
 
-@controller.patch("/{id}", summary="Change name, description or roles")
-def update_technical_user(companyId: str, id: str, body: dict = Body(...), claims: dict = Permission):
+@controller.patch("/{id}", summary="Change name, description or roles", response_model=TechnicalUser, **WIRE)
+def update_technical_user(companyId: str, id: str, body: dict = Body(...), claims: dict = Permission) -> dict:
     company_scope(MODULE, claims, companyId)
     return interface.update_technical_user(id=id, company_id=companyId, body=body, actor_sub=claims["sub"])
 
 
 @controller.delete("/{id}", status_code=204, summary="Delete a technical user")
-def delete_technical_user(companyId: str, id: str, claims: dict = Permission):
+def delete_technical_user(companyId: str, id: str, claims: dict = Permission) -> Response:
     company_scope(MODULE, claims, companyId)
     status_code, account = interface.delete_technical_user(id=id, company_id=companyId, actor_sub=claims["sub"])
     if status_code == 202:

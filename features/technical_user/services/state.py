@@ -25,7 +25,6 @@
 """Status rules of README 6.1 and 6.2 as plain functions on a row; the caller saves the row."""
 from __future__ import annotations
 
-from ..models.errors import Problem, problem
 from ..models import (
     Origin,
     Status,
@@ -33,6 +32,7 @@ from ..models import (
     TechnicalUserRecord,
     WalletAccess,
 )
+from ..models.errors import Problem, problem
 
 
 def _invalid_state() -> Problem:
