@@ -22,16 +22,15 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
 #################################################################################
-"""Input checks of the operations and steps (README 7 and 8): every failure is 400 `validation`."""
-from __future__ import annotations
+"""Input checks of the operations and steps (README 7 and 8): every failure is 400 `validation`.
 
-from typing import TypeVar
+They live with the models because they need pydantic, which the services do not import."""
+from __future__ import annotations
 
 from pydantic import BaseModel, ValidationError
 
-from ..models.errors import Problem, problem
+from .errors import Problem, problem
 
-Model = TypeVar("Model", bound=BaseModel)
 _MAX_ISSUES = 5
 
 
@@ -39,7 +38,7 @@ def invalid(detail: str) -> Problem:
     return problem(400, "validation", detail=detail)
 
 
-def parse(model: type[Model], data: object) -> Model:
+def parse[Model: BaseModel](model: type[Model], data: object) -> Model:
     """Checks `data` against the pydantic model of an `openapi.yaml` schema (`schemas.py`)."""
     try:
         return model.model_validate(data)

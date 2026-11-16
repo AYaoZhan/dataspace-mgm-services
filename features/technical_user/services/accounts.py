@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import uuid
 
-from ..models.errors import problem
 from ..managers import config
 from ..managers.technical_user_repository import repository
 from ..models import (
@@ -38,6 +37,7 @@ from ..models import (
     Viewer,
     WalletAccess,
 )
+from ..models.errors import problem
 from . import audit, iam_access, state
 from .audit import Actor
 
