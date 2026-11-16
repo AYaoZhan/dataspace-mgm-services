@@ -20,25 +20,33 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (GPT-5.1)
 #################################################################################
+"""Persistence of C2-M3 in the feature's own database (F17): technical users, the two logs, the event outbox
+and the client ID sequence, as SQLModel tables of `models/tables.py`."""
 from __future__ import annotations
 
 import copy
 import logging
 import threading
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, ExitStack, contextmanager
-from typing import Protocol
+from contextlib import ExitStack, contextmanager
+from typing import cast
 
-from portal_common import events
+from sqlalchemy import ColumnElement
+from sqlmodel import Session, col, delete, or_, select
 
-from ..models import AuditLogRecord, RoleAssignmentLogRecord, TechnicalUserRecord
+from portal_common import database, events
+
+from ..models import AuditLogRecord, RoleAssignmentLogRecord, Status, TechnicalUserRecord
+from ..models.errors import MODULE
+from ..models.tables import AuditLogRow, CounterRow, OutboxRow, RoleAssignmentLogRow, TechnicalUserRow
 
 log = logging.getLogger("portal.c2-m3")
 Publisher = Callable[[str, dict], None]
+_CLIENT_NUMBER = "client-id"
 
 
 def _publish(event_type: str, data: dict) -> None:
-    events.publish("c2-m3", event_type, data)
+    events.publish(MODULE, event_type, data)
 
 
 class Conflict(RuntimeError):
@@ -67,76 +75,43 @@ class _KeyLocks:
                     del self._locks[key]
 
 
-class TechnicalUserRepository(Protocol):
+def _record(row: TechnicalUserRow) -> TechnicalUserRecord:
+    return cast(TechnicalUserRecord, row.model_dump())
+
+
+class TechnicalUserRepository:
     """Persistence contract of C2-M3: rows are values, so change a row and then `save` it.
 
     `locked(key)` serializes the work on one key; the order of nested keys is company, then subscription, then
     account, and `locked_all` takes several keys at once in a fixed order. `transaction()` makes rows, logs
-    and events (`add_event`) one unit: the events are published only after the outermost transaction committed,
-    and a failed transaction drops them (README 4: outbox). `save` raises `Conflict` for a row that changed since
-    it was read."""
-
-    def reset(self) -> None: ...
-
-    def locked(self, key: str) -> AbstractContextManager[None]: ...
-
-    def locked_all(self, *keys: str) -> AbstractContextManager[None]: ...
-
-    def transaction(self) -> AbstractContextManager[None]: ...
-
-    def add_event(self, event_type: str, data: dict) -> None: ...
-
-    def flush_outbox(self) -> None: ...
-
-    def unsent_events(self) -> list[tuple[str, dict]]: ...
-
-    def next_client_id(self, prefix: str) -> str: ...
-
-    def save(self, row: TechnicalUserRecord) -> None: ...
-
-    def remove(self, user_id: str) -> None: ...
-
-    def get(self, user_id: str) -> TechnicalUserRecord | None: ...
-
-    def find(self, *, owner_company_id: str | None = None, visible_to: str | None = None,
-             statuses: tuple[str, ...] | list[str] | None = None, origin: str | None = None,
-             wallet_access: str | None = None, disabled: bool | None = None,
-             offer_subscription_id: str | None = None) -> list[TechnicalUserRecord]: ...
-
-    def find_subscription(self, subscription_id: str, party: str) -> TechnicalUserRecord | None: ...
-
-    def add_audit_entry(self, entry: AuditLogRecord) -> None: ...
-
-    def add_role_assignment_entry(self, entry: RoleAssignmentLogRecord) -> None: ...
-
-    def audit_entries(self) -> list[AuditLogRecord]: ...
-
-    def role_assignment_entries(self) -> list[RoleAssignmentLogRecord]: ...
-
-
-class InMemoryTechnicalUserRepository:
-    """Hackathon implementation; it hands out copies so that a missing `save` shows up in tests."""
+    and events (`add_event`) one unit of work in the database: the events are written to the outbox table with
+    the change and published only after the outermost transaction committed; a failed transaction drops them
+    (README 4: outbox), a failed inner transaction only its own (a savepoint). `save` raises `Conflict` for a
+    row that changed since it was read. Every read hands out a fresh record, so a missing `save` shows up."""
 
     def __init__(self, publisher: Publisher = _publish) -> None:
-        self._lock = threading.RLock()   # guards the data; never held while a caller does slow work
+        # one unit of work at a time: the in-memory database has one connection for all threads; never held
+        # while a caller does slow work (IAM, neighbours), those run outside of `transaction()`
+        self._lock = threading.RLock()
         self._key_locks = _KeyLocks()
         self._publisher = publisher
-        self._depth = 0
+        self._session: Session | None = None        # of the open transaction, only used under `_lock`
         self._pending: list[tuple[str, dict]] = []   # events of the open transaction
-        self._outbox: list[tuple[str, dict]] = []    # committed events that are not published yet
-        self._users: dict[str, TechnicalUserRecord] = {}
-        self._audit: list[AuditLogRecord] = []
-        self._role_log: list[RoleAssignmentLogRecord] = []
-        self._client_number = 0
 
     def reset(self) -> None:
         with self._lock:
-            self._users.clear()
-            self._audit.clear()
-            self._role_log.clear()
+            database.reset_tables(MODULE)
             self._pending.clear()
-            self._outbox.clear()
-            self._client_number = 0
+
+    @contextmanager
+    def _unit(self) -> Iterator[Session]:
+        """The session of the open transaction, or a unit of work of its own that commits at the end."""
+        with self._lock:
+            if self._session is not None:
+                yield self._session
+                return
+            with database.session(MODULE) as session:
+                yield session
 
     @contextmanager
     def locked(self, key: str) -> Iterator[None]:
@@ -153,111 +128,149 @@ class InMemoryTechnicalUserRepository:
     @contextmanager
     def transaction(self) -> Iterator[None]:
         with self._lock:
-            self._depth += 1
-            users, audit, role_log = copy.deepcopy(self._users), list(self._audit), list(self._role_log)
-            pending = len(self._pending)
+            outermost = self._session is None
+            mark = len(self._pending)
             try:
-                yield
+                if outermost:
+                    with self._outermost():
+                        yield
+                else:
+                    with cast(Session, self._session).begin_nested():
+                        yield
             except BaseException:
-                self._users = users
-                self._audit[:], self._role_log[:] = audit, role_log
-                del self._pending[pending:]
+                del self._pending[mark:]
                 raise
-            finally:
-                self._depth -= 1
-            outermost = self._depth == 0
-            if outermost:
-                self._outbox.extend(self._pending)
-                self._pending.clear()
         if outermost:
             self.flush_outbox()
 
+    @contextmanager
+    def _outermost(self) -> Iterator[None]:
+        with database.session(MODULE) as session:
+            self._session = session
+            try:
+                yield
+                session.add_all(OutboxRow(event_type=event_type, data=data) for event_type, data in self._pending)
+            finally:
+                self._session = None
+        self._pending.clear()
+
     def add_event(self, event_type: str, data: dict) -> None:
         with self._lock:
-            if self._depth == 0:
+            if self._session is None:
                 raise RuntimeError("an event is added inside the transaction of its change")
             self._pending.append((event_type, copy.deepcopy(data)))
 
     def flush_outbox(self) -> None:
-        """Publishes the committed events in order; an event that fails for a temporary reason stays for the next try."""
+        """Publishes the committed events in order; one that fails for a temporary reason stays for the next try."""
         with self._lock:
-            while self._outbox:
-                event_type, data = self._outbox[0]
+            while (event := self._first_event()) is not None:
                 try:
-                    self._publisher(event_type, data)
+                    self._publisher(event.event_type, event.data)
                 except ValueError:   # an invalid event never gets better: report it and go on
-                    log.exception("event %s is invalid and was dropped", event_type)
+                    log.exception("event %s is invalid and was dropped", event.event_type)
                 except Exception:
-                    log.exception("event %s stays in the outbox", event_type)
+                    log.exception("event %s stays in the outbox", event.event_type)
                     return
-                self._outbox.pop(0)
+                with self._unit() as session:
+                    session.execute(delete(OutboxRow).where(col(OutboxRow.seq) == event.seq))
+
+    def _first_event(self) -> OutboxRow | None:
+        with self._unit() as session:
+            return session.exec(select(OutboxRow).order_by(col(OutboxRow.seq)).limit(1)).first()
 
     def unsent_events(self) -> list[tuple[str, dict]]:
-        with self._lock:
-            return list(self._outbox)
+        with self._unit() as session:
+            rows = session.exec(select(OutboxRow).order_by(col(OutboxRow.seq)))
+            return [(row.event_type, row.data) for row in rows]
 
     def next_client_id(self, prefix: str) -> str:
-        with self._lock:
-            self._client_number += 1
-            return f"{prefix}{self._client_number}"
+        with self._unit() as session:
+            counter = session.get(CounterRow, _CLIENT_NUMBER) or CounterRow(name=_CLIENT_NUMBER)
+            counter.value += 1
+            session.add(counter)
+            return f"{prefix}{counter.value}"
 
     def save(self, row: TechnicalUserRecord) -> None:
-        with self._lock:
-            known = self._users.get(row["id"])
-            if known is not None and known["version"] != row["version"]:
+        with self._unit() as session:
+            known = session.get(TechnicalUserRow, row["id"])
+            if known is not None and known.version != row["version"]:
                 raise Conflict(f"technical user {row['id']} changed since it was read")
-            party = row["subscription_party"]
-            if party and row["status"] != "DELETED" and any(
-                    other["id"] != row["id"] and other["status"] != "DELETED"
-                    and other["offer_subscription_id"] == row["offer_subscription_id"]
-                    and other["subscription_party"] == party for other in self._users.values()):
+            if self._party_taken(session, row):
                 raise ValueError("a subscription has one account per subscription party")   # README 5: unique
             if known is not None:
                 row["version"] += 1
-            self._users[row["id"]] = copy.deepcopy(row)
+            session.add(known.sqlmodel_update(dict(row)) if known else TechnicalUserRow.model_validate(dict(row)))
+
+    @staticmethod
+    def _party_taken(session: Session, row: TechnicalUserRecord) -> bool:
+        if not row["subscription_party"] or row["status"] == Status.DELETED:
+            return False
+        other = select(TechnicalUserRow.id).where(
+            TechnicalUserRow.offer_subscription_id == row["offer_subscription_id"],
+            TechnicalUserRow.subscription_party == row["subscription_party"],
+            TechnicalUserRow.status != Status.DELETED, TechnicalUserRow.id != row["id"])
+        return session.exec(other.limit(1)).first() is not None
 
     def remove(self, user_id: str) -> None:
-        with self._lock:
-            self._users.pop(user_id, None)
+        with self._unit() as session:
+            session.execute(delete(TechnicalUserRow).where(col(TechnicalUserRow.id) == user_id))
 
     def get(self, user_id: str) -> TechnicalUserRecord | None:
-        with self._lock:
-            row = self._users.get(user_id)
-            return copy.deepcopy(row) if row else None
+        with self._unit() as session:
+            row = session.get(TechnicalUserRow, user_id)
+            return _record(row) if row else None
 
     def find(self, *, owner_company_id: str | None = None, visible_to: str | None = None,
              statuses: tuple[str, ...] | list[str] | None = None, origin: str | None = None,
              wallet_access: str | None = None, disabled: bool | None = None,
              offer_subscription_id: str | None = None) -> list[TechnicalUserRecord]:
-        with self._lock:
-            return [copy.deepcopy(row) for row in self._users.values()
-                    if (owner_company_id is None or row["company_id"] == owner_company_id)
-                    and (visible_to is None or visible_to in (row["company_id"], row["co_viewer_company_id"]))
-                    and (statuses is None or row["status"] in statuses)
-                    and (not origin or row["origin"] == origin)
-                    and (not wallet_access or row["wallet_access"] == wallet_access)
-                    and (disabled is None or row["disabled"] is disabled)
-                    and (offer_subscription_id is None or row["offer_subscription_id"] == offer_subscription_id)]
+        """The rows that match every given filter, in the order they were created."""
+        conditions: list[ColumnElement[bool]] = []
+        if owner_company_id is not None:
+            conditions.append(col(TechnicalUserRow.company_id) == owner_company_id)
+        if visible_to is not None:
+            conditions.append(or_(TechnicalUserRow.company_id == visible_to,
+                                  TechnicalUserRow.co_viewer_company_id == visible_to))
+        if statuses is not None:
+            conditions.append(col(TechnicalUserRow.status).in_(statuses))
+        if origin:
+            conditions.append(col(TechnicalUserRow.origin) == origin)
+        if wallet_access:
+            conditions.append(col(TechnicalUserRow.wallet_access) == wallet_access)
+        if disabled is not None:
+            conditions.append(col(TechnicalUserRow.disabled) == disabled)
+        if offer_subscription_id is not None:
+            conditions.append(col(TechnicalUserRow.offer_subscription_id) == offer_subscription_id)
+        query = select(TechnicalUserRow).where(*conditions).order_by(col(TechnicalUserRow.created_at),
+                                                                     col(TechnicalUserRow.id))
+        with self._unit() as session:
+            return [_record(row) for row in session.exec(query)]
 
     def find_subscription(self, subscription_id: str, party: str) -> TechnicalUserRecord | None:
-        return next((row for row in self.find(offer_subscription_id=subscription_id)
-                     if row["subscription_party"] == party and row["status"] != "DELETED"), None)
+        query = select(TechnicalUserRow).where(TechnicalUserRow.offer_subscription_id == subscription_id,
+                                               TechnicalUserRow.subscription_party == party,
+                                               TechnicalUserRow.status != Status.DELETED)
+        with self._unit() as session:
+            row = session.exec(query.limit(1)).first()
+            return _record(row) if row else None
 
     def add_audit_entry(self, entry: AuditLogRecord) -> None:
-        with self._lock:
-            self._audit.append(entry)
+        with self._unit() as session:
+            session.add(AuditLogRow(**entry))
 
     def add_role_assignment_entry(self, entry: RoleAssignmentLogRecord) -> None:
-        with self._lock:
-            self._role_log.append(entry)
+        with self._unit() as session:
+            session.add(RoleAssignmentLogRow(**entry))
 
     def audit_entries(self) -> list[AuditLogRecord]:
-        with self._lock:
-            return list(self._audit)
+        with self._unit() as session:
+            rows = session.exec(select(AuditLogRow).order_by(col(AuditLogRow.seq)))
+            return [cast(AuditLogRecord, row.model_dump(exclude={"seq"})) for row in rows]
 
     def role_assignment_entries(self) -> list[RoleAssignmentLogRecord]:
-        with self._lock:
-            return list(self._role_log)
+        with self._unit() as session:
+            rows = session.exec(select(RoleAssignmentLogRow).order_by(col(RoleAssignmentLogRow.seq)))
+            return [cast(RoleAssignmentLogRecord, row.model_dump(exclude={"seq"})) for row in rows]
 
 
-repository: TechnicalUserRepository = InMemoryTechnicalUserRepository()
+repository = TechnicalUserRepository()

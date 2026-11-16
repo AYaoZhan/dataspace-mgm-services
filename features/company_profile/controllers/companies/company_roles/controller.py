@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.company_profile.models.company_role import CompanyRoleState
 from features.company_profile.services import company_role_service
 from features.company_profile.services.shared import MODULE
 from portal_common.routing import Controller, Permission, company_scope
@@ -34,18 +35,20 @@ controller = Controller("Company Profile: Company Roles")
 
 
 @controller.get("")
-def list_company_roles(companyId: str, lang: str | None = None, claims: dict = Permission):
+def list_company_roles(companyId: str, lang: str | None = None, claims: dict = Permission) -> list[CompanyRoleState]:
     company_scope(MODULE, claims, companyId)
     return company_role_service.list_company_roles(companyId, lang)
 
 
 @controller.post("")
-def add_company_role(companyId: str, body: dict = Body(...), lang: str | None = None, claims: dict = Permission):
+def add_company_role(companyId: str, body: dict = Body(...), lang: str | None = None,
+                     claims: dict = Permission) -> list[CompanyRoleState]:
     company_scope(MODULE, claims, companyId)
     return company_role_service.add_company_role(companyId, body, claims.get("sub"), lang)
 
 
 @controller.delete("/{companyRole}")
-def remove_company_role(companyId: str, companyRole: str, lang: str | None = None, claims: dict = Permission):
+def remove_company_role(companyId: str, companyRole: str, lang: str | None = None,
+                        claims: dict = Permission) -> list[CompanyRoleState]:
     company_scope(MODULE, claims, companyId)
     return company_role_service.remove_company_role(companyId, companyRole, claims.get("sub"), lang)

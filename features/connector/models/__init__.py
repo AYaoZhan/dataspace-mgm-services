@@ -20,35 +20,32 @@
 #  that the code is correct.
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
-#  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
+#  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Input checks of the operations and steps (README 7 and 8): every failure is 400 `validation`."""
+"""Models of the connectors: the pydantic models of openapi.yaml (`connector`) and the tables (`tables`)."""
 from __future__ import annotations
 
-from typing import TypeVar
+from .connector import (
+    ACTIVE,
+    COMPANY_CONNECTOR,
+    CONNECTOR_AS_A_SERVICE,
+    INACTIVE,
+    MODULE,
+    Connector,
+    ConnectorAsAServiceInput,
+    ConnectorIds,
+    ConnectorInput,
+    ConnectorRef,
+    ConnectorStatus,
+    ConnectorType,
+    DeactivateSubscriptionConnectorsInput,
+    EndpointChange,
+    Role,
+    UnlinkTechnicalUserInput,
+)
 
-from pydantic import BaseModel, ValidationError
-
-from ..models.errors import Problem, problem
-
-Model = TypeVar("Model", bound=BaseModel)
-_MAX_ISSUES = 5
-
-
-def invalid(detail: str) -> Problem:
-    return problem(400, "validation", detail=detail)
-
-
-def parse(model: type[Model], data: object) -> Model:
-    """Checks `data` against the pydantic model of an `openapi.yaml` schema (`schemas.py`)."""
-    try:
-        return model.model_validate(data)
-    except ValidationError as exc:
-        issues = exc.errors(include_url=False, include_input=False, include_context=False)   # no input values
-        raise invalid("; ".join(f"{'.'.join(str(part) for part in issue['loc']) or 'body'}: {issue['msg']}"
-                                for issue in issues[:_MAX_ISSUES])) from exc
-
-
-def validate_page(page: int, size: int) -> None:
-    if page < 0 or not 1 <= size <= 100:
-        raise invalid("page must be >= 0 and size must be 1..100")
+__all__ = [
+    "ACTIVE", "COMPANY_CONNECTOR", "CONNECTOR_AS_A_SERVICE", "INACTIVE", "MODULE", "Connector",
+    "ConnectorAsAServiceInput", "ConnectorIds", "ConnectorInput", "ConnectorRef", "ConnectorStatus", "ConnectorType",
+    "DeactivateSubscriptionConnectorsInput", "EndpointChange", "Role", "UnlinkTechnicalUserInput",
+]

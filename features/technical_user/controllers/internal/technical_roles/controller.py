@@ -28,11 +28,12 @@ from __future__ import annotations
 from fastapi import Query
 
 from features.technical_user import interface
+from features.technical_user.models.responses import WIRE, AssignableRole
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Technical User: Process Steps and Queries")
 
 
-@controller.get("", summary="All technical user roles")
-def list_technical_roles(lang: str = Query("de", pattern="^[a-z]{2}$"), _: dict = Permission):
+@controller.get("", summary="All technical user roles", response_model=list[AssignableRole], **WIRE)
+def list_technical_roles(lang: str = Query("de", pattern="^[a-z]{2}$"), _: dict = Permission) -> list[dict]:
     return interface.list_technical_roles(lang=lang)

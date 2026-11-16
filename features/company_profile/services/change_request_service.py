@@ -25,8 +25,15 @@
 """
 from __future__ import annotations
 
-from features.company_profile.managers import config
-from features.company_profile.managers import company_repository
+from features.company_profile.managers import company_repository, config
+from features.company_profile.models.change_request import (
+    ChangeRequest,
+    ChangeRequestCompany,
+    ChangeRequestDetail,
+    DocumentContent,
+    DocumentInfo,
+    ReviewedChangeRequest,
+)
 from features.company_profile.services import company_validation
 from features.company_profile.services.company_changes import (
     changed_fields,
@@ -39,31 +46,30 @@ from features.company_profile.services.company_changes import (
 from features.company_profile.services.company_views import address_view, get_company, identifiers_view
 from features.company_profile.services.shared import MODULE, utc_now
 from portal_common import events
+from portal_common.models import Page
 from portal_common.problems import Problem
 
 
 # ------------------------------------------------------------ change requests (7.4 - 7.6, 7.14 - 7.18)
-def _document_info(row: dict) -> dict:
-    return {"id": row["id"], "fileName": row["file_name"], "mediaType": row["media_type"],
-            "sizeBytes": row["size_bytes"]}
+def _fields(row: dict) -> dict:
+    """The row with its documents (without their content)."""
+    return row | {"documents": [DocumentInfo.model_validate(document)
+                                for document in company_repository.list_documents(row["id"])]}
 
 
-def _change_request_view(row: dict, *, osp: bool = False, company: dict | None = None) -> dict:
-    """`ChangeRequest` (7.5: without `decidedBy`, without document content)."""
-    view = {"id": row["id"], "companyId": row["company_id"], "status": row["status"],
-            "changes": row["changes"], "comment": row["comment"],
-            "documents": [_document_info(document)
-                          for document in company_repository.list_documents(row["id"])],
-            "requestedBy": row["requested_by"], "createdAt": row["created_at"],
-            "closedAt": row["closed_at"], "decisionReason": row["decision_reason"]}
-    if osp:
-        view |= {"companyName": (company or {}).get("name"), "decidedBy": row["decided_by"]}
-    return view
+def _change_request_view(row: dict) -> ChangeRequest:
+    """`ChangeRequest` as the company sees it (7.5: without `companyName` and `decidedBy`)."""
+    return ChangeRequest.model_validate(_fields(row))
+
+
+def _reviewed_view(row: dict, company: dict | None = None) -> ReviewedChangeRequest:
+    """`ChangeRequest` as OSP staff see it, with `companyName` and `decidedBy`."""
+    return ReviewedChangeRequest.model_validate(_fields(row) | {"company_name": (company or {}).get("name")})
 
 
 def create_change_request(companyId: str, data: dict,
                           documents: list[tuple[str, bytes, str | None]],
-                          sub: str | None = None) -> dict:
+                          sub: str | None = None) -> ChangeRequest:
     """7.4: a change request with supporting documents."""
     if not config.change_requests_enabled():
         raise Problem(MODULE, 409, "change-requests-disabled")
@@ -99,8 +105,8 @@ def create_change_request(companyId: str, data: dict,
 
         errors = []
         if not 1 <= len(documents) <= config.change_request_max_documents():
-            errors.append({"field": "documents", "reason": "1 to %d documents"
-                                                          % config.change_request_max_documents()})
+            errors.append({"field": "documents",
+                           "reason": f"1 to {config.change_request_max_documents()} documents"})
         for file_name, content, stated in documents:
             errors += company_validation.validate_document(file_name, content, stated_media_type=stated,
                                                    max_bytes=config.change_request_max_document_bytes())
@@ -121,13 +127,13 @@ def create_change_request(companyId: str, data: dict,
     return _change_request_view(created)
 
 
-def list_own_change_requests(companyId: str, page: int = 0, size: int = 20) -> dict:
+def list_own_change_requests(companyId: str, page: int = 0, size: int = 20) -> Page[ChangeRequest]:
     """7.5: own change requests, newest first, without `decidedBy`."""
     get_company(companyId)
     items, total = company_repository.list_change_requests(company_id=companyId, page=page, size=size,
                                               newest_first=True)
-    return {"items": [_change_request_view(item) for item in items], "page": page, "size": size,
-            "total": total}
+    return Page[ChangeRequest](items=[_change_request_view(item) for item in items], page=page, size=size,
+                               total=total)
 
 
 def _own_change_request(companyId: str, changeRequestId: str) -> dict:
@@ -137,7 +143,7 @@ def _own_change_request(companyId: str, changeRequestId: str) -> dict:
     return row
 
 
-def withdraw_change_request(companyId: str, changeRequestId: str, sub: str | None = None) -> dict:
+def withdraw_change_request(companyId: str, changeRequestId: str, sub: str | None = None) -> ChangeRequest:
     """7.6"""
     with company_repository.lock(companyId):
         row = _own_change_request(companyId, changeRequestId)
@@ -163,41 +169,38 @@ def _reviewed(changeRequestId: str) -> dict:
 
 def list_change_requests(*, status: list[str] | str | None = None,
                          companyId: str | None = None, page: int | str = 0,
-                         size: int | str = 20) -> dict:
+                         size: int | str = 20) -> Page[ReviewedChangeRequest]:
     """7.14: all change requests, oldest first."""
     try:
         items, total = company_repository.list_change_requests(status=status, company_id=companyId,
                                                   page=int(page or 0), size=int(size or 20))
     except ValueError as error:
-        raise Problem(MODULE, 400, "validation", errors=[{"field": "filter", "reason": str(error)}])
-    return {"items": [_change_request_view(item, osp=True,
-                                           company=company_repository.get_company(item["company_id"]))
-                      for item in items],
-            "page": int(page or 0), "size": int(size or 20), "total": total}
+        raise Problem(MODULE, 400, "validation", errors=[{"field": "filter", "reason": str(error)}]) from None
+    companies = {company_id: company_repository.get_company(company_id)
+                 for company_id in {item["company_id"] for item in items}}
+    return Page[ReviewedChangeRequest](items=[_reviewed_view(item, companies[item["company_id"]]) for item in items],
+                                       page=int(page or 0), size=int(size or 20), total=total)
 
 
-def get_change_request(changeRequestId: str) -> dict:
+def get_change_request(changeRequestId: str) -> ChangeRequestDetail:
     """7.15: the request with the current state of the company."""
     row = _reviewed(changeRequestId)
     company = company_repository.get_company(row["company_id"]) or {}
-    view = _change_request_view(row, osp=True, company=company)
-    view["company"] = {"id": company.get("id"), "name": company.get("name"),
-                       "address": address_view(company), "identifiers": identifiers_view(company),
-                       "coreDataSource": company.get("core_data_source"),
-                       "status": company.get("status")}
-    return view
+    current = ChangeRequestCompany.model_validate(company | {"address": address_view(company),
+                                                             "identifiers": identifiers_view(company)})
+    return ChangeRequestDetail.model_validate(_fields(row) | {"company_name": company.get("name"),
+                                                              "company": current})
 
 
 def get_change_request_document(changeRequestId: str, documentId: str,
-                                sub: str | None = None) -> dict:
+                                sub: str | None = None) -> DocumentContent:
     """7.16: content, media type and file name; the read is audited."""
     request = _reviewed(changeRequestId)
     document = company_repository.get_document(documentId)
     if document is None or document["change_request_id"] != changeRequestId:
         raise Problem(MODULE, 404, "not-found")
     company_repository.audit(request["company_id"], sub, "getChangeRequestDocument", documentId)
-    return {"content": document["content"], "media_type": document["media_type"],
-            "file_name": document["file_name"]}
+    return DocumentContent.model_validate(document)
 
 
 def _apply_changes(companyId: str, row: dict, changes: dict) -> tuple[list[str], bool]:
@@ -233,12 +236,12 @@ def _apply_changes(companyId: str, row: dict, changes: dict) -> tuple[list[str],
 
 
 def approve_change_request(changeRequestId: str, body: dict | None = None,
-                           sub: str | None = None) -> dict:
+                           sub: str | None = None) -> ReviewedChangeRequest:
     """7.17"""
     with company_repository.lock((company_repository.get_change_request(changeRequestId) or {}).get("company_id")):
         row = _reviewed(changeRequestId)
         if row["status"] == "APPROVED":
-            return _change_request_view(row, osp=True)
+            return _reviewed_view(row)
         if row["status"] != "OPEN":
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"])
         if row["requested_by"] and row["requested_by"] == sub:
@@ -261,17 +264,17 @@ def approve_change_request(changeRequestId: str, body: dict | None = None,
         events.publish(MODULE, "CompanyChangeRequestClosed",
                        {"companyId": row["company_id"], "changeRequestId": changeRequestId,
                         "outcome": "APPROVED"})
-    return _change_request_view(decided, osp=True)
+    return _reviewed_view(decided)
 
 
 def decline_change_request(changeRequestId: str, body: dict | None = None,
-                           sub: str | None = None) -> dict:
+                           sub: str | None = None) -> ReviewedChangeRequest:
     """7.18"""
     with company_repository.lock((company_repository.get_change_request(changeRequestId) or {}).get("company_id")):
         row = _reviewed(changeRequestId)
         reason = (body or {}).get("reason")
         if row["status"] == "DECLINED":
-            return _change_request_view(row, osp=True)
+            return _reviewed_view(row)
         if row["status"] != "OPEN":
             raise Problem(MODULE, 409, "invalid-state", detail=row["status"])
         errors = company_validation.validate_decision_reason(reason)
@@ -284,4 +287,4 @@ def decline_change_request(changeRequestId: str, body: dict | None = None,
         events.publish(MODULE, "CompanyChangeRequestClosed",
                        {"companyId": row["company_id"], "changeRequestId": changeRequestId,
                         "outcome": "DECLINED"})
-    return _change_request_view(decided, osp=True)
+    return _reviewed_view(decided)

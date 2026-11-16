@@ -22,26 +22,26 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
 #################################################################################
-"""Input of the operations and steps as in `openapi.yaml` (components/schemas); `validation.parse` turns a
-failed check into 400 `validation`."""
+"""Input of the operations and steps as in `openapi.yaml` (components/schemas); `models.validation.parse` turns a
+failed check into 400 `validation`.
+
+The models build on `portal_common.models` (snake_case in Python, camelCase in JSON). Input is strict and
+accepted only under its JSON name, like the schema: `offer_subscription_id` in a body is an undeclared field."""
 from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator,
-    model_validator,
-)
+from pydantic import AfterValidator, ConfigDict, Field, field_validator, model_validator
 
-Uuid = Annotated[str, Field(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")]
+from portal_common.models import ApiModel, RequestBody, StepRequest, Uuid
+
+_INPUT = ConfigDict(strict=True, validate_by_name=False)
 
 
-class RoleRef(BaseModel):
-    model_config = ConfigDict(strict=True)
+class RoleRef(ApiModel):
+    """A role by name, in requests and responses."""
+
+    model_config = _INPUT
 
     name: str = Field(min_length=1)
 
@@ -62,31 +62,30 @@ def _unique(roles: list[RoleRef]) -> list[RoleRef]:
 RoleList = Annotated[list[RoleRef], Field(min_length=1), AfterValidator(_unique)]
 
 
-class _Body(BaseModel):
-    """A request body with `additionalProperties: false`; an optional field may be left out but not be null."""
-
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    @model_validator(mode="after")
-    def _no_explicit_null(self) -> _Body:
-        for field in self.model_fields_set:
-            if getattr(self, field) is None:
-                raise ValueError(f"{field} must not be null")
-        return self
+def role_refs(names: list[str]) -> list[RoleRef]:
+    return [RoleRef(name=name) for name in names]
 
 
-class TechnicalUserCreate(_Body):
-    name: str = Field(min_length=1, max_length=80)
-    description: str | None = Field(default=None, max_length=255)
-    authMethod: Literal["SECRET"] | None = None
-    roles: RoleList
+class _WithRoles:
+    """The names of the `roles` field of a model."""
 
     @property
     def role_names(self) -> list[str]:
-        return [role.name for role in self.roles]
+        return [role.name for role in self.roles or []]  # type: ignore[attr-defined]
 
 
-class TechnicalUserUpdate(_Body):
+class TechnicalUserCreate(_WithRoles, RequestBody):
+    model_config = _INPUT
+
+    name: str = Field(min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=255)
+    auth_method: Literal["SECRET"] | None = None
+    roles: RoleList
+
+
+class TechnicalUserUpdate(_WithRoles, RequestBody):
+    model_config = _INPUT
+
     name: str | None = Field(default=None, min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=255)
     roles: RoleList | None = None
@@ -97,57 +96,46 @@ class TechnicalUserUpdate(_Body):
             raise ValueError("provide name, description, or roles")
         return self
 
-    @property
-    def role_names(self) -> list[str]:
-        return [role.name for role in self.roles or []]
+
+class SubscriptionCredentialsRequest(RequestBody):
+    model_config = _INPUT
+
+    offer_subscription_id: Uuid
 
 
-class SubscriptionCredentialsRequest(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
-
-    offerSubscriptionId: Uuid
-
-
-class StepRequest(BaseModel):
+class _Step(StepRequest):
     """`processId` and `stepRunId` are required by openapi.yaml (StepRequest); they only serve the audit log."""
 
-    model_config = ConfigDict(strict=True, extra="ignore")
-
-    processId: Uuid
-    stepRunId: Uuid
+    model_config = _INPUT
 
 
-class StepCreateForSubscription(StepRequest):
-    customerCompanyId: Uuid
-    providerCompanyId: Uuid
-    offerSubscriptionId: Uuid
+class StepCreateForSubscription(_WithRoles, _Step):
+    customer_company_id: Uuid
+    provider_company_id: Uuid
+    offer_subscription_id: Uuid
     name: str = Field(min_length=1, max_length=200)
     roles: RoleList
 
-    @property
-    def role_names(self) -> list[str]:
-        return [role.name for role in self.roles]
 
-
-class StepApplyWalletAccess(StepRequest):
-    technicalUserId: Uuid
+class StepApplyWalletAccess(_Step):
+    technical_user_id: Uuid
     outcome: Literal["ACTIVE", "FAILED"]
-    walletAccountRef: str | None = None
+    wallet_account_ref: str | None = None
 
     @model_validator(mode="after")
     def _active_needs_a_reference(self) -> StepApplyWalletAccess:
-        if self.outcome == "ACTIVE" and not self.walletAccountRef:
+        if self.outcome == "ACTIVE" and not self.wallet_account_ref:
             raise ValueError("outcome ACTIVE requires walletAccountRef")
         return self
 
 
-class StepTechnicalUserRef(StepRequest):
-    technicalUserId: Uuid
+class StepTechnicalUserRef(_Step):
+    technical_user_id: Uuid
 
 
-class StepCompanyRef(StepRequest):
-    companyId: Uuid
+class StepCompanyRef(_Step):
+    company_id: Uuid
 
 
-class StepSubscriptionRef(StepRequest):
-    offerSubscriptionId: Uuid
+class StepSubscriptionRef(_Step):
+    offer_subscription_id: Uuid

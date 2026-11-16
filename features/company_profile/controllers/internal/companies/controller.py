@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from fastapi import Body, Query
 
+from features.company_profile.models.company import CompanyInternal, CompanyLookupResult, IdentifierMatchResult
 from features.company_profile.services import company_query_service
 from portal_common.routing import Controller, Permission
 
@@ -33,15 +34,16 @@ controller = Controller("Company Profile: Process Steps and Queries")
 
 
 @controller.get("")
-def query_companies(id: list[str] | None = Query(None), bpn: list[str] | None = Query(None), _: dict = Permission):
+def query_companies(id: list[str] | None = Query(None), bpn: list[str] | None = Query(None),
+                    _: dict = Permission) -> CompanyLookupResult:
     return company_query_service.query_companies(id=id, bpn=bpn)
 
 
 @controller.post("/identifier-matches")
-def find_identifier_matches(body: dict = Body(...), _: dict = Permission):
+def find_identifier_matches(body: dict = Body(...), _: dict = Permission) -> IdentifierMatchResult:
     return company_query_service.find_identifier_matches(**body)
 
 
 @controller.get("/{companyId}")
-def query_company(companyId: str, _: dict = Permission):
+def query_company(companyId: str, _: dict = Permission) -> CompanyInternal:
     return company_query_service.query_company(companyId=companyId)

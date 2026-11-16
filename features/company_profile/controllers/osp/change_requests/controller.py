@@ -26,7 +26,9 @@ from __future__ import annotations
 
 from fastapi import Body, Query
 
+from features.company_profile.models.change_request import ChangeRequestDetail, ReviewedChangeRequest
 from features.company_profile.services import change_request_service
+from portal_common.models import MAX_PAGE_SIZE, Page
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Company Profile: Change Request Review")
@@ -34,21 +36,23 @@ controller = Controller("Company Profile: Change Request Review")
 
 @controller.get("")
 def list_change_requests(status: list[str] | None = Query(None), companyId: str | None = None,
-                         page: int = 0, size: int = 20,
-                         _: dict = Permission):
+                         page: int = Query(0, ge=0), size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+                         _: dict = Permission) -> Page[ReviewedChangeRequest]:
     return change_request_service.list_change_requests(status=status, companyId=companyId, page=page, size=size)
 
 
 @controller.get("/{changeRequestId}")
-def get_change_request(changeRequestId: str, _: dict = Permission):
+def get_change_request(changeRequestId: str, _: dict = Permission) -> ChangeRequestDetail:
     return change_request_service.get_change_request(changeRequestId)
 
 
 @controller.post("/{changeRequestId}/approve")
-def approve_change_request(changeRequestId: str, body: dict | None = Body(None), claims: dict = Permission):
+def approve_change_request(changeRequestId: str, body: dict | None = Body(None),
+                           claims: dict = Permission) -> ReviewedChangeRequest:
     return change_request_service.approve_change_request(changeRequestId, body, claims.get("sub"))
 
 
 @controller.post("/{changeRequestId}/decline")
-def decline_change_request(changeRequestId: str, body: dict | None = Body(None), claims: dict = Permission):
+def decline_change_request(changeRequestId: str, body: dict | None = Body(None),
+                           claims: dict = Permission) -> ReviewedChangeRequest:
     return change_request_service.decline_change_request(changeRequestId, body, claims.get("sub"))
