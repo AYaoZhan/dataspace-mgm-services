@@ -58,10 +58,9 @@ def own(claims: dict) -> list[dict]:
 
 def find(notification_id: str, claims: dict) -> dict:
     """The stored notification if it is in the caller's inbox, else Problem 404 `not-found` (README 7)."""
-    with store.LOCK:
-        for n in store.notifications:
-            if n["notificationId"] == notification_id and store.visible_to(n, claims):
-                return n
+    n = store.find(notification_id)
+    if n is not None and store.visible_to(n, claims):
+        return n
     raise Problem(MODULE, 404, "not-found")
 
 

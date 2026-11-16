@@ -43,6 +43,8 @@ if TYPE_CHECKING:
 
 LOCK = threading.RLock()
 notifications: list[dict] = []           # README 5 `notification`; items carry `sourceEventId` (tests/test_sse.py)
+_by_id: dict[str, dict] = {}             # notificationId -> the same item of `notifications` (lookup by key)
+_open_tasks: dict[str, list[dict]] = {}  # rule id -> its open tasks in creation order (closing scans only these)
 state: dict[tuple[str, str], dict] = {}  # README 5 `notification_state`: (notificationId, sub) -> {readAt, hiddenAt}
 applicants: dict[str, str] = {}          # README 5 `applicant`: applicationId -> applicantSub
 SEEN_MAX = 10_000   # events and dedup keys remembered, oldest dropped first (as RECEIVED_MAX of portal_common.events)
@@ -120,6 +122,9 @@ def add_notification(event: dict, rule: Rule, *, receiver_sub: str | None = None
             "doneAt": created if is_task and done else None,
         }
         notifications.append(n)
+        _by_id[n["notificationId"]] = n
+        if is_task and not done:
+            _open_tasks.setdefault(rule.id, []).append(n)
     BROKER.publish("notification-created", {   # README 7.6: no content, only IDs, types and states
         "notificationId": n["notificationId"], "type": n["type"], "topic": n["topic"],
         "forStaff": n["forStaff"], "done": n["done"], "createdAt": n["createdAt"]}, _meta(n))
@@ -128,15 +133,25 @@ def add_notification(event: dict, rule: Rule, *, receiver_sub: str | None = None
 
 def close_tasks(rule_id: str, match: Callable[[dict], bool], done_at: str | None = None) -> list[dict]:
     """README 6.2: set `done` on the open tasks of `rule_id` that `match`; publish `notification-done`."""
-    closed = []
+    closed, still_open = [], []
     with LOCK:
-        for n in notifications:
-            if n["rule"] == rule_id and n["topic"] == "ACTION" and n["done"] is False and match(n):
-                n["done"], n["doneAt"] = True, done_at or now()
-                closed.append(n)
+        for n in _open_tasks.get(rule_id, ()):   # only close_tasks sets `done`, so every entry is still open
+            (closed if match(n) else still_open).append(n)
+        for n in closed:
+            n["done"], n["doneAt"] = True, done_at or now()
+        if still_open:
+            _open_tasks[rule_id] = still_open
+        else:
+            _open_tasks.pop(rule_id, None)
     for n in closed:
         BROKER.publish("notification-done", {"notificationId": n["notificationId"], "doneAt": n["doneAt"]}, _meta(n))
     return closed
+
+
+def find(notification_id: str) -> dict | None:
+    """The stored notification with this id, or None."""
+    with LOCK:
+        return _by_id.get(notification_id)
 
 
 def visible_to(n: dict, claims: dict) -> bool:
@@ -157,6 +172,8 @@ def reset() -> None:
     """Forget everything (tests, `/scaffold/reset`); clears the lists and dicts in place."""
     with LOCK:
         notifications.clear()
+        _by_id.clear()
+        _open_tasks.clear()
         state.clear()
         applicants.clear()
         processed.clear()
