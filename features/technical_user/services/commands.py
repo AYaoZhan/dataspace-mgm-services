@@ -27,21 +27,22 @@ from __future__ import annotations
 
 import contextlib
 
-from ..models.errors import Problem, problem
 from ..managers import config
 from ..managers import neighbour_client as gateways
 from ..managers.technical_user_repository import repository
-from ..models import Origin, TechnicalUserRecord, Viewer
+from ..models import Origin, TechnicalUserRecord, Viewer, validation
+from ..models.errors import Problem, problem
+from ..models.responses import Credentials, TechnicalUser, TechnicalUserWithCredentials
 from ..models.schemas import (
     SubscriptionCredentialsRequest,
     TechnicalUserCreate,
     TechnicalUserUpdate,
 )
-from . import accounts, audit, iam_access, projections, roles, state, validation
+from . import accounts, audit, iam_access, projections, roles, state
 from .audit import Actor
 
 
-def create_technical_user(*, company_id: str, body: dict, actor_sub: str) -> dict:
+def create_technical_user(*, company_id: str, body: dict, actor_sub: str) -> TechnicalUserWithCredentials:
     data = validation.parse(TechnicalUserCreate, body)
     role_names = data.role_names
     # the company lock keeps a deactivation of the company from running between the check and the creation
@@ -64,7 +65,7 @@ def create_technical_user(*, company_id: str, body: dict, actor_sub: str) -> dic
             with contextlib.suppress(Problem):   # never touches a client that is not this account's
                 iam_access.call(iam.delete, row["iam_client_id"], owner_id=row["id"])
             raise
-    return projections.details(row, Viewer.OWNER, roles=assigned) | {"credentials": projections.credentials(row, secret)}
+    return projections.with_credentials(projections.details(row, Viewer.OWNER, roles=assigned), row, secret)
 
 
 def _update_roles(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> tuple[list[str], list[str]]:
@@ -84,7 +85,7 @@ def _update_roles(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> tuple[
 
 
 def _update_metadata(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> bool:
-    name = data.name if "name" in data.model_fields_set else row["name"]
+    name = data.name if data.name is not None else row["name"]   # an explicit null is refused
     description = data.description if "description" in data.model_fields_set else row["description"]
     if (name, description) == (row["name"], row["description"]):
         return False
@@ -93,7 +94,7 @@ def _update_metadata(row: TechnicalUserRecord, data: TechnicalUserUpdate) -> boo
     return True
 
 
-def update_technical_user(*, id: str, company_id: str, body: dict, actor_sub: str) -> dict:
+def update_technical_user(*, id: str, company_id: str, body: dict, actor_sub: str) -> TechnicalUser:
     actor = Actor.person(actor_sub)
     with repository.locked(f"technical-user:{id}"):
         row = accounts.find(id)
@@ -115,7 +116,7 @@ def update_technical_user(*, id: str, company_id: str, body: dict, actor_sub: st
         return projections.details(row, Viewer.OWNER)
 
 
-def delete_technical_user(*, id: str, company_id: str, actor_sub: str) -> tuple[int, dict | None]:
+def delete_technical_user(*, id: str, company_id: str, actor_sub: str) -> tuple[int, TechnicalUser | None]:
     """Returns `(204, None)` or `(202, account)` if the wallet account has to be deleted first."""
     actor = Actor.person(actor_sub)
     with repository.locked(f"technical-user:{id}"):
@@ -137,7 +138,7 @@ def delete_technical_user(*, id: str, company_id: str, actor_sub: str) -> tuple[
         return 204, None
 
 
-def rotate_credentials(*, id: str, company_id: str, actor_sub: str) -> dict:
+def rotate_credentials(*, id: str, company_id: str, actor_sub: str) -> Credentials:
     with repository.locked(f"technical-user:{id}"):
         row = accounts.find(id)
         accounts.require_owner(row, company_id)
@@ -147,10 +148,11 @@ def rotate_credentials(*, id: str, company_id: str, actor_sub: str) -> dict:
         return projections.credentials(row, secret)
 
 
-def rotate_subscription_credentials(*, id: str, offer_subscription_id: str | None = None, **other) -> dict:
+def rotate_subscription_credentials(*, id: str, offer_subscription_id: str | None = None,
+                                    **other: object) -> Credentials:
     request = {} if offer_subscription_id is None else {"offerSubscriptionId": offer_subscription_id}
     # the whole request is validated (undeclared fields are a 400) before the secret is touched
-    subscription_id = validation.parse(SubscriptionCredentialsRequest, request | other).offerSubscriptionId
+    subscription_id = validation.parse(SubscriptionCredentialsRequest, request | other).offer_subscription_id
     with repository.locked(f"technical-user:{id}"):
         row = repository.get(id)
         if row is None or row["origin"] != Origin.SUBSCRIPTION or row["offer_subscription_id"] != subscription_id:

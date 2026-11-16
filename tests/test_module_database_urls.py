@@ -28,9 +28,10 @@ Found at the go-live of 06.11.2026: DATABASE_URL for C2-M2 switched C3-M1 to Pos
 import pytest
 
 from modules.c2_m2.c2_m2_impl.config.config import Config
-from features.company_profile.managers import company_repository as store
+from portal_common import database
 
-VARIABLES = ("DATABASE_URL", "C2_M2_DATABASE_URL", "C3_M1_DATABASE_URL", "C2_M2_CONFIG_FILE")
+VARIABLES = ("DATABASE_URL", "C2_M2_DATABASE_URL", "C3_M1_DATABASE_URL", "COMPANY_PROFILE_DATABASE_URL",
+             "C2_M2_CONFIG_FILE")
 
 
 @pytest.fixture(autouse=True)
@@ -42,7 +43,7 @@ def _clean_env(monkeypatch):
 def test_the_database_of_c2_m2_does_not_switch_c3_m1(monkeypatch):
     monkeypatch.setenv("C2_M2_DATABASE_URL", "postgresql://u@db/c2_m2")
     assert Config().from_properties("database.url") == "postgresql://u@db/c2_m2"
-    assert store.backend_name() == "memory"
+    assert database.url("c3-m1") == database.IN_MEMORY
 
 
 def test_each_module_takes_its_own_variable_before_database_url(monkeypatch):
@@ -50,11 +51,10 @@ def test_each_module_takes_its_own_variable_before_database_url(monkeypatch):
     monkeypatch.setenv("C2_M2_DATABASE_URL", "postgresql://u@db/c2_m2")
     monkeypatch.setenv("C3_M1_DATABASE_URL", "postgresql://u@db/c3_m1")
     assert Config().from_properties("database.url") == "postgresql://u@db/c2_m2"
-    assert store.database_url() == "postgresql://u@db/c3_m1"
+    assert database.url("c3-m1") == "postgresql+pg8000://u@db/c3_m1"
 
 
 def test_a_module_running_alone_still_takes_database_url(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://u@db/alone")
     assert Config().from_properties("database.url") == "postgresql://u@db/alone"
-    assert store.database_url() == "postgresql://u@db/alone"
-    assert store.backend_name() == "postgres"
+    assert database.url("c3-m1") == "postgresql+pg8000://u@db/alone"

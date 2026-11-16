@@ -28,14 +28,15 @@ from __future__ import annotations
 from fastapi import Body
 
 from features.technical_user import interface
+from features.technical_user.models import validation
+from features.technical_user.models.responses import WIRE, Credentials
 from features.technical_user.models.schemas import SubscriptionCredentialsRequest
-from features.technical_user.services import validation
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Technical User: Process Steps and Queries")
 
 
-@controller.post("/rotate", summary="Rotate a subscription account's secret")
-def rotate_subscription_credentials(id: str, body: dict = Body(...), _: dict = Permission):
+@controller.post("/rotate", summary="Rotate a subscription account's secret", response_model=Credentials, **WIRE)
+def rotate_subscription_credentials(id: str, body: dict = Body(...), _: dict = Permission) -> dict:
     request = validation.parse(SubscriptionCredentialsRequest, body)   # undeclared fields (even `id`) are a 400
-    return interface.rotate_subscription_credentials(id=id, offerSubscriptionId=request.offerSubscriptionId)
+    return interface.rotate_subscription_credentials(id=id, offerSubscriptionId=request.offer_subscription_id)

@@ -28,19 +28,26 @@ A company creates its own technical users; Process Orchestration creates and rem
 offer subscription and of a wallet; the OSP sees all of them.
 
 Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
-calls, `reset()` and `on_event()`. The HTTP API is `features.technical_user.router.router`.
+calls, `on_startup()`, `reset()` and `on_event()`. The HTTP API is `features.technical_user.router.router`.
 """
 from __future__ import annotations
 
 from features.technical_user import services
 from features.technical_user.models.errors import MODULE
+from portal_common import database
 
 NAME = "technical_user"
 
-__all__ = ["MODULE", "NAME", "on_event", "reset"]
+__all__ = ["MODULE", "NAME", "on_event", "on_startup", "reset"]
+
+
+def on_startup() -> None:
+    """Creates the tables of the feature's own database (F17) that do not exist yet."""
+    database.create_tables(MODULE)
 
 
 def reset() -> None:
+    """Empty state: empty tables and a fresh IAM stand-in."""
     services.reset()
 
 

@@ -22,14 +22,20 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (Claude Sonnet 5.5)
 #################################################################################
-"""The repository guarantees of C2-M3: events leave with their transaction (README 4) and locks are per key."""
+"""The repository guarantees of C2-M3: events leave with their transaction (README 4), the state lives in the
+feature's tables and locks are per key."""
 from __future__ import annotations
 
 import threading
 
 import pytest
 
-from features.technical_user.managers.technical_user_repository import InMemoryTechnicalUserRepository
+from features.technical_user.managers.technical_user_repository import TechnicalUserRepository
+from features.technical_user.models import AuditLogRecord, RoleAssignmentLogRecord, TechnicalUserRecord
+from features.technical_user.models.tables import AuditLogRow, RoleAssignmentLogRow, TechnicalUserRow
+
+AUDIT_ENTRY = {"id": "a1", "occurred_at": "2026-01-01T00:00:00+00:00", "actor_type": "PERSON", "actor_sub": None,
+               "company_id": "c1", "process_id": None, "step_run_id": None, "operation": "x", "object_id": "u1"}
 
 
 class Bus:
@@ -51,8 +57,11 @@ def bus() -> Bus:
 
 
 @pytest.fixture
-def repo(bus) -> InMemoryTechnicalUserRepository:
-    return InMemoryTechnicalUserRepository(publisher=bus)
+def repo(bus) -> TechnicalUserRepository:
+    repository = TechnicalUserRepository(publisher=bus)
+    repository.reset()   # the tables of the feature's in-memory database
+    yield repository
+    repository.reset()
 
 
 def test_events_leave_only_after_the_transaction_committed(repo, bus):
@@ -65,10 +74,9 @@ def test_events_leave_only_after_the_transaction_committed(repo, bus):
 
 
 def test_a_failed_transaction_drops_its_events(repo, bus):
-    with pytest.raises(RuntimeError):
-        with repo.transaction():
-            repo.add_event("TechnicalUserCreated", {"technicalUserId": "u1"})
-            raise RuntimeError("change failed")
+    with pytest.raises(RuntimeError), repo.transaction():
+        repo.add_event("TechnicalUserCreated", {"technicalUserId": "u1"})
+        raise RuntimeError("change failed")
     assert bus.sent == [] and repo.unsent_events() == []
     with repo.transaction():
         repo.add_event("TechnicalUserDeleted", {"technicalUserId": "u2"})
@@ -87,10 +95,9 @@ def test_a_nested_transaction_publishes_once_with_the_outermost(repo, bus):
 def test_an_inner_failure_drops_only_its_own_events_when_the_outer_one_recovers(repo, bus):
     with repo.transaction():
         repo.add_event("TechnicalUserCreated", {"technicalUserId": "u1"})
-        with pytest.raises(RuntimeError):
-            with repo.transaction():
-                repo.add_event("TechnicalUserDeleted", {"technicalUserId": "u1"})
-                raise RuntimeError("inner")
+        with pytest.raises(RuntimeError), repo.transaction():
+            repo.add_event("TechnicalUserDeleted", {"technicalUserId": "u1"})
+            raise RuntimeError("inner")
     assert [event for event, _ in bus.sent] == ["TechnicalUserCreated"]
 
 
@@ -124,9 +131,34 @@ def test_the_change_stays_committed_when_the_publisher_fails(repo, bus):
     bus.failures.append(ConnectionError("relay down"))
     with repo.transaction():
         repo.audit_entries()
-        repo.add_audit_entry({"id": "a1", "operation": "x"})
+        repo.add_audit_entry(AUDIT_ENTRY)
         repo.add_event("TechnicalUserCreated", {"technicalUserId": "u1"})
     assert [entry["id"] for entry in repo.audit_entries()] == ["a1"]
+
+
+def test_a_failed_publish_after_a_restart_is_still_in_the_outbox(repo, bus):
+    bus.failures.append(ConnectionError("relay down"))
+    with repo.transaction():
+        repo.add_event("TechnicalUserCreated", {"technicalUserId": "u1"})
+    restarted = TechnicalUserRepository(publisher=bus)   # the outbox is a table, not memory of the process
+    assert restarted.unsent_events() == [("TechnicalUserCreated", {"technicalUserId": "u1"})]
+    restarted.flush_outbox()
+    assert bus.sent == [("TechnicalUserCreated", {"technicalUserId": "u1"})]
+
+
+def test_an_inner_failure_rolls_back_only_its_own_rows(repo):
+    with repo.transaction():
+        repo.add_audit_entry(AUDIT_ENTRY)
+        with pytest.raises(RuntimeError), repo.transaction():
+            repo.add_audit_entry(AUDIT_ENTRY | {"id": "a2"})
+            raise RuntimeError("inner")
+    assert [entry["id"] for entry in repo.audit_entries()] == ["a1"]
+
+
+def test_the_rows_have_the_fields_of_their_records():
+    for record, row in ((TechnicalUserRecord, TechnicalUserRow), (AuditLogRecord, AuditLogRow),
+                        (RoleAssignmentLogRecord, RoleAssignmentLogRow)):
+        assert set(record.__annotations__) == set(row.model_fields) - {"seq"}
 
 
 def test_the_event_data_is_copied(repo, bus):
@@ -173,7 +205,5 @@ def test_the_same_key_waits_for_the_holder(repo):
 
 
 def test_a_key_lock_can_be_taken_again_by_the_same_thread(repo):
-    with repo.locked("technical-user:x"):
-        with repo.locked("technical-user:x"):
-            with repo.transaction():
-                pass
+    with repo.locked("technical-user:x"), repo.locked("technical-user:x"), repo.transaction():
+        pass

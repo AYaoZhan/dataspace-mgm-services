@@ -134,8 +134,8 @@ The user interface lives in [dataspace-mgm-ui](https://github.com/eclipse-tractu
 Binding convention for every module folder `modules/<id>/` (id like `c1_m2`):
 
 1. `interface.py` holds the public functions of the module. Other modules import only from there,
-   e.g. `from modules.c8_m1.interface import get_offer_internal` (a migrated feature:
-   `from features.registration.interface import get_application_internal`); never a neighbour's router,
+   e.g. `from modules.c10_m1.interface import get_subscription_internal` (a migrated feature:
+   `from features.offers.interface import get_offer_internal`); never a neighbour's router,
    service or data.
 2. Names: a step by its step name in snake_case (`create-company` -> `create_company`), a query by
    its operationId in snake_case (`getApplicationInternal` -> `get_application_internal`).
@@ -247,12 +247,12 @@ Processes are kept in memory.
 
 Live state for the UI (README 7.6 to 7.8): `GET /api/c12-m1/processes/{processId}/events` for OSP
 staff and `GET /api/c12-m1/applications/{applicationId}/events` for the applicant, event
-`process-changed` with the full state of the process. The stand-in of C11-M1 streams its inbox at
-`GET /api/c11-m1/notifications/events`. Try it:
+`process-changed` with the full state of the process. C11-M1 (feature `notifications`) streams its inbox at
+`GET /api/notifications/notifications/events`. Try it:
 
 ```bash
 TOKEN=$(uv run python iam/test/get-token.py erika)
-curl -N -H "Authorization: Bearer $TOKEN" localhost:8000/api/c11-m1/notifications/events
+curl -N -H "Authorization: Bearer $TOKEN" localhost:8000/api/notifications/notifications/events
 ```
 
 ## Provisional readings of the spec

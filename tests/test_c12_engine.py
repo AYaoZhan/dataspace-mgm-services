@@ -290,7 +290,7 @@ def test_event_published_before_running_answer_still_completes(engine, fake, mon
 
 def test_fails_on_event_fails_the_step(engine, fake, monkeypatch):
     monkeypatch.setenv("C3_M2_URL", FAKE)
-    fake.answers["/api/c3-m2/steps/register-company"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
+    fake.answers["/api/csp-connection/steps/register-company"] = lambda b: (200, {"stepRunId": b["stepRunId"], "state": "RUNNING"})
     _approve(engine)
     engine.on_event(ev("CompanyRegistrationAtCspFailed", companyId=COMPANY, reason="registered-at-other-osp"))
     p = proc_of(engine, "onboarding")
@@ -342,7 +342,7 @@ def test_when_not_met_skips_the_step(engine):
 
 def test_failed_lookup_is_an_error_not_found_false(engine, fake, monkeypatch):
     monkeypatch.setenv("C8_M1_URL", FAKE)
-    fake.answers["/api/c8-m1/internal/offers/7c1d9e3a-2b4f-4a6c-8d0e-5f1a2b3c4d5e"] = (
+    fake.answers["/api/offers/internal/offers/7c1d9e3a-2b4f-4a6c-8d0e-5f1a2b3c4d5e"] = (
         403, {"type": "urn:c8-m1:problem:forbidden", "status": 403})
     p = _offer_approved(engine)
     sr = step(p, "create-client-template")
@@ -432,7 +432,7 @@ def test_in_process_step_calls_the_interface_function(engine, monkeypatch):
 
 
 def test_in_process_lookup_calls_the_interface_function(engine, monkeypatch):
-    from modules.c8_m1 import interface as c8_m1
+    from features.offers import interface as c8_m1
     seen = {}
 
     def get_offer_internal(*, offerId):

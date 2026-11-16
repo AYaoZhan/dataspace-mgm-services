@@ -230,7 +230,7 @@ def onboarding(t: Target, base: str, applicant: str, reviewer: str, admin: str, 
     creds = r.json() if r.status_code == 200 else []
     t.check("C4-M1: credentials BPN and MEMBERSHIP ISSUED",
             {x["credentialType"]: x["status"] for x in creds} == {"BPN": "ISSUED", "MEMBERSHIP": "ISSUED"}, json.dumps(creds))
-    inbox = [n["type"] for n in t.call("GET", f"{base}/api/c11-m1/notifications", tok).json().get("items", [])]
+    inbox = [n["type"] for n in t.call("GET", f"{base}/api/notifications/notifications", tok).json().get("items", [])]
     t.check("C11: applicant sees APPLICATION_SUBMITTED and APPLICATION_COMPLETED",
             {"APPLICATION_SUBMITTED", "APPLICATION_COMPLETED"} <= set(inbox), str(inbox))
     return True
@@ -248,7 +248,7 @@ def scenario_2(t: Target) -> None:
     if not t.check("precondition: company of scenario 1 is active", bool(bpn)):
         return
     endpoint = "https://edc.beispiel-maschinenbau.example/api/v1/dsp"
-    r = t.call("POST", f"{t.osp_a}/api/c6-m1/connectors", t.token(t.osp_a, "erika"),
+    r = t.call("POST", f"{t.osp_a}/api/connector/connectors", t.token(t.osp_a, "erika"),
                json={"name": "EDC Beispiel Maschinenbau", "endpoint": endpoint, "location": "DE"})
     if not t.check("C6-M1: Company Admin registers a connector -> ConnectorRegistered", r.status_code == 201, r.text[:200]):
         return
@@ -268,21 +268,21 @@ def scenario_3(t: Target) -> None:
         return
     # Complete for submit (C8-M1 6.2): descriptions, a privacy policy, planned roles and a CONTRACT document.
     # The spec names no values for privacy policies yet; COMPANY_DATA is the value of the current portal.
-    r = t.call("POST", f"{base}/api/c8-m1/offers", pia, json={
+    r = t.call("POST", f"{base}/api/offers/offers", pia, json={
         "offerType": "APP", "name": "Demo App", "instanceKind": "MULTI", "privacyPolicies": ["COMPANY_DATA"],
         "descriptions": [{"lang": "en", "short": "Demo app of the hackathon", "long": "Shows offer, approval and subscription."}]})
     if not t.check("C8-M1: provider (OSP company, APP_PROVIDER) creates an app offer", r.status_code == 201, r.text[:200]):
         return
     oid = r.json()["offerId"]
-    t.call("PUT", f"{base}/api/c8-m1/offers/{oid}/roles", pia,
+    t.call("PUT", f"{base}/api/offers/offers/{oid}/roles", pia,
            json=[{"name": n, "descriptions": [{"lang": "en", "text": n}]} for n in ("Viewer", "Editor")])
-    t.call("PUT", f"{base}/api/c8-m1/offers/{oid}/technical-user-profile", pia,
+    t.call("PUT", f"{base}/api/offers/offers/{oid}/technical-user-profile", pia,
            json={"name": "connector-sync", "roles": [{"name": "Dataspace Discovery"}]})
-    t.call("POST", f"{base}/api/c8-m1/offers/{oid}/documents", pia, data={"documentType": "CONTRACT"},
+    t.call("POST", f"{base}/api/offers/offers/{oid}/documents", pia, data={"documentType": "CONTRACT"},
            files={"file": ("contract.pdf", b"%PDF-1.4 demo contract", "application/pdf")})
-    r = t.call("POST", f"{base}/api/c8-m1/offers/{oid}/submit", pia)
+    r = t.call("POST", f"{base}/api/offers/offers/{oid}/submit", pia)
     t.check("C8-M1: submit -> IN_REVIEW", r.status_code == 200 and r.json()["status"] == "IN_REVIEW", r.text[:200])
-    r = t.call("POST", f"{base}/api/c8-m1/osp/offers/{oid}/approve", t.token(base, "otto"))
+    r = t.call("POST", f"{base}/api/offers/osp/offers/{oid}/approve", t.token(base, "otto"))
     t.check("C8-M1: OSP Admin approves -> ACTIVE, OfferApproved", r.status_code == 200 and r.json()["status"] == "ACTIVE")
     p = t.process(base, "otto", "app-approval", oid, ("COMPLETED", "FAILED"))
     t.check("C12 app-approval: C2-M2 create-client-template with the roles of the offer (lookup offer)",
