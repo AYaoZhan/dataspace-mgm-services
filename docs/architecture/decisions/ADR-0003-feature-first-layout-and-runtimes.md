@@ -1,7 +1,8 @@
 # ADR-0003: Feature-first layout and runtimes made of features
 
 **Status:** proposed (9 Nov 2026, updated 13 Nov 2026), proof of concept with the onboarding: the features `registration` (C1-M2) and
-`company_profile` (C3-M1), migrated from the hackathon folders `modules/c1_m2/` and `modules/c3_m1/`.
+`company_profile` (C3-M1), migrated from the hackathon folders `modules/c1_m2/` and `modules/c3_m1/`; then
+`technical_user` (C2-M3) from `modules/c2_m3/`.
 **Builds on:** [ADR-0002](ADR-0002-runtime-per-module.md) (one image, many runtimes), the call convention of
 `AGENTS.md`, and the layered backend of the Eclipse Tractus-X Industry Core Hub (`controllers/`, `services/`,
 `managers/`, `models/`, `runtimes/`).
@@ -113,11 +114,11 @@ adapters, models, and runtimes that assemble the app.
      stays below `max_connections` (PgBouncer when it does not). A feature that outgrows the shared instance moves to
      its own with dump and restore plus a new URL, without a code change.
    - **State of the PoC:**
-     - `company_profile` has a PostgreSQL transport (`managers/postgres_backend.py`) that still reads the plain
-       `DATABASE_URL`;
-     - `registration` keeps its data in memory;
-     - C2-M2 (not migrated) also reads the plain `DATABASE_URL`, so in today's monolith both would share one
-       database.
+     - `company_profile` has a PostgreSQL transport (`managers/postgres_backend.py`) that reads the interim
+       variable `C3_M1_DATABASE_URL`, with the plain `DATABASE_URL` as fallback for a single-feature runtime (#54);
+     - `registration` and `technical_user` keep their data in memory;
+     - C2-M2 (not migrated) reads `C2_M2_DATABASE_URL`, so in today's monolith the two no longer share one
+       database as long as the plain `DATABASE_URL` stays unset.
 
      Next steps: `portal_common.database`, the per-feature variable in `company_repository`, the Helm Secrets and
      provisioning job, and a PostgreSQL service in the compose PoC.

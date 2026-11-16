@@ -28,9 +28,9 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from modules.c2_m3 import schemas
-from modules.c2_m3 import services as service
-from modules.c2_m3.repository import repository
+from features.technical_user.models import schemas
+from features.technical_user import services as service
+from features.technical_user.managers.technical_user_repository import repository
 from portal_common import spec
 from portal_common.problems import Problem
 

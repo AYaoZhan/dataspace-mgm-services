@@ -32,10 +32,10 @@ import jwt
 import pytest
 
 from conftest import BASE
-from modules.c2_m3 import iam
-from modules.c2_m3 import services as service
-from modules.c2_m3.iam import IamError
-from modules.c2_m3.repository import repository
+from features.technical_user.managers import iam
+from features.technical_user import services as service
+from features.technical_user.managers.iam import IamError
+from features.technical_user.managers.technical_user_repository import repository
 from portal_common import http as phttp
 from portal_common.problems import Problem
 from scaffold import app as scaffold_app
@@ -166,7 +166,7 @@ def test_a_stale_row_cannot_overwrite_a_newer_one(c2m3):
     fresh["name"] = "newer"
     repository.save(fresh)
     stale["name"] = "older"
-    conflict = getattr(__import__("modules.c2_m3.repository", fromlist=["Conflict"]), "Conflict", RuntimeError)
+    conflict = getattr(__import__("features.technical_user.managers.technical_user_repository", fromlist=["Conflict"]), "Conflict", RuntimeError)
     with pytest.raises(conflict):
         repository.save(stale)
     assert repository.get(account["id"])["name"] == "newer"
@@ -296,11 +296,11 @@ def test_the_creation_answer_needs_no_further_iam_call(c2m3, monkeypatch):
 
 
 def test_a_rotation_request_with_an_undeclared_field_changes_nothing(client, erika):   # noqa: F811
-    account = client.post(f"/api/c2-m3/steps/create-for-subscription", headers=_service("c12-m1"), json=_subscription_body())
+    account = client.post(f"/api/technical-user/steps/create-for-subscription", headers=_service("c12-m1"), json=_subscription_body())
     user = account.json()["result"]["accounts"][0]["technicalUserId"]
     client_id = account.json()["result"]["accounts"][0]["iamClientId"]
     before = iam.get().secret(client_id)
-    rejected = client.post(f"/api/c2-m3/internal/technical-users/{user}/credentials/rotate", headers=_service("c10-m1"),
+    rejected = client.post(f"/api/technical-user/internal/technical-users/{user}/credentials/rotate", headers=_service("c10-m1"),
                            json={"offerSubscriptionId": SUB, "extra": True})
     assert rejected.status_code == 400
     assert iam.get().secret(client_id) == before
