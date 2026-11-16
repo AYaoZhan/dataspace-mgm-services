@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sources, permissions and service accounts keep the spec id. Concept for one database per feature in a shared
   PostgreSQL instance ([ADR-0003](docs/architecture/decisions/ADR-0003-feature-first-layout-and-runtimes.md)).
 - Outgoing HTTP calls of `portal_common.http` use one pooled client (keep-alive).
+- The company profile keeps its state in SQLModel tables on `portal_common.database` instead of the memory and the hand-written PostgreSQL transport: it also reads `COMPANY_PROFILE_DATABASE_URL` (before `C3_M1_DATABASE_URL` and `DATABASE_URL`), uses the `pg8000` driver instead of `psycopg`, and no longer answers `501 not-implemented` for a missing driver. Its responses are pydantic models; list endpoints refuse `page < 0` and `size` outside 1 to 100 with 400.
 
 - Events are CloudEvents 1.0 (`specversion`, `id`, `source` `urn:<module>`, `type`, `time`, `datacontenttype`, `data`) as proposed in the spec (FRAMEWORK 6, OP-54): `events.publish(module, type, data)`; the flat form `events.publish({"eventType": ...})` is deprecated; consumers read the content from `event["data"]`.
 
