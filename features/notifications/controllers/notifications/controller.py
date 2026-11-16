@@ -35,8 +35,8 @@ from typing import Annotated
 
 from fastapi import Header, Query, Request, Response
 
+from features.notifications import interface
 from features.notifications.models.notification import Notification, NotificationCount, NotificationPage, Sort, Topic
-from features.notifications.services import inbox, listing, marks
 from portal_common import sse
 from portal_common.models import Page
 from portal_common.routing import Controller, Permission
@@ -55,46 +55,47 @@ def list_notifications(claims: dict = Permission,
                        page: Annotated[int, Query(ge=0)] = 0,
                        size: Annotated[int, Query(ge=1, le=100)] = 20) -> Page[dict]:
     """README 7.1: filters, sorting by `createdAt`, paging as in FRAMEWORK 4.1; invalid filters give 400."""
-    filters = listing.Filters(topic, ntype, read, done, createdSince)
-    return listing.list_page(inbox.own(claims), filters, newest_first=sort == "createdAt.desc", page=page, size=size)
+    return interface.list_notifications(claims, topic=topic, ntype=ntype, read=read, done=done,
+                                        created_since=createdSince, newest_first=sort == "createdAt.desc",
+                                        page=page, size=size)
 
 
 @controller.get("/count", response_model=NotificationCount)
 def count_notifications(claims: dict = Permission) -> dict:
     """README 7.2: counters of the own inbox (hidden ones left out)."""
-    return inbox.count(claims)
+    return interface.count_notifications(claims)
 
 
 @controller.get("/events")
 def stream_notification_events(request: Request, claims: dict = Permission,
                                last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None) -> Response:
     """README 7.6: without `Last-Event-ID` only new events; an id no longer kept gives `resync`."""
-    return sse.response(inbox.events(), request, claims, last_event_id,
-                        visible=inbox.stream_filter(claims), on_gap=lambda: [("resync", {})])
+    return sse.response(interface.notification_events(), request, claims, last_event_id,
+                        visible=interface.notification_stream_filter(claims), on_gap=lambda: [("resync", {})])
 
 
 @controller.get("/{notificationId}", response_model=Notification)
 def get_notification(notificationId: str, claims: dict = Permission) -> dict:
     """README 7.3: one notification of the own inbox with `read` for the caller."""
-    return inbox.get(notificationId, claims)
+    return interface.get_notification(notificationId, claims)
 
 
 @controller.post("/{notificationId}/read", status_code=204)
 def mark_read(notificationId: str, claims: dict = Permission) -> Response:
     """README 7.4: set `read_at` for the caller; idempotent, the first time is kept."""
-    marks.mark_read(inbox.find(notificationId, claims), claims.get("sub"))
+    interface.mark_read(notificationId, claims)
     return Response(status_code=204)
 
 
 @controller.post("/{notificationId}/unread", status_code=204)
 def mark_unread(notificationId: str, claims: dict = Permission) -> Response:
     """README 7.4: remove `read_at` for the caller; idempotent."""
-    marks.mark_unread(inbox.find(notificationId, claims), claims.get("sub"))
+    interface.mark_unread(notificationId, claims)
     return Response(status_code=204)
 
 
 @controller.post("/{notificationId}/hide", status_code=204)
 def hide_notification(notificationId: str, claims: dict = Permission) -> Response:
     """README 7.5: hide for the caller; an open task gives 409 `task-open`; idempotent."""
-    marks.hide(inbox.find(notificationId, claims), claims.get("sub"))
+    interface.hide_notification(notificationId, claims)
     return Response(status_code=204)

@@ -43,7 +43,7 @@ Callers:
 - the event relay of the installation (in-process, or the event inbox `POST /api/v1/events/inbox` when the
   feature runs in its own pod): delivers the CloudEvents of the other modules to `on_event()`.
 
-It has no steps or queries for Process Orchestration and is not called by other features.
+It has no steps or queries for Process Orchestration and no other feature calls it.
 
 ## How it works
 
@@ -73,7 +73,10 @@ permission is in the token. Read and hidden are kept per person; an open task ca
 | `managers/` | `store` (the repository of the tables, the only code that opens a database session; the stream broker), `worker` and `retry` (background delivery), `config` (`DISABLED_RULES`), `neighbour_client` (C2-M2 `list_company_user_refs`, C10-M1 `find_subscriptions` and `get_subscription_internal`), `company_users_standin` with `data/stub-company-users.json` (the built-in stand-in of C2-M2) |
 | `models/` | `MODULE`, the `Rule` type, the Problem factories (`errors.py`: `not-found`, `task-open`), the pydantic models (`notification.py`: `Notification`, `NotificationPage`, `NotificationCount`, the stream events `NotificationCreated` and `NotificationDone`, and `StoredNotification`, the form the services use) and the SQLModel tables of README 5 (`tables.py`: `notification`, `notification_state`, `applicant`, `processed_event`, `dedup_key`) |
 
-**Interface**: `interface.py` has no steps or queries (spec README 8 and 9); any call gets the scaffold fallback.
+**Interface**: `interface.py` has no steps or queries of the spec (README 8 and 9; any such call gets the scaffold
+fallback). It holds the inbox operations of README 7 (`list_notifications`, `count_notifications`,
+`get_notification`, `mark_read`, `mark_unread`, `hide_notification`, the stream broker and its filter), which
+the controllers call.
 
 **Events**: consumes the events of spec README 11.1 (applications, change requests, offers, subscriptions,
 wallets, credentials, connectors, process steps). It publishes no CloudEvents; the stream events
