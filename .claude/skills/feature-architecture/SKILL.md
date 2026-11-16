@@ -33,7 +33,7 @@ description: Check that a feature under features/ of the Dataspace Management Se
 
 A migrated module is a feature package `features/<name>/` with one fixed shape
 ([ADR-0003](../../../docs/architecture/decisions/ADR-0003-feature-first-layout-and-runtimes.md)). The binding rules
-are in [`features/AGENTS.md`](../../../features/AGENTS.md), F1 to F14. This skill checks them without importing or
+are in [`features/AGENTS.md`](../../../features/AGENTS.md), F1 to F17. This skill checks them without importing or
 running anything, so it also works on a feature that does not start yet.
 
 ```bash
@@ -77,6 +77,8 @@ $C --json                   # findings as JSON (feature, rule, severity, file, m
 | F12 | medium | no `tests/test_<id>_*.py` | add the feature's tests |
 | F13 | medium / low | no license header, or AI disclosure without `Assisted-By:` | copy the header of a neighbouring file |
 | F14 | medium | literal `/api/<spec id>` in the code | `spec.module(MODULE).base_path` or a relative path |
+| F15 | medium | no `README.md`, or it does not name `modules/<id>/` or lacks `## What it does` / `## How it works` | write the README of the feature |
+| F16 | medium | no `models/` package, or no pydantic model in it | define the feature's models on `portal_common.models` |
 
 ## Requirements
 
