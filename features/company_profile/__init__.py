@@ -26,18 +26,24 @@
 Process Orchestration creates and activates the company after a registration; people keep their own
 company up to date, OSP staff review change requests and administer companies.
 
-Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hook a runtime
-calls, `reset()` (empty state plus seed data, README 4). The HTTP API is `features.company_profile.router.router`.
+Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
+calls: `on_startup()` creates the tables of the feature's own database and writes the seed data when it is
+missing, `reset()` empties the tables and writes the seed data again (README 4). The HTTP API is
+`features.company_profile.router.router`.
 """
 from __future__ import annotations
 
-from features.company_profile.services.company_lifecycle_service import reset_with_seed
+from features.company_profile.services.company_lifecycle_service import reset_with_seed, start
 from features.company_profile.services.shared import MODULE
 
 NAME = "company_profile"
 
-__all__ = ["MODULE", "NAME", "reset"]
+__all__ = ["MODULE", "NAME", "on_startup", "reset"]
 
 
 def reset() -> None:
     reset_with_seed()
+
+
+def on_startup() -> None:
+    start()

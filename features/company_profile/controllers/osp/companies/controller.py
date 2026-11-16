@@ -26,7 +26,9 @@ from __future__ import annotations
 
 from fastapi import Body, Query
 
+from features.company_profile.models.company import CompanyDetail, CompanySummary
 from features.company_profile.services import company_lifecycle_service, company_service, company_views
+from portal_common.models import MAX_PAGE_SIZE, Page
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Company Profile: Company Administration")
@@ -36,23 +38,23 @@ controller = Controller("Company Profile: Company Administration")
 def list_companies(status: list[str] | None = Query(None), name: str | None = None,
                    bpn: str | None = None, hasBpn: bool | None = None,
                    companyRole: str | None = None, coreDataSource: str | None = None,
-                   page: int = 0, size: int = 20,
-                   _: dict = Permission):
+                   page: int = Query(0, ge=0), size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+                   _: dict = Permission) -> Page[CompanySummary]:
     return company_service.list_companies(status=status, name=name, bpn=bpn, hasBpn=hasBpn,
                                     companyRole=companyRole, coreDataSource=coreDataSource,
                                     page=page, size=size)
 
 
 @controller.get("/{companyId}")
-def read_company(companyId: str, _: dict = Permission):
-    return company_views.company_view(companyId, detail=True)
+def read_company(companyId: str, _: dict = Permission) -> CompanyDetail:
+    return company_views.company_detail(companyId)
 
 
 @controller.post("/{companyId}/deactivate")
-def deactivate_company_by_staff(companyId: str, body: dict = Body(...), claims: dict = Permission):
+def deactivate_company_by_staff(companyId: str, body: dict = Body(...), claims: dict = Permission) -> CompanyDetail:
     return company_lifecycle_service.deactivate_company_by_staff(companyId, body, claims.get("sub"))
 
 
 @controller.patch("/{companyId}")
-def correct_company(companyId: str, body: dict = Body(...), claims: dict = Permission):
+def correct_company(companyId: str, body: dict = Body(...), claims: dict = Permission) -> CompanyDetail:
     return company_service.correct_company(companyId, body, claims.get("sub"))

@@ -22,25 +22,40 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Hermes Agent (deepseek-v4.1-flash)
 #################################################################################
-"""The transport switch of `features/company_profile/managers/company_repository.py`: `DATABASE_URL` empty = in memory, set = the
-module's own PostgreSQL database (README 4, 5).
+"""The database of the company profile (README 4, 5; F17): the SQLModel tables of the feature on the URL that
+`portal_common.database` reads at call time, a private in-memory SQLite database when none is set.
 
-The live tests need a server and are skipped without it:
+The live tests run the same repository against a PostgreSQL server and are skipped without it:
 
-    docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=pg -e POSTGRES_DB=c3_m1 postgres:16
-    TEST_DATABASE_URL=postgresql://postgres:pg@localhost:55432/c3_m1 uv run pytest -q tests/test_c3_m1_store_backend.py
+    docker run --rm -d -p 55432:5432 -e POSTGRES_PASSWORD=pg -e POSTGRES_DB=company_profile postgres:16
+    TEST_DATABASE_URL=postgresql://postgres:pg@localhost:55432/company_profile \
+        uv run pytest -q tests/test_c3_m1_store_backend.py
 """
 import os
 
 import pytest
 
+from features import company_profile
 from features.company_profile.managers import company_repository
+from portal_common import database
+
+MODULE = "c3-m1"
+VARIABLES = database.variables(MODULE)
 
 COMPANY = {
     "id": "c0000001-0000-4000-8000-000000000001", "name": "Beispiel Maschinenbau GmbH",
     "street": "Musterstraße 1", "city": "Stuttgart", "country_code": "DE",
     "status": "REQUESTED", "core_data_source": "EBW", "bpn": "BPNLIUK2REMLK3F4",
 }
+
+
+@pytest.fixture(autouse=True)
+def _no_database_variables(monkeypatch):
+    for name in VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    yield
+    database.dispose()
+    company_profile.reset()
 
 
 @pytest.fixture
@@ -53,33 +68,67 @@ def postgres_url() -> str:
 
 @pytest.fixture
 def postgres(monkeypatch, postgres_url):
-    monkeypatch.setenv("DATABASE_URL", postgres_url)
-    pytest.importorskip("psycopg", reason="the PostgreSQL transport needs psycopg[binary]")
-    assert company_repository.backend_name() == "postgres"
+    monkeypatch.setenv("C3_M1_DATABASE_URL", postgres_url)
+    assert database.engine(MODULE).dialect.name == "postgresql"
     company_repository.reset()
     yield company_repository
     company_repository.reset()
 
 
-def test_the_default_transport_is_in_memory(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    assert company_repository.backend_name() == "memory"
-    assert company_repository.backend().__name__ == "features.company_profile.managers.memory_backend"
+def test_the_default_database_is_in_memory():
+    assert database.url(MODULE) == database.IN_MEMORY
+    assert database.engine(MODULE).dialect.name == "sqlite"
 
 
-def test_the_transport_follows_database_url_at_call_time(monkeypatch, postgres_url):
+def test_the_variables_are_the_feature_the_spec_id_and_database_url():
+    assert VARIABLES == ["COMPANY_PROFILE_DATABASE_URL", "C3_M1_DATABASE_URL", "DATABASE_URL"]
+
+
+def test_the_database_follows_the_variables_at_call_time(monkeypatch):
     """No value at import: the environment decides per call (AGENTS.md 6)."""
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    assert company_repository.backend_name() == "memory"
-    monkeypatch.setenv("DATABASE_URL", postgres_url)
-    assert company_repository.backend_name() == "postgres"
-    assert company_repository.backend().__name__ == "features.company_profile.managers.postgres_backend"
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u@db/alone")
+    assert database.url(MODULE) == "postgresql+pg8000://u@db/alone"
+    monkeypatch.setenv("C3_M1_DATABASE_URL", "postgresql://u@db/c3_m1")
+    assert database.url(MODULE) == "postgresql+pg8000://u@db/c3_m1"
+    monkeypatch.delenv("C3_M1_DATABASE_URL")
     monkeypatch.delenv("DATABASE_URL")
-    assert company_repository.backend_name() == "memory"
+    assert database.url(MODULE) == database.IN_MEMORY
+
+
+def test_the_tables_are_only_in_the_feature_metadata():
+    tables = set(database.metadata(MODULE).tables)
+    assert {"company", "company_identifier", "company_role_assignment", "consent", "change_request",
+            "change_request_document", "used_attestation", "audit_log"} <= tables
+    assert not tables & set(database.metadata("c1-m2").tables)
+
+
+def test_a_file_database_keeps_the_rows_across_engines(monkeypatch, tmp_path):
+    monkeypatch.setenv("COMPANY_PROFILE_DATABASE_URL", f"sqlite:///{tmp_path / 'company_profile.db'}")
+    company_repository.reset()
+    company_repository.create_company(dict(COMPANY))
+    database.dispose()
+    assert company_repository.get_company(COMPANY["id"])["name"] == COMPANY["name"]
+
+
+def test_on_startup_keeps_the_rows_and_seeds_once(monkeypatch, tmp_path):
+    """The start creates missing tables only; a second start neither empties nor duplicates the seed."""
+    monkeypatch.setenv("COMPANY_PROFILE_DATABASE_URL", f"sqlite:///{tmp_path / 'company_profile.db'}")
+    company_repository.reset()
+    company_repository.create_company(dict(COMPANY))
+    company_profile.on_startup()
+    company_profile.on_startup()
+    assert company_repository.get_company(COMPANY["id"]) is not None
+    assert company_repository.find_companies(size=100)[1] == 2     # the company and the OSP company
+
+
+def test_an_unknown_id_is_not_found_in_memory():
+    company_repository.reset()
+    assert company_repository.get_company("nope") is None
+    assert company_repository.update_company("nope", name="x") is None
 
 
 def test_the_database_is_the_module_own_database(postgres):
-    """The transport answers the same functions as the memory one, on the own schema."""
+    """The repository answers the same functions on PostgreSQL as on SQLite."""
     created = postgres.create_company(dict(COMPANY))
     assert created["bpn"] == "BPNLIUK2REMLK3F4"
     assert postgres.get_company(COMPANY["id"])["name"] == "Beispiel Maschinenbau GmbH"
@@ -103,35 +152,14 @@ def test_an_unknown_or_malformed_id_is_not_found(postgres):
     assert postgres.get_change_request("nope") is None
 
 
+def test_the_lock_is_held_on_postgres(postgres):
+    with postgres.lock(COMPANY["id"]) as locked:
+        assert locked == COMPANY["id"]
+
+
 def test_reset_empties_the_tables(postgres):
     postgres.create_company(dict(COMPANY))
     postgres.audit(COMPANY["id"], "sub-1", "updateCompany")
     postgres.reset()
     assert postgres.get_company(COMPANY["id"]) is None
     assert postgres.list_audit() == []
-
-
-def test_a_missing_driver_answers_not_implemented(monkeypatch, postgres_url):
-    """DATABASE_URL set but no driver: 501 `not-implemented`, not a 500."""
-    from portal_common.problems import Problem
-
-    monkeypatch.setenv("DATABASE_URL", postgres_url)
-    monkeypatch.setattr(company_repository, "_cache", None)
-    real_import = company_repository.importlib.import_module
-
-    def fake_import(name, package=None):
-        if name == ".postgres_backend":
-            raise ModuleNotFoundError("No module named 'psycopg'", name="psycopg")
-        return real_import(name, package)
-
-    monkeypatch.setattr(company_repository.importlib, "import_module", fake_import)
-    with pytest.raises(Problem) as error:
-        company_repository.get_company("c0000001-0000-4000-8000-000000000001")
-    assert error.value.status == 501
-    assert error.value.body()["type"] == "urn:c3-m1:problem:not-implemented"
-
-
-def test_a_path_id_that_is_no_uuid_is_not_found_in_memory(monkeypatch):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    assert company_repository.get_company("nope") is None
-    assert company_repository.update_company("nope", name="x") is None

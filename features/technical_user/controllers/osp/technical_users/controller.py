@@ -29,20 +29,23 @@ from fastapi import Query
 
 from features.technical_user import interface
 from features.technical_user.models import Origin, Status, WalletAccess
+from features.technical_user.models.responses import WIRE, TechnicalUser, TechnicalUserSummary
+from portal_common import models
 from portal_common.routing import Controller, Page, Permission, Size
 
 controller = Controller("Technical User: OSP Overview")
 
 
-@controller.get("", summary="List the technical users of all companies")
+@controller.get("", summary="List the technical users of all companies",
+                response_model=models.Page[TechnicalUserSummary], **WIRE)
 def list_all_technical_users(page: int = Page, size: int = Size, companyId: str | None = None,
                              status: list[Status] | None = Query(None), origin: Origin | None = None,
                              walletAccess: WalletAccess | None = None, disabled: bool | None = None,
-                             _: dict = Permission):
+                             _: dict = Permission) -> dict:
     return interface.list_all_technical_users(page=page, size=size, company_id=companyId, status=status,
                                               origin=origin, wallet_access=walletAccess, disabled=disabled)
 
 
-@controller.get("/{id}", summary="Details of any technical user")
-def get_any_technical_user(id: str, _: dict = Permission):
+@controller.get("/{id}", summary="Details of any technical user", response_model=TechnicalUser, **WIRE)
+def get_any_technical_user(id: str, _: dict = Permission) -> dict:
     return interface.get_any_technical_user(id=id)

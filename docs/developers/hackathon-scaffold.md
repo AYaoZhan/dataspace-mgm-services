@@ -243,16 +243,16 @@ unknown step, lookup or event, a source that is not earlier, or a required input
 source (README 6.2; `FLOWS_CHECK=warn` turns the last two into warnings). Lookups follow README
 6.8 (operationId, field paths, object mappings, `join`); a failed lookup is an error of the step.
 With an empty module address, the built-in stand-in answers with the results of README 11.3.
-Processes are kept in memory.
+Processes and step runs are kept in SQLModel tables (`portal_common.database`; in-memory SQLite without a database URL).
 
 Live state for the UI (README 7.6 to 7.8): `GET /api/process-orchestration/processes/{processId}/events` for OSP
 staff and `GET /api/process-orchestration/applications/{applicationId}/events` for the applicant, event
-`process-changed` with the full state of the process. The stand-in of C11-M1 streams its inbox at
-`GET /api/c11-m1/notifications/events`. Try it:
+`process-changed` with the full state of the process. C11-M1 (feature `notifications`) streams its inbox at
+`GET /api/notifications/notifications/events`. Try it:
 
 ```bash
 TOKEN=$(uv run python iam/test/get-token.py erika)
-curl -N -H "Authorization: Bearer $TOKEN" localhost:8000/api/c11-m1/notifications/events
+curl -N -H "Authorization: Bearer $TOKEN" localhost:8000/api/notifications/notifications/events
 ```
 
 ## Provisional readings of the spec

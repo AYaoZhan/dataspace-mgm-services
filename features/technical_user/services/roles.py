@@ -25,9 +25,10 @@
 """Technical user roles: which roles exist, which a company may assign (README 6.5, 7.8, 9.3)."""
 from __future__ import annotations
 
-from ..models.errors import Problem, problem
 from ..managers import config
 from ..managers import neighbour_client as gateways
+from ..models.errors import Problem, problem
+from ..models.responses import AssignableRole
 from . import iam_access
 
 
@@ -63,18 +64,18 @@ def require_assignable(company_id: str, roles: list[str]) -> None:
                   detail=f"roles are not assignable: {sorted(not_assignable)}")
 
 
-def _views(roles: dict[str, str | None], names: set[str]) -> list[dict]:
+def _views(roles: dict[str, str | None], names: set[str]) -> list[AssignableRole]:
     wallet, provider = config.wallet_roles(), config.provider_roles()
-    return [{"name": name, "description": roles[name], "grantsWalletAccess": name in wallet,
-             "providerOnly": name in provider} for name in sorted(names)]
+    return [AssignableRole(name=name, description=roles[name], grants_wallet_access=name in wallet,
+                           provider_only=name in provider) for name in sorted(names)]
 
 
-def list_assignable_roles(*, company_id: str, lang: str | None = None, **_other) -> list[dict]:
+def list_assignable_roles(*, company_id: str, lang: str | None = None, **_other: object) -> list[AssignableRole]:
     available = {role["name"]: role.get("description") for role in _all_roles(lang)}
     return _views(available, assignable_names(company_id) & set(available))
 
 
-def list_technical_roles(*, lang: str | None = None, **_other) -> list[dict]:
+def list_technical_roles(*, lang: str | None = None, **_other: object) -> list[AssignableRole]:
     """9.3: an unreachable Portal IAM is 502 `upstream-error` here (README 9.3), not `iam-error`."""
     try:
         available = {role["name"]: role.get("description") for role in _all_roles(lang)}
