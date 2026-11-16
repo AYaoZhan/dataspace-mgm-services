@@ -114,8 +114,10 @@ class InMemoryStore:
 
     def _clear(self) -> None:
         self._wallets: dict[str, dict] = {}                          # company_id -> row
+        self._company_by_bpn: dict[str, str] = {}                    # index: BPN -> company_id of the first wallet
         self._secrets: dict[tuple[str, str], dict] = {}              # (wallet_id, kind) -> row
         self._accounts: dict[str, dict] = {}                         # id (walletAccountRef) -> row
+        self._accounts_by_user: dict[str, dict[str, None]] = {}      # index: technical_user_id -> account ids, in order
         self._account_credentials: dict[str, dict] = {}              # wallet_account_id -> row
         self._audit: list[dict] = []
         self._step_log: list[dict] = []
@@ -130,12 +132,26 @@ class InMemoryStore:
         if isinstance(row.get("bpn"), str):
             row["bpn"] = row["bpn"].upper()
         with self._data:
+            old = self._wallets.get(row["company_id"])
             self._wallets[row["company_id"]] = row
+            if old is not None and old.get("bpn") != row.get("bpn") \
+                    and self._company_by_bpn.get(old.get("bpn")) == row["company_id"]:
+                self._reindex_bpn(old.get("bpn"))
+            if row.get("bpn") is not None:
+                self._company_by_bpn.setdefault(row["bpn"], row["company_id"])
+
+    def _reindex_bpn(self, bpn: str | None) -> None:
+        """The BPN left the wallet the index named: point it at the first other wallet with it, if any (rare)."""
+        self._company_by_bpn.pop(bpn, None)
+        holder = next((w["company_id"] for w in self._wallets.values() if w.get("bpn") == bpn), None)
+        if holder is not None:
+            self._company_by_bpn[bpn] = holder
 
     def find_wallet_by_bpn(self, bpn: str) -> dict | None:
         wanted = bpn.upper() if isinstance(bpn, str) else bpn
         with self._data:
-            return next((copy.deepcopy(w) for w in self._wallets.values() if w.get("bpn") == wanted), None)
+            company_id = self._company_by_bpn.get(wanted)
+            return copy.deepcopy(self._wallets.get(company_id)) if company_id is not None else None
 
     def find_wallet_by_did(self, did: str) -> dict | None:
         if not did:
@@ -170,7 +186,7 @@ class InMemoryStore:
     def get_account(self, technical_user_id: str) -> dict | None:
         """The row with a status other than DELETED, otherwise the latest one (README 7.2 step 2)."""
         with self._data:
-            rows = [a for a in self._accounts.values() if a.get("technical_user_id") == technical_user_id]
+            rows = [self._accounts[ref] for ref in self._accounts_by_user.get(technical_user_id, ())]
             if not rows:
                 return None
             live = [a for a in rows if a.get("status") != "DELETED"]
@@ -181,8 +197,13 @@ class InMemoryStore:
             return copy.deepcopy(self._accounts.get(wallet_account_ref))
 
     def put_account(self, account: dict) -> None:
+        row = copy.deepcopy(account)
         with self._data:
-            self._accounts[account["id"]] = copy.deepcopy(account)
+            old = self._accounts.get(row["id"])
+            if old is not None and old.get("technical_user_id") != row.get("technical_user_id"):
+                self._accounts_by_user.get(old.get("technical_user_id"), {}).pop(row["id"], None)
+            self._accounts[row["id"]] = row
+            self._accounts_by_user.setdefault(row.get("technical_user_id"), {})[row["id"]] = None
 
     def list_accounts(self, wallet_id: str | None = None, statuses: list[str] | None = None) -> list[dict]:
         with self._data:
