@@ -21,17 +21,25 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""The JSON views of a company (README 5): own company, OSP detail, internal view, roles.
+"""The views of a company (README 5) as response models: own company, OSP detail, internal view.
 """
 from __future__ import annotations
 
-from features.company_profile.managers import config
-from features.company_profile.managers import company_repository
+from features.company_profile.managers import company_repository, config
+from features.company_profile.models.company import (
+    Address,
+    AddressInternal,
+    Company,
+    CompanyDetail,
+    CompanyInternal,
+    CompanyRoleAssignment,
+    Identifier,
+)
+from features.company_profile.models.value_sets import RoleStatus
 from features.company_profile.services.shared import MODULE
 from portal_common.problems import Problem
 
 
-# ---------------------------------------------------------------------------------- mapping (5)
 def get_company(cid: str | None) -> dict:
     row = company_repository.get_company(cid)
     if row is None:
@@ -39,67 +47,50 @@ def get_company(cid: str | None) -> dict:
     return row
 
 
-def address_view(row: dict) -> dict:
-    return {key: row.get(field) for key, field in
-            (("street", "street"), ("houseNumber", "house_number"),
-             ("addressAddition", "address_addition"), ("postalCode", "postal_code"),
-             ("city", "city"), ("region", "region"), ("countryCode", "country_code"))}
+def address_view(row: dict) -> Address:
+    return Address.model_validate(row)
 
 
-def identifiers_view(row: dict) -> list[dict]:
-    return [{"type": entry["type"], "value": entry["value"], "source": entry["source"]}
-            for entry in company_repository.list_identifiers(row["id"])]
+def identifiers_view(row: dict) -> list[Identifier]:
+    return [Identifier.model_validate(entry) for entry in company_repository.list_identifiers(row["id"])]
 
 
 def active_roles(company: str | None) -> list[str]:
-    return sorted(role for role, status in company_repository.list_roles(company).items() if status == "ACTIVE")
+    return sorted(role for role, status in company_repository.list_roles(company).items()
+                  if status == RoleStatus.ACTIVE)
 
 
-def _roles(row: dict) -> list[dict]:
-    return [{"companyRole": role, "status": status}
-            for role, status in company_repository.list_roles(row["id"]).items()]
+def _active_roles_in_order(company: str) -> list[str]:
+    return [role for role, status in company_repository.list_roles(company).items() if status == RoleStatus.ACTIVE]
 
 
-def company_view(cid: str | None, *, detail: bool = False) -> dict:
-    """`Company` (7.1) and `CompanyDetail` (7.11) in camelCase, with the dataspace name for people."""
+def _company_fields(row: dict) -> dict:
+    """The fields `Company` and `CompanyDetail` share, from the row and its neighbours in the tables."""
+    return row | {"address": address_view(row), "identifiers": identifiers_view(row),
+                  "company_roles": [CompanyRoleAssignment(company_role=role, status=status)
+                                    for role, status in company_repository.list_roles(row["id"]).items()],
+                  "dataspace_name": config.dataspace_name()}
+
+
+def company_view(cid: str | None) -> Company:
+    """`Company` (7.1): every role with its status and the dataspace name."""
+    return Company.model_validate(_company_fields(get_company(cid)))
+
+
+def company_detail(cid: str | None) -> CompanyDetail:
+    """`CompanyDetail` (7.11): the company with its lifecycle and the open change request, for OSP staff."""
     row = get_company(cid)
-    view = {"id": row["id"], "name": row["name"], "shortName": row["short_name"],
-            "address": address_view(row), "identifiers": identifiers_view(row),
-            "coreDataSource": row["core_data_source"],
-            "coreDataVerifiedAt": row["core_data_verified_at"], "bpn": row["bpn"],
-            "status": row["status"], "companyRoles": _roles(row),
-            "createdAt": row["created_at"], "dataspaceName": config.dataspace_name()}
-    if detail:
-        view |= {"applicationId": row["application_id"], "verificationRef": row["verification_ref"],
-                 "bpnAssignedAt": row["bpn_assigned_at"],
-                 "deactivationReason": row["deactivation_reason"],
-                 "changedAt": row["changed_at"], "activatedAt": row["activated_at"],
-                 "rejectedAt": row["rejected_at"], "deactivatedAt": row["deactivated_at"],
-                 "reactivatedAt": row["reactivated_at"],
-                 "openChangeRequestId": (company_repository.open_change_request(row["id"]) or {}).get("id")}
-    return view
+    open_request = company_repository.open_change_request(row["id"]) or {}
+    return CompanyDetail.model_validate(_company_fields(row) | {"open_change_request_id": open_request.get("id")})
 
 
-def company_internal(cid: str | None) -> dict:
+def company_internal(cid: str | None) -> CompanyInternal:
     """`CompanyInternal` (9.1): address, identifiers, source and active roles for other modules."""
-    row = get_company(cid)
-    return {"id": row["id"], "name": row["name"], "shortName": row["short_name"],
-            "address": {key: row.get(field) for key, field in
-                        (("street", "street"), ("houseNumber", "house_number"),
-                         ("postalCode", "postal_code"), ("city", "city"),
-                         ("region", "region"), ("countryCode", "country_code"))},
-            "identifiers": identifiers_view(row), "coreDataSource": row["core_data_source"],
-            "status": row["status"], "bpn": row["bpn"],
-            "companyRoles": [role for role, status in company_repository.list_roles(row["id"]).items()
-                             if status == "ACTIVE"],
-            "deactivationReason": row["deactivation_reason"], "createdAt": row["created_at"],
-            "activatedAt": row["activated_at"], "deactivatedAt": row["deactivated_at"]}
+    return internal_view(get_company(cid))
 
 
-def role_view(cid: str | None) -> dict:
-    """`Company` of the paths for people (7.1, 7.7): roles with status, so a role can read REQUESTED."""
-    row = get_company(cid)
-    view = company_view(cid)
-    view["companyRoles"] = [{"companyRole": role, "status": status}
-                            for role, status in company_repository.list_roles(row["id"]).items()]
-    return view
+def internal_view(row: dict) -> CompanyInternal:
+    """`CompanyInternal` of a row already read."""
+    return CompanyInternal.model_validate(row | {"address": AddressInternal.model_validate(row),
+                                                 "identifiers": identifiers_view(row),
+                                                 "company_roles": _active_roles_in_order(row["id"])})

@@ -27,12 +27,13 @@ from __future__ import annotations
 
 from features.technical_user import interface
 from features.technical_user.models.errors import MODULE
+from features.technical_user.models.responses import WIRE, Credentials
 from portal_common.routing import Controller, Permission, company_scope
 
 controller = Controller("Technical User: Technical Users")
 
 
-@controller.post("/rotate", summary="Create a new secret")
-def rotate_credentials(companyId: str, id: str, claims: dict = Permission):
+@controller.post("/rotate", summary="Create a new secret", response_model=Credentials, **WIRE)
+def rotate_credentials(companyId: str, id: str, claims: dict = Permission) -> dict:
     company_scope(MODULE, claims, companyId)
     return interface.rotate_credentials(id=id, company_id=companyId, actor_sub=claims["sub"])

@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-sonnet-5-5)
 #################################################################################
-"""C4-M1 status reports of issuers: `POST /api/c4-m1/issuer-callbacks/{credentialKind}`
+"""C4-M1 status reports of issuers: `POST /api/credentials/issuer-callbacks/{credentialKind}`
 (README 7.4 table, 6.1, 6.2, 5 `audit_entry`, acceptance cases 6 and 7).
 
 Rows are brought into their state with the step `issue-credentials` (route STUB, delay 5 s so the timers stay
@@ -53,13 +53,13 @@ U4 = COMPANIES["u4"]["id"]
 U1_BPN = "BPNLIUK2REMLK3F4"
 U4_BPN = "BPNL0000000000U4"
 TYPES = ["BPN", "MEMBERSHIP"]
-STEP = "/api/c4-m1/steps/issue-credentials"
+STEP = "/api/credentials/steps/issue-credentials"
 SERVICE_ACCOUNT = "sa-credential-issuer"
 
 
 # ------------------------------------------------------------------------------------------ helpers
 def store():
-    return seam("modules.c4_m1.interface").store()
+    return seam("features.credentials.interface").store()
 
 
 def row_of(company_id: str, ctype: str) -> dict:
@@ -87,7 +87,7 @@ def report(osp, kind: str, bpn: str, status: str = "SUCCESSFUL", message: str | 
     if message is not None and body is None:
         payload["message"] = message
     token = token if token is not None else osp.service(SERVICE_ACCOUNT)
-    return osp.post(f"/api/c4-m1/issuer-callbacks/{kind}", token, json=payload)
+    return osp.post(f"/api/credentials/issuer-callbacks/{kind}", token, json=payload)
 
 
 def assert_problem(r, status: int, name: str) -> dict:
@@ -453,7 +453,7 @@ def test_case_06_report_without_token_is_unauthorized(osp_factory, companies, wa
     # README 7.4 step 1: no token -> 401
     osp = osp_factory()
     start_round(osp)
-    r = osp.post("/api/c4-m1/issuer-callbacks/bpn", json={"bpn": U1_BPN, "status": "SUCCESSFUL"})
+    r = osp.post("/api/credentials/issuer-callbacks/bpn", json={"bpn": U1_BPN, "status": "SUCCESSFUL"})
     assert_problem(r, 401, "unauthorized")
     assert status_of(U1, "BPN") == "REQUESTED"
 
@@ -461,7 +461,7 @@ def test_case_06_report_without_token_is_unauthorized(osp_factory, companies, wa
 def test_case_06_unknown_kind_without_token_is_unauthorized_first(osp_factory, companies, wallet_fake):
     # README 7.4 step 1 before step 2: token missing and kind `foo` -> 401, not 404
     osp = osp_factory()
-    r = osp.post("/api/c4-m1/issuer-callbacks/foo", json={"bpn": U1_BPN, "status": "SUCCESSFUL"})
+    r = osp.post("/api/credentials/issuer-callbacks/foo", json={"bpn": U1_BPN, "status": "SUCCESSFUL"})
     assert_problem(r, 401, "unauthorized")
     assert store().list_audit() == []
 

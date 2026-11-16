@@ -25,18 +25,13 @@
 """Stand-in for Process Orchestration and C4-M2 (README 11.3), for testing the module alone."""
 from __future__ import annotations
 
-import os
-
+from ..managers import config
 from . import steps
-
-
-def enabled() -> bool:
-    return os.environ.get("PROCESS_STUB", "false").lower() == "true"
 
 
 def handle_event(event: dict) -> None:
     """Replays the wallet flows of FRAMEWORK 5.7 for the module's own events; a repeated event changes nothing."""
-    if not enabled() or event.get("source") != "urn:c2-m3":
+    if not config.process_stub() or event.get("source") != "urn:c2-m3":
         return
     data = event.get("data") or {}
     step_input = {"processId": event["id"], "stepRunId": event["id"], "technicalUserId": data.get("technicalUserId")}

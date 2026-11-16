@@ -24,7 +24,7 @@
 #################################################################################
 """C4-M2 secrets at rest: AES-256-GCM, key version per row (README 4, 5 `wallet_secret`, 6.2, 6.7, case 25).
 
-Seams (TEAM3-PLAN 12.2): `modules.c4_m2.crypto.encrypt/decrypt/reset`, the store's secret rows and
+Seams (TEAM3-PLAN 12.2): `features.dataspace_wallet_interface.managers.crypto.encrypt/decrypt/reset`, the store's secret rows and
 `interface.store().dump()`. Imports are lazy so that a missing module fails the single test.
 """
 from __future__ import annotations
@@ -34,17 +34,28 @@ import json
 import logging
 
 import pytest
-
-from test_c4_m2_common import (COMPANIES, OSP_A_ID, SECRETS_KEY_HEX, SECRETS_KEY_HEX_V2, Clock, assert_no_secret,
-                               companies, osp_factory, seam, step_input)
+from test_c4_m2_common import (
+    API,
+    COMPANIES,
+    OSP_A_ID,
+    PKG,
+    SECRETS_KEY_HEX,
+    SECRETS_KEY_HEX_V2,
+    Clock,
+    assert_no_secret,
+    companies,
+    osp_factory,
+    seam,
+    step_input,
+)
 
 SECRET = "s3cr3t-api-key-0123456789-ABCDEF"
 needs_providers = pytest.mark.skipif(
-    importlib.util.find_spec("modules.c4_m2.providers") is None,
-    reason="not implemented yet: modules.c4_m2.providers (provider adapters)")
+    importlib.util.find_spec(f"{PKG}.managers.providers") is None,
+    reason=f"not implemented yet: {PKG}.managers.providers (provider adapters)")
 needs_accounts = pytest.mark.skipif(
-    importlib.util.find_spec("modules.c4_m2.providers") is None or importlib.util.find_spec("modules.c4_m2.accounts") is None,
-    reason="not implemented yet: modules.c4_m2.accounts (wallet accounts)")
+    importlib.util.find_spec(f"{PKG}.managers.providers") is None or importlib.util.find_spec(f"{PKG}.services.account_service") is None,
+    reason=f"not implemented yet: {PKG}.services.account_service (wallet accounts)")
 
 
 @pytest.fixture
@@ -54,7 +65,7 @@ def crypto(monkeypatch):
     monkeypatch.setenv("SECRETS_KEY_VERSION", "1")
     for name in ("SECRETS_KEY_1", "SECRETS_KEY_2", "SECRETS_KEY_3"):
         monkeypatch.delenv(name, raising=False)
-    mod = seam("modules.c4_m2.crypto")
+    mod = seam(f"{PKG}.managers.crypto")
     mod.reset()
     yield mod
     mod.reset()
@@ -201,7 +212,7 @@ def test_malformed_secrets_key_raises_a_clear_error_and_never_falls_back(crypto,
 
 def test_secrets_key_is_read_when_used_not_at_import(monkeypatch):
     # TEAM3-PLAN 0.3: configuration is read at call time or in reset(), never at import
-    mod = seam("modules.c4_m2.crypto")
+    mod = seam(f"{PKG}.managers.crypto")
     monkeypatch.setenv("SECRETS_KEY_VERSION", "1")
     monkeypatch.setenv("SECRETS_KEY", SECRETS_KEY_HEX)
     mod.reset()
@@ -215,7 +226,7 @@ def test_secrets_key_is_read_when_used_not_at_import(monkeypatch):
 
 # ------------------------------------------------------------------- wallet_secret rows in the store
 def _create(osp, key, provider, n=1):
-    r = osp.post("/api/c4-m2/steps/create-wallet", osp.service("svc-c4-m2"),
+    r = osp.post(f"{API}/steps/create-wallet", osp.service("svc-c4-m2"),
                  json=step_input(COMPANIES[key]["id"], n, companyId=COMPANIES[key]["id"], provider=provider))
     assert r.status_code == 200, r.text
     return r.json()
@@ -223,10 +234,10 @@ def _create(osp, key, provider, n=1):
 
 def _drive_to_active(key):
     """SAP DIV answers by callback of the built-in stand-in; the others are ACTIVE within the call."""
-    providers, service = seam("modules.c4_m2.providers"), seam("modules.c4_m2.service")
+    providers, service = seam(f"{PKG}.managers.providers"), seam(f"{PKG}.services.wallet_service")
     providers.flush_stand_in()
     service.run_timer_once()
-    return seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
+    return seam(f"{PKG}.interface").get_wallet_info(companyId=COMPANIES[key]["id"])
 
 
 CASES = [("div", "SAP_DIV", ["HOLDER_ACCESS"]), ("ih", "IDENTITY_HUB", ["HOLDER_ACCESS", "STS_ACCESS"]),
@@ -241,7 +252,7 @@ def test_case_25_wallet_secret_rows_hold_ciphertext_nonce_key_version_only(osp_f
     _create(osp, key, provider)
     wallet = _drive_to_active(key)
     assert wallet["status"] == "ACTIVE"
-    interface, crypto = seam("modules.c4_m2.interface"), seam("modules.c4_m2.crypto")
+    interface, crypto = seam(f"{PKG}.interface"), seam(f"{PKG}.managers.crypto")
     store = interface.store()
     plain = []
     for kind in kinds:
@@ -271,8 +282,8 @@ def test_case_25_row_key_version_follows_secrets_key_version(osp_factory, compan
     osp = osp_factory(env={"SECRETS_KEY_VERSION": "2", "SECRETS_KEY": SECRETS_KEY_HEX_V2,
                            "SECRETS_KEY_1": SECRETS_KEY_HEX})
     _create(osp, "ih", "IDENTITY_HUB")
-    wallet = seam("modules.c4_m2.interface").get_wallet_info(companyId=COMPANIES["ih"]["id"])
-    store = seam("modules.c4_m2.interface").store()
+    wallet = seam(f"{PKG}.interface").get_wallet_info(companyId=COMPANIES["ih"]["id"])
+    store = seam(f"{PKG}.interface").store()
     assert [store.get_secret(wallet["walletId"], k)["key_version"] for k in ("HOLDER_ACCESS", "STS_ACCESS")] == [2, 2]
 
 
@@ -281,7 +292,7 @@ def test_holder_access_still_readable_after_key_rotation(osp_factory, companies,
     # README 4: old versions stay readable; rows written under version 1 are used after the switch to version 2
     osp = osp_factory()
     _create(osp, "ih", "IDENTITY_HUB")
-    interface, crypto = seam("modules.c4_m2.interface"), seam("modules.c4_m2.crypto")
+    interface, crypto = seam(f"{PKG}.interface"), seam(f"{PKG}.managers.crypto")
     before = interface.get_holder_access(companyId=COMPANIES["ih"]["id"])
     monkeypatch.setenv("SECRETS_KEY_VERSION", "2")
     monkeypatch.setenv("SECRETS_KEY", SECRETS_KEY_HEX_V2)
@@ -294,8 +305,8 @@ def test_holder_access_still_readable_after_key_rotation(osp_factory, companies,
 def test_new_attempt_after_failed_deletes_the_wallet_secret_rows(osp_factory, companies, monkeypatch):
     # README 6.2: "A new attempt deletes the rows in wallet_secret, clears did and the progress fields"
     osp = osp_factory(env={"DID_VALIDATION_MAX_HOURS": "1", "DID_VALIDATION_INTERVAL_MINUTES": "10"})
-    clock = Clock().install(monkeypatch, "modules.c4_m2.service")
-    interface, service = seam("modules.c4_m2.interface"), seam("modules.c4_m2.service")
+    clock = Clock().install(monkeypatch, f"{PKG}.services.wallet_service")
+    interface, service = seam(f"{PKG}.interface"), seam(f"{PKG}.services.wallet_service")
     cid, bpn = COMPANIES["ih"]["id"], COMPANIES["ih"]["bpn"]
     store = interface.store()
     monkeypatch.setenv("STUB_FAILURES", f"{bpn}:DID_NOT_RESOLVABLE")
@@ -309,7 +320,7 @@ def test_new_attempt_after_failed_deletes_the_wallet_secret_rows(osp_factory, co
     assert failed["status"] == "FAILED" and failed["failure_reason"] == "DID_NOT_RESOLVABLE"
     # attempt 2 fails at the order (503): the row is reset, secrets of attempt 1 are gone
     monkeypatch.setenv("STUB_FAILURES", f"{bpn}:ORDER_ERROR")
-    r = osp.post("/api/c4-m2/steps/create-wallet", osp.service("svc-c4-m2"),
+    r = osp.post(f"{API}/steps/create-wallet", osp.service("svc-c4-m2"),
                  json=step_input(cid, 2, companyId=cid, provider="IDENTITY_HUB"))
     assert r.status_code == 502, r.text
     again = store.get_wallet(cid)
@@ -334,11 +345,11 @@ def _account_credentials_rows(osp, create_key, provider, tu_n):
     _create(osp, create_key, provider)
     _drive_to_active(create_key)
     cid, tu = COMPANIES[create_key]["id"], f"7b0c0000-0000-4000-8000-{tu_n:012d}"
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", osp.service("svc-c4-m2"),
+    r = osp.post(f"{API}/steps/create-wallet-account", osp.service("svc-c4-m2"),
                  json=step_input(cid, 50 + tu_n, technicalUserId=tu, companyId=cid))
     assert r.status_code == 200, r.text
-    seam("modules.c4_m2.providers").flush_stand_in()
-    store = seam("modules.c4_m2.interface").store()
+    seam(f"{PKG}.managers.providers").flush_stand_in()
+    store = seam(f"{PKG}.interface").store()
     account = store.get_account(tu)
     assert account is not None and account["status"] == "ACTIVE", account
     return store, account["id"]
@@ -357,7 +368,7 @@ def test_case_25_wallet_account_credentials_row_is_ciphertext_nonce_key_version(
     assert isinstance(row["client_secret_encrypted"], bytes) and isinstance(row["nonce"], bytes)
     assert len(row["nonce"]) == 12 and row["key_version"] == 2
     assert row["client_id"] and row["token_url"]
-    secret = seam("modules.c4_m2.crypto").decrypt(row["client_secret_encrypted"], row["nonce"], row["key_version"])
+    secret = seam(f"{PKG}.managers.crypto").decrypt(row["client_secret_encrypted"], row["nonce"], row["key_version"])
     assert len(secret) >= 8 and secret.encode() not in row["client_secret_encrypted"]
     dump = json.dumps(store.dump(), sort_keys=True)
     assert_no_secret(secret, dump, store.list_audit(), store.list_step_log(), [e["data"] for e in osp.events()])
@@ -373,7 +384,7 @@ def test_case_25_account_credentials_use_a_fresh_nonce_per_account(osp_factory, 
     osp = osp_factory()
     store, first = _account_credentials_rows(osp, "csp", "CSP", 1)
     cid = COMPANIES["csp"]["id"]
-    r = osp.post("/api/c4-m2/steps/create-wallet-account", osp.service("svc-c4-m2"),
+    r = osp.post(f"{API}/steps/create-wallet-account", osp.service("svc-c4-m2"),
                  json=step_input(cid, 60, technicalUserId="7b0c0000-0000-4000-8000-000000000002", companyId=cid))
     assert r.status_code == 200, r.text
     second = store.get_account("7b0c0000-0000-4000-8000-000000000002")["id"]

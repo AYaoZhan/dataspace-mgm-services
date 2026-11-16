@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import json
 
-from fastapi import File, Form, UploadFile
+from fastapi import File, Form, Query, UploadFile
 
+from features.company_profile.models.change_request import ChangeRequest
 from features.company_profile.services import change_request_service
 from features.company_profile.services.shared import MODULE
+from portal_common.models import MAX_PAGE_SIZE, Page
 from portal_common.problems import Problem
 from portal_common.routing import Controller, Permission, company_scope
 
@@ -39,7 +41,7 @@ controller = Controller("Company Profile: Change Requests")
 @controller.post("", status_code=201)
 def create_change_request(companyId: str, data: str = Form(...),
                           documents: list[UploadFile] = File(default=[]),
-                          claims: dict = Permission):
+                          claims: dict = Permission) -> ChangeRequest:
     company_scope(MODULE, claims, companyId)
     try:
         parsed = json.loads(data)
@@ -51,12 +53,13 @@ def create_change_request(companyId: str, data: str = Form(...),
 
 
 @controller.get("")
-def list_own_change_requests(companyId: str, page: int = 0, size: int = 20, claims: dict = Permission):
+def list_own_change_requests(companyId: str, page: int = Query(0, ge=0), size: int = Query(20, ge=1, le=MAX_PAGE_SIZE),
+                             claims: dict = Permission) -> Page[ChangeRequest]:
     company_scope(MODULE, claims, companyId)
     return change_request_service.list_own_change_requests(companyId, page, size)
 
 
 @controller.post("/{changeRequestId}/withdraw")
-def withdraw_change_request(companyId: str, changeRequestId: str, claims: dict = Permission):
+def withdraw_change_request(companyId: str, changeRequestId: str, claims: dict = Permission) -> ChangeRequest:
     company_scope(MODULE, claims, companyId)
     return change_request_service.withdraw_change_request(companyId, changeRequestId, claims.get("sub"))

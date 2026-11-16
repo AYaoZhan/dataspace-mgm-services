@@ -33,7 +33,7 @@ import json
 
 import jwt
 import pytest
-from test_c3_m1_api import P3, active, call, client  # noqa: F401  (fixtures for the HTTP test)
+from test_c3_m1_api import P3, active, call, client, wired  # noqa: F401  (fixtures for the HTTP test)
 from test_c3_m1_steps import A1, A2, P1, U1, U2, _c1_m2, seed, step  # noqa: F401  (_c1_m2: fixture)
 
 from features import company_profile
@@ -42,6 +42,8 @@ from features.company_profile.services import company_service
 from portal_common import events
 from portal_common.problems import Problem
 from tools.keys import ec_jwk
+
+company_service = wired(company_service)
 
 PRIVATE, PUBLIC = ec_jwk("ebw-test-2026-1")   # generated at start; no private key is stored
 

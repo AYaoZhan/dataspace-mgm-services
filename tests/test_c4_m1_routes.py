@@ -80,7 +80,7 @@ from test_c4_m2_common import (
 U1, U4, U6 = COMPANIES["u1"], COMPANIES["u4"], COMPANIES["u6"]
 ISSUER_URL = CSP_URL + "/issuer/v1"
 ISSUER_DID = "did:web:issuer.csp.example.org"
-P = "/api/c4-m1"
+P = "/api/credentials"
 PROBLEM = "urn:c4-m1:problem:"
 CSP_ENV = {"ISSUER_MODE": "CSP", "CSP_ISSUER_URL": ISSUER_URL, "CSP_ISSUER_DID": ISSUER_DID,
            "CALLBACK_BASE_URL": BASE, "CSP_ISSUER_CREDENTIAL_DEFINITIONS": "BPN:bpn,MEMBERSHIP:membership",   # see the OPEN-QUESTION above
@@ -174,7 +174,7 @@ class World:
 
 
 def store():
-    return seam("modules.c4_m1.interface").store()
+    return seam("features.credentials.interface").store()
 
 
 def start_csp(osp_factory, wallet_fake, monkeypatch, env: dict | None = None, home_osp: str = OSP_A_ID,
@@ -235,7 +235,8 @@ def seed_csp_row(w: World, ctype: str, status: str, **kw) -> dict:
 
 def csp_has_grant(w: World, kind: str) -> None:
     w.osp.csp.holders[w.bpn] = w.did
-    w.osp.csp.grants[(w.bpn, kind)] = {"callbackUrl": f"{BASE}/api/c4-m1/issuer-callbacks/{kind}", "ospId": OSP_A_ID}
+    w.osp.csp.grants[(w.bpn, kind)] = {"callbackUrl": f"{BASE}/api/credentials/issuer-callbacks/{kind}",
+                                       "ospId": OSP_A_ID}
 
 
 # ------------------------------------------------------------------------- case 14: route CSP_ISSUER
@@ -267,8 +268,8 @@ def test_case_14_csp_issuer_registers_holder_sets_grants_and_requests_in_the_wal
     # --- grants: callbackUrl per kind, memberOf only on the membership grant
     grants = {u.rsplit("/", 1)[1]: kw["json"] for m, u, kw in t.to(f"{ISSUER_URL}/holders/{w.bpn}/grants/", "PUT")}
     assert set(grants) == {"bpn", "membership"}
-    assert grants["bpn"] == {"callbackUrl": f"{BASE}/api/c4-m1/issuer-callbacks/bpn"}
-    assert grants["membership"] == {"callbackUrl": f"{BASE}/api/c4-m1/issuer-callbacks/membership",
+    assert grants["bpn"] == {"callbackUrl": f"{BASE}/api/credentials/issuer-callbacks/bpn"}
+    assert grants["membership"] == {"callbackUrl": f"{BASE}/api/credentials/issuer-callbacks/membership",
                                     "memberOf": settings.get("dataspace")["memberOf"]}   # README 11.5: from the settings
     assert set(w.osp.csp.grants) == {(w.bpn, "bpn"), (w.bpn, "membership")}
     # --- credential requests at the wallet identity API, header x-api-key, holderPid, issuer
@@ -295,8 +296,8 @@ def test_case_14_csp_issuer_registers_holder_sets_grants_and_requests_in_the_wal
     # --- the callbacks of the CSP stand-in (service account sa-csp-issuer) were accepted with 204
     cb = w.osp.csp.callbacks
     assert len(cb) == 2 and all(c["status"] == 204 for c in cb)
-    assert {c["url"] for c in cb} == {f"{BASE}/api/c4-m1/issuer-callbacks/bpn",
-                                      f"{BASE}/api/c4-m1/issuer-callbacks/membership"}
+    assert {c["url"] for c in cb} == {f"{BASE}/api/credentials/issuer-callbacks/bpn",
+                                      f"{BASE}/api/credentials/issuer-callbacks/membership"}
     # --- rows: both ISSUED, route and issuer data
     for ty in ("BPN", "MEMBERSHIP"):
         row = store().get_credential(U6["id"], ty)
@@ -625,7 +626,7 @@ def test_route_stub_with_csp_mode_and_empty_csp_issuer_url_makes_no_csp_call(
         row = store().get_credential(U6["id"], ty)
         assert row["status"] == "REQUESTED" and row["route"] == "STUB" and row["request_ref"] == "stub-1"
         assert not row["issuer_did"]
-    seam("modules.c4_m1.service").flush_timers()
+    seam("features.credentials.services.credential_service").flush_timers()
     assert {store().get_credential(U6["id"], t)["status"] for t in ("BPN", "MEMBERSHIP")} == {"ISSUED"}
     assert len(osp.events("CredentialsIssued")) == 1
     assert wallet_fake.holder_access_calls == []     # README 8.1: no holder access for the route STUB
@@ -806,11 +807,13 @@ def test_case_19_wallet_not_active_is_409_wallet_not_ready_and_no_requested_row(
 
 
 def test_swagger_tags_c4_m1_as_implemented_not_as_stand_in():
-    """standin.router() tags its routes "<module> (stand-in)"; the implemented C4-M1 must not show so."""
+    """standin.router() tags its routes "<module> (stand-in)"; the implemented C4-M1 must not show so. The
+    controllers tag their routes "Credentials: <group>" (features/AGENTS.md F7)."""
     from fastapi import FastAPI
-    from modules.c4_m1 import router
+    from features.credentials import router
     app = FastAPI()
     app.include_router(router.router)
     tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
-    assert tags == {"c4-m1 Credentials"}
+    assert tags == {"Credentials: Company Credentials", "Credentials: OSP Credentials",
+                    "Credentials: Issuer Callbacks", "Credentials: Process Steps and Queries"}
 
