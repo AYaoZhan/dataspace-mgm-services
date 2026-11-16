@@ -111,6 +111,8 @@ Its API is served under its readable name (`/api/registration`, `/api/technical-
 Problem types, events, permissions and service accounts keep the spec id. Other modules import only
 `features.<name>.interface`. Runtimes in `runtimes/` import features
 (`create_runtime(registration, company_profile)`); `RUNTIME=<name> python -m runtimes` starts one.
+The binding folder rules of a feature (F1 to F14) are in [`features/AGENTS.md`](features/AGENTS.md); check them with
+`.claude/skills/feature-architecture/scripts/feature-check.py <feature> --strict` while you develop a feature.
 
 ## Definition of done
 
@@ -156,6 +158,8 @@ C2-M2 and C2-M3 call its Admin API with the service accounts `svc-c2-m2` and `sv
 
 - `.claude/skills/implement-module-from-spec/SKILL.md`: build or extend your module from the spec.
 - `.claude/skills/review-module/SKILL.md`: check a module before a pull request.
+- `.claude/skills/feature-architecture/SKILL.md`: check that a feature in `features/` follows the folder
+  architecture (`features/AGENTS.md`).
 
 The skills are plain Markdown. Claude Code loads them as skills; any other agent can use them, for
 example: "read `.claude/skills/implement-module-from-spec/SKILL.md` and follow it".

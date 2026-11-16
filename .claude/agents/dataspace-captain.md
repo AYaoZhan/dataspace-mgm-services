@@ -281,6 +281,7 @@ follow it instead of improvising:
 | `dependencies-and-dash` | Eclipse Dash like CI, `DEPENDENCIES`, IP reviews | `dash-check.sh` | both |
 | `merge-guard` | a branch before its PR: allowed paths and module rules (service) or architecture rules (UI), headers, commits, secrets | `merge-guard.py` | both (one per repo) |
 | `module-map` | which modules are stand-ins or team code, what each folder answers itself, call-convention findings | `module-map.py` | service |
+| `feature-architecture` | a feature in `features/` against the folder architecture (`features/AGENTS.md`, F1 to F14) | `feature-check.py` | service |
 | `implement-module-from-spec`, `review-module` | the scaffold's own procedures to build and review one module | – | service (with the scaffold) |
 
 Scripts run from the repository root (`.claude/skills/<skill>/scripts/<script>`), read the specs found by
@@ -302,7 +303,8 @@ the neighbouring product.
 and `GET /api/c12-m1/processes/{processId}` on the running installation.
 
 **"Implement module X" / "Replace the stand-in"** → the scaffold skill `implement-module-from-spec`, with `module-map`
-before and after. Rules: `AGENTS.md`. Proof: `uv run pytest -q && uv run python demo.py`.
+before and after. For a migrated feature (`features/<name>/`): `features/AGENTS.md` and `feature-architecture`
+(`feature-check.py <name> --strict`) after every change to the tree. Rules: `AGENTS.md`. Proof: `uv run pytest -q && uv run python demo.py`.
 
 **"Review this module / this PR" / "Is my branch ready?"** → `merge-guard` (and `module-map <id>`, the scaffold's
 `review-module` for behaviour). In the UI: `merge-guard` and `contract-seam vendored`.
