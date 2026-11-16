@@ -70,9 +70,15 @@ COMPANY_FIELDS = (
 _cache: tuple[str, ModuleType] | None = None
 
 
+def database_url() -> str:
+    """The database of C3-M1: `C3_M1_DATABASE_URL`, so every module of an installation (one process) has its own;
+    `DATABASE_URL` (README 4) only when C3-M1 runs alone. Read at call time (AGENTS.md 6)."""
+    return os.environ.get("C3_M1_DATABASE_URL") or os.environ.get("DATABASE_URL") or ""
+
+
 def backend_name() -> str:
-    """Name of the transport that `DATABASE_URL` selects right now: `memory` or `postgres`."""
-    return "postgres" if os.environ.get("DATABASE_URL") else "memory"
+    """Name of the transport that `database_url()` selects right now: `memory` or `postgres`."""
+    return "postgres" if database_url() else "memory"
 
 
 def backend() -> ModuleType:
