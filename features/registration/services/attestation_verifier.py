@@ -40,7 +40,7 @@ from jwt.types import Options
 
 from features.registration.managers import config, reference_catalog
 from features.registration.managers.config import AttestationConfig
-from features.registration.models import MODULE
+from features.registration.models import errors as problems
 from features.registration.models.applications import AttestationRecord, SignatureCheck
 from features.registration.models.tables import ApplicationRow
 from portal_common import http
@@ -74,12 +74,10 @@ def _fetch_keys(cfg: AttestationConfig) -> list[dict]:
     try:
         r = http.request("GET", url, timeout=5)
         if not r.is_success:
-            raise Problem(MODULE, 502, "upstream-error", detail=f"JWKS of the issuer answered {r.status_code}",
-                          retryable=True)
+            raise problems.upstream_error(f"JWKS of the issuer answered {r.status_code}", retryable=True)
         return r.json().get("keys", [])
     except (httpx.HTTPError, ValueError) as e:
-        raise Problem(MODULE, 502, "upstream-error", detail=f"JWKS of the issuer: {type(e).__name__}",
-                      retryable=True) from e
+        raise problems.upstream_error(f"JWKS of the issuer: {type(e).__name__}", retryable=True) from e
 
 
 def _key(kid: str | None, cfg: AttestationConfig) -> dict | None:
@@ -99,7 +97,7 @@ def _key(kid: str | None, cfg: AttestationConfig) -> dict | None:
 
 
 def _invalid(reason: str) -> Problem:
-    return Problem(MODULE, 400, "attestation-invalid", reason=reason)
+    return problems.attestation_invalid(reason)
 
 
 def _signed_payload(token: str, cfg: AttestationConfig) -> tuple[dict, dict]:
@@ -110,7 +108,7 @@ def _signed_payload(token: str, cfg: AttestationConfig) -> tuple[dict, dict]:
     except (jwt.PyJWTError, ValueError, TypeError) as e:
         raise _invalid("format") from e
     if not cfg.issuer:   # an address of another system: the installation must set it (FRAMEWORK 4.8)
-        raise Problem(MODULE, 502, "upstream-error", detail="ATTESTATION_ISSUER is not set", retryable=False)
+        raise problems.upstream_error("ATTESTATION_ISSUER is not set", retryable=False)
     alg = header.get("alg")
     if not isinstance(alg, str) or alg.lower() == "none" or alg not in cfg.algorithms or header.get("typ") != TYP:
         raise _invalid("algorithm")

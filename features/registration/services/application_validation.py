@@ -29,7 +29,7 @@ import re
 import uuid
 
 from features.registration.managers import reference_catalog
-from features.registration.models.problems import field_error, validation_problem
+from features.registration.models.errors import field_error, validation_problem
 from features.registration.models.value_sets import ApplicationKind, IdentifierType, Verification
 from features.registration.services.shared import ATTESTATION_MAX_CHARS
 

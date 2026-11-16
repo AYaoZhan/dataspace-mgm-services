@@ -24,14 +24,14 @@
 """The agreements for other modules (README 9.3)."""
 from __future__ import annotations
 
+from features.registration import interface
 from features.registration.models.reference_data import AgreementVersion
 from features.registration.models.value_sets import AgreementStatus
-from features.registration.services import application_process_service
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Registration: Process Steps and Queries")
 
 
 @controller.get("", response_model=list[AgreementVersion], response_model_exclude_unset=True)
-def list_agreements_internal(status: AgreementStatus | None = None, _: dict = Permission) -> list[AgreementVersion]:
-    return application_process_service.list_agreements_internal(status=status)
+def list_agreements_internal(status: AgreementStatus | None = None, _: dict = Permission) -> list[dict]:
+    return interface.list_agreements_internal(status=status)

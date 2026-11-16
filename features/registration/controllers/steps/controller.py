@@ -26,8 +26,8 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.registration import interface
 from features.registration.models.steps import ApplicationStepResult
-from features.registration.services import application_process_service
 from portal_common.models import StepResult
 from portal_common.routing import Controller, Permission
 
@@ -38,11 +38,11 @@ controller = Controller("Registration: Process Steps and Queries")
 
 @controller.post("/complete-application", response_model=StepResult[ApplicationStepResult],
                  response_model_exclude_unset=True)
-def step_complete_application(body: dict = Body(...), _: dict = Permission) -> StepResult[ApplicationStepResult]:
-    return application_process_service.complete_application(body)
+def step_complete_application(body: dict = Body(...), _: dict = Permission) -> dict:
+    return interface.complete_application(body)
 
 
 @controller.post("/close-application", response_model=StepResult[ApplicationStepResult],
                  response_model_exclude_unset=True)
-def step_close_application(body: dict = Body(...), _: dict = Permission) -> StepResult[ApplicationStepResult]:
-    return application_process_service.close_application(body)
+def step_close_application(body: dict = Body(...), _: dict = Permission) -> dict:
+    return interface.close_application(body)

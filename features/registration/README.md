@@ -70,10 +70,10 @@ required terms (6.8). `withdraw` of a submitted application asks C1-M3 whether t
 
 | Folder | Content |
 |---|---|
-| `controllers/` | HTTP under `/api/registration`: `countries/`, `company_roles/`, `agreements/` (form data, 7.1); `applications/` with `documents/` (own applications, 7.2 to 7.11); `osp/applications/` with `documents/` and `osp/agreements/` (OSP staff, 7.12 to 7.16); `steps/` (README 8); `internal/applications/`, `internal/agreements/` (queries, README 9) |
+| `controllers/` | HTTP under `/api/registration`, each operation calls one function of `interface.py`: `countries/`, `company_roles/`, `agreements/` (form data, 7.1); `applications/` with `documents/` (own applications, 7.2 to 7.11); `osp/applications/` with `documents/` and `osp/agreements/` (OSP staff, 7.12 to 7.16); `steps/` (README 8); `internal/applications/`, `internal/agreements/` (queries, README 9) |
 | `services/` | `application_service` (create, change, withdraw, scope `own`), `submission_service` (7.10), `application_validation` (input checks of 6.2, 6.6, 6.7), `company_data` (company data and comparison, 6.5, 6.9), `attestation_verifier` (the checks of 6.4, JWKS cache, repeated signature check), `document_service` (7.7 to 7.9, 7.14), `agreement_service` (7.15, 7.16), `reference_data_service` (7.1), `application_process_service` (steps and queries), `application_views` (rows to views), `shared` (clock, audit entry, paging, JSON form) |
 | `managers/` | `application_repository` (applications, document bytes, used attestations, audit log; the only code that opens a session), `agreement_repository` (versions of the terms), `reference_catalog` (countries, identifier types, company roles, initial terms, read-only), `neighbour_client` (C3-M1 and C1-M3 with their built-in stand-ins), `config` (every environment variable) |
-| `models/` | `applications` (request bodies and the views `Application`, `ApplicationWithReview`, `ApplicationInternal`, `ApplicationSummary`), `reference_data` (countries, roles, `Agreement`, `AgreementVersion`, `AgreementVersionCreate`), `steps` (step input and result), `value_sets` (`str` enums), `problems` (validation Problem, reading a checked body into its model), `tables` (SQLModel tables) |
+| `models/` | `applications` (request bodies and the views `Application`, `ApplicationWithReview`, `ApplicationInternal`, `ApplicationSummary`), `reference_data` (countries, roles, `Agreement`, `AgreementVersion`, `AgreementVersionCreate`), `steps` (step input and result), `value_sets` (`str` enums), `errors` (the Problem factories of README 12, reading a checked body into its model), `tables` (SQLModel tables) |
 
 The request bodies are taken as JSON and checked by the services first, so that 403, 404 and 409 come before
 field errors and the field errors carry the messages of README 6; the checked body is then read into its model
@@ -86,7 +86,9 @@ never had stays out of the JSON, as before. Lists are `Page[...]` of `portal_com
 
 `interface.py` (call convention): the steps `complete_application(input)` and `close_application(input)`, and
 the queries `get_application_internal(applicationId=...)`, `list_applications_internal(applicationId=[...])`
-and `list_agreements_internal(status=...)`. They return the same JSON as the HTTP API.
+and `list_agreements_internal(status=...)`; they return the same JSON as the HTTP API. It also re-exports the
+operations of people (`create_application`, `submit_application`, `upload_document`, ...), which only the
+controllers call and which return the response models.
 
 ### Events
 

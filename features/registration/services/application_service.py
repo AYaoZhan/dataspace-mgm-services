@@ -33,10 +33,12 @@ from collections.abc import Sequence
 
 from features.registration.managers import application_repository, config, neighbour_client, reference_catalog
 from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
 from features.registration.models.applications import (
     Application,
     ApplicationCreate,
     ApplicationUpdate,
+    ApplicationWithReview,
     AttestationRecord,
 )
 from features.registration.models.tables import ApplicationRow
@@ -48,7 +50,7 @@ from features.registration.services.application_validation import (
     check_reference_data,
     check_roles,
 )
-from features.registration.services.application_views import public, summary
+from features.registration.services.application_views import public, summary, with_review
 from features.registration.services.company_data import (
     build_company_data,
     check_existing_identifiers,
@@ -70,7 +72,6 @@ from features.registration.services.shared import (
 )
 from portal_common import events
 from portal_common.models import Page
-from portal_common.problems import Problem
 
 UPDATABLE = ("legalName", "shortName", "address", "identifiers", "companyRoles")
 
@@ -80,15 +81,25 @@ def own(sub: str, application_id: str) -> ApplicationRow:
     """Scope `own` (6.3): for other people the application does not exist."""
     a = application_repository.get(application_id)
     if not a or a.applicant_sub != sub:
-        raise Problem(MODULE, 404, "not-found")
+        raise problems.not_found()
     return a
 
 
 def any_application(application_id: str) -> ApplicationRow:
     a = application_repository.get(application_id)
     if not a:
-        raise Problem(MODULE, 404, "not-found")
+        raise problems.not_found()
     return a
+
+
+def get_own_application(sub: str, application_id: str) -> ApplicationWithReview:
+    """7.4, scope `own`."""
+    return with_review(own(sub, application_id))
+
+
+def get_any_application(application_id: str) -> ApplicationWithReview:
+    """7.13."""
+    return with_review(any_application(application_id))
 
 
 def list_own(sub: str, status: Sequence[str] | None, page: int, size: int) -> Page:
@@ -104,18 +115,18 @@ def list_all(status: Sequence[str] | None, kind: Sequence[str] | None, verificat
 def require_created(a: ApplicationRow) -> None:
     """Only an application in status CREATED can be changed (6.1)."""
     if a.status != ApplicationStatus.CREATED:
-        raise Problem(MODULE, 409, "invalid-state", detail=f"application is {a.status}")
+        raise problems.invalid_state(f"application is {a.status}")
 
 
 # ------------------------------------------------------------------------------------ create (7.2)
 def create_application(body: dict, claims: dict) -> tuple[Application, bool]:
     """7.2, in the order of the README. Returns the application and whether it is new (201) or a repetition (200)."""
     if claims.get("company_id"):
-        raise Problem(MODULE, 403, "account-bound")
+        raise problems.account_bound()
     check_create(body)
     request = parse(ApplicationCreate, body)
     if request.verification == Verification.DOCUMENTS and not config.documents_enabled():
-        raise Problem(MODULE, 400, "documents-disabled")
+        raise problems.documents_disabled()
     header, payload = (attestation_verifier.verify(request.attestation or "", claims)
                        if request.verification == Verification.EBW else ({}, None))
     sub = claims["sub"]
@@ -134,7 +145,7 @@ def create_application(body: dict, claims: dict) -> tuple[Application, bool]:
     with applications_lock:
         _check_unique(sub, payload, repetition=False)   # concurrent creation: the same answer as above
         if company and application_repository.company_has_open(company["id"]):
-            raise Problem(MODULE, 409, "company-has-open-application")
+            raise problems.company_has_open_application()
         now = utc_now()
         a = ApplicationRow(
             id=str(uuid.uuid4()), seq=application_repository.next_seq(),
@@ -161,9 +172,9 @@ def _check_unique(sub: str, payload: dict | None, repetition: bool) -> Applicati
         same = payload and existing.attestation and existing.attestation["attestationId"] == payload["jti"]
         if repetition and same:
             return existing
-        raise Problem(MODULE, 409, "open-application-exists", existingApplicationId=existing.id)
+        raise problems.open_application_exists(existing.id)
     if payload and application_repository.attestation_used(payload["jti"]):
-        raise Problem(MODULE, 409, "attestation-used")
+        raise problems.attestation_used()
     return None
 
 
@@ -237,7 +248,7 @@ def replace_attestation(application_id: str, claims: dict, token: object) -> App
     sub = claims["sub"]
     a = own(sub, application_id)
     if a.status != ApplicationStatus.CREATED or a.verification == Verification.DOCUMENTS:
-        raise Problem(MODULE, 409, "invalid-state", detail="only in status CREATED and the verification path EBW")
+        raise problems.invalid_state("only in status CREATED and the verification path EBW")
     if not (isinstance(token, str) and 0 < len(token) <= ATTESTATION_MAX_CHARS):
         raise validation_problem([field_error("attestation", "required, at most 16 KB")])
     header, payload = attestation_verifier.verify(token, claims)
@@ -253,7 +264,7 @@ def replace_attestation(application_id: str, claims: dict, token: object) -> App
                                    euid or applicant_euid)
     with applications_lock:
         if application_repository.attestation_used(payload["jti"]):
-            raise Problem(MODULE, 409, "attestation-used")
+            raise problems.attestation_used()
         a = own(sub, application_id)
         require_created(a)
         a.company_data, a.comparison, a.changed_at = data, comparison, utc_now()
@@ -272,7 +283,7 @@ def _check_same_company(a: ApplicationRow, new: dict) -> str | None:
                  or (applicant_euid and applicant_euid != euid)):
         fields.append("EUID")
     if fields:
-        raise Problem(MODULE, 400, "attestation-mismatch", fields=fields)
+        raise problems.attestation_mismatch(fields)
     return euid
 
 
@@ -284,7 +295,7 @@ def withdraw_application(application_id: str, sub: str) -> Application:
     if a.status == ApplicationStatus.SUBMITTED:
         review = neighbour_client.review_status(a.id)   # not reachable: 502, nothing changed
         if review in ("APPROVED", "DECLINED"):
-            raise Problem(MODULE, 409, "already-decided", reviewStatus=review)
+            raise problems.already_decided(review)
     with applications_lock:
         a = own(sub, application_id)
         if a.status == ApplicationStatus.WITHDRAWN:
@@ -302,4 +313,4 @@ def withdraw_application(application_id: str, sub: str) -> Application:
 
 def _require_withdrawable(a: ApplicationRow) -> None:
     if a.status not in (*OPEN_STATUSES, ApplicationStatus.WITHDRAWN):
-        raise Problem(MODULE, 409, "invalid-state", detail=f"application is {a.status}")
+        raise problems.invalid_state(f"application is {a.status}")

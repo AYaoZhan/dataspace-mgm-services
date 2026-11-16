@@ -28,10 +28,10 @@ from __future__ import annotations
 from collections import defaultdict
 
 from features.registration.managers import agreement_repository, reference_catalog
+from features.registration.models import errors as problems
 from features.registration.models.reference_data import Agreement, CompanyRoleInfo, Country, IdentifierTypeInfo
 from features.registration.models.value_sets import AgreementStatus
-from features.registration.services.shared import MODULE, field_error, validation_problem
-from portal_common.problems import Problem
+from features.registration.services.shared import field_error, validation_problem
 
 
 def _text(texts: dict, lang: str) -> str:
@@ -47,7 +47,7 @@ def list_countries(lang: str) -> list[Country]:
 def list_identifier_types(country_code: str, lang: str) -> list[IdentifierTypeInfo]:
     country = reference_catalog.country(country_code)
     if country is None:
-        raise Problem(MODULE, 404, "not-found")
+        raise problems.not_found()
     allowed = set(country.get("identifierTypes", []))
     return [IdentifierTypeInfo(type=t["type"], name=_text(t["name"], lang),
                                pattern=reference_catalog.identifier_pattern(t["type"], country_code))

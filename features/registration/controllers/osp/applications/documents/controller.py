@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from fastapi import Response
 
-from features.registration.services import document_service
+from features.registration import interface
 from portal_common.routing import Controller, Permission, download
 
 controller = Controller("Registration: Application Review")
@@ -34,4 +34,4 @@ controller = Controller("Registration: Application Review")
 
 @controller.get("/{documentId}")
 def get_any_document(applicationId: str, documentId: str, claims: dict = Permission) -> Response:
-    return download(*document_service.staff_document(applicationId, documentId, claims["sub"]))
+    return download(*interface.staff_document(applicationId, documentId, claims["sub"]))

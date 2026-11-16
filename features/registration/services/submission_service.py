@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from features.registration.managers import agreement_repository, application_repository
 from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
 from features.registration.models.applications import (
     AgreementRef,
     Application,
@@ -50,7 +51,6 @@ from features.registration.services.shared import (
     validation_problem,
 )
 from portal_common import events
-from portal_common.problems import Problem
 
 
 def submit_application(application_id: str, sub: str, body: dict) -> Application:
@@ -60,7 +60,7 @@ def submit_application(application_id: str, sub: str, body: dict) -> Application
         if a.status == ApplicationStatus.SUBMITTED:
             return public(a)
         if a.status != ApplicationStatus.CREATED:
-            raise Problem(MODULE, 409, "invalid-state", detail=f"application is {a.status}")
+            raise problems.invalid_state(f"application is {a.status}")
         request = _checked_request(body)
         _check_proof(a, request)
         required = _check_consents(a, request)
@@ -86,15 +86,14 @@ def _checked_request(body: dict) -> SubmitRequest:
 def _check_proof(a: ApplicationRow, request: SubmitRequest) -> None:
     """EBW: the attestation is still usable (6.4); DOCUMENTS: extract and declaration are there (6.9)."""
     if a.verification == Verification.EBW and not attestation_verifier.usable_at_submission(a):
-        raise Problem(MODULE, 409, "attestation-expired")
+        raise problems.attestation_expired()
     if a.verification == Verification.DOCUMENTS:
         types = {d["documentType"] for d in a.documents}
         extract = DocumentType.COMMERCIAL_REGISTER_EXTRACT
         missing_types = [] if extract in types else [str(extract)]
         undeclared = request.representation_declared is not True
         if missing_types or undeclared:
-            raise Problem(MODULE, 400, "documents-incomplete", missingDocumentTypes=missing_types,
-                          representationDeclarationMissing=undeclared)
+            raise problems.documents_incomplete(missing_types, undeclared)
 
 
 def _check_consents(a: ApplicationRow, request: SubmitRequest) -> list[AgreementRef]:
@@ -105,7 +104,7 @@ def _check_consents(a: ApplicationRow, request: SubmitRequest) -> list[Agreement
     given = {(c.agreement_key, c.version) for c in request.consents}
     missing = [as_json(r) for r in required if (r.agreement_key, r.version) not in given]
     if missing:
-        raise Problem(MODULE, 400, "consents-incomplete", missing=missing)
+        raise problems.consents_incomplete(missing)
     extra = [c.agreement_key for c in request.consents if (c.agreement_key, c.version) not in needed]
     if extra:
         raise validation_problem([field_error("consents", f"unknown or not required terms: {k}") for k in extra])

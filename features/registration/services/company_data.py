@@ -29,11 +29,10 @@ import unicodedata
 import uuid
 
 from features.registration.managers import application_repository, neighbour_client, reference_catalog
-from features.registration.models import MODULE
+from features.registration.models import errors as problems
 from features.registration.models.applications import ApplicationCreate
-from features.registration.models.problems import field_error, validation_problem
+from features.registration.models.errors import field_error, validation_problem
 from features.registration.models.value_sets import ApplicationKind, Verification
-from portal_common.problems import Problem
 from tools import testdata
 
 
@@ -71,7 +70,7 @@ def company_data_ebw(company: dict, given: dict) -> tuple[dict, list[dict]]:
     if address and address.get("countryCode") != company["country"]:
         fields.append("COUNTRY")
     if fields:
-        raise Problem(MODULE, 400, "attestation-mismatch", fields=fields)
+        raise problems.attestation_mismatch(fields)
     if not address and not (claim.get("street_address") and claim.get("locality")):
         raise validation_problem([field_error("companyData.address",
                                               "the attestation has no address: streetName and city required")])
@@ -121,7 +120,7 @@ def check_existing_identifiers(company: dict, ebwoid: str | None, euid: str | No
     if euid and kept.get("EUID") and normalise("EUID", kept["EUID"]) != normalise("EUID", euid):
         fields.append("EUID")
     if fields:
-        raise Problem(MODULE, 400, "attestation-mismatch", fields=fields)
+        raise problems.attestation_mismatch(fields)
 
 
 def company_for_reference(request: ApplicationCreate) -> dict:
@@ -129,12 +128,12 @@ def company_for_reference(request: ApplicationCreate) -> dict:
     company = (neighbour_client.company_by_id(request.company_id) if request.company_id
                else neighbour_client.company_by_bpn(request.bpn or ""))
     if company is None:
-        raise Problem(MODULE, 409, "company-not-eligible", detail="company unknown")
+        raise problems.company_unknown()
     transferred = company.get("deactivationReason") == "TRANSFERRED"
     eligible = company.get("status") == "INACTIVE" and (transferred if request.kind == ApplicationKind.TRANSFER
                                                         else not transferred)
     if not eligible:
-        raise Problem(MODULE, 409, "company-not-eligible", companyStatus=company.get("status"))
+        raise problems.company_not_eligible(company.get("status"))
     return company
 
 

@@ -657,7 +657,7 @@ def test_upload_reads_at_most_the_limit_plus_one_byte(client, env, monkeypatch):
     def recording(application_id, sub, document_type, file_name, content):
         seen.append(len(content))
         return original(application_id, sub, document_type, file_name, content)
-    monkeypatch.setattr(document_service, "upload_document", recording)
+    monkeypatch.setattr(interface, "upload_document", recording)
     assert upload(client, aid, content=PDF + b"x" * 1000).status_code == 400
     assert seen == [11]
 

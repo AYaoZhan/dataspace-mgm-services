@@ -26,9 +26,9 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.registration import interface
 from features.registration.models.reference_data import AgreementVersion
 from features.registration.models.value_sets import AgreementStatus
-from features.registration.services import agreement_service
 from portal_common.models import Page as PageOf
 from portal_common.routing import Controller, Page, Permission, Size
 
@@ -38,11 +38,11 @@ controller = Controller("Registration: Agreements")
 @controller.get("", response_model=PageOf[AgreementVersion], response_model_exclude_unset=True)
 def list_agreement_versions(agreementKey: str | None = None, status: AgreementStatus | None = None,
                             page: int = Page, size: int = Size, _: dict = Permission) -> PageOf[AgreementVersion]:
-    return agreement_service.list_agreement_versions(agreementKey, status, page, size)
+    return interface.list_agreement_versions(agreementKey, status, page, size)
 
 
 @controller.post("", status_code=201, response_model=AgreementVersion, response_model_exclude_unset=True)
 def create_agreement_version(body: dict = Body(...), claims: dict = Permission) -> AgreementVersion:
     """The body is checked by the service in the order and with the messages of 7.16, then read into
     `AgreementVersionCreate`."""
-    return agreement_service.create_agreement_version(body, claims["sub"])
+    return interface.create_agreement_version(body, claims["sub"])

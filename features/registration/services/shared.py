@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
 """Helpers every registration service uses: the clock, the audit entry, paging and the JSON form of a view.
-The Problem factories are in `models.problems`.
+The Problem factories are in `models.errors`.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from features.registration.models import MODULE
-from features.registration.models.problems import field_error, parse, validation_problem
+from features.registration.models.errors import field_error, parse, validation_problem
 from features.registration.models.steps import ApplicationStep
 from features.registration.models.tables import ApplicationRow, AuditRow
 from features.registration.services import attestation_verifier

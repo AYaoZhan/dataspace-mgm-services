@@ -30,6 +30,7 @@ import re
 
 from features.registration.managers import agreement_repository, reference_catalog
 from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
 from features.registration.models.reference_data import AgreementVersion, AgreementVersionCreate
 from features.registration.models.tables import AgreementVersionRow
 from features.registration.models.value_sets import AgreementStatus
@@ -46,7 +47,6 @@ from features.registration.services.shared import (
 )
 from portal_common import events
 from portal_common.models import Page
-from portal_common.problems import Problem
 
 
 def version_view(row: AgreementVersionRow) -> AgreementVersion:
@@ -116,7 +116,7 @@ def create_agreement_version(body: dict, sub: str) -> AgreementVersion:
     request = parse(AgreementVersionCreate, body)
     with applications_lock:
         if agreement_repository.exists(request.agreement_key, request.version):
-            raise Problem(MODULE, 409, "conflict", detail="this version of the terms already exists")
+            raise problems.conflict("this version of the terms already exists")
         new = AgreementVersionRow(**request.model_dump(by_alias=False, exclude={"company_roles"}),
                                   company_roles=request.company_roles or [],
                                   status=AgreementStatus.ACTIVE, created_at=utc_now(), created_by=sub)

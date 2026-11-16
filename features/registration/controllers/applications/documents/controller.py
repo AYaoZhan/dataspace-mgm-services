@@ -26,8 +26,8 @@ from __future__ import annotations
 
 from fastapi import File, Form, Request, Response, UploadFile
 
+from features.registration import interface
 from features.registration.models.applications import DocumentInfo
-from features.registration.services import application_service, document_service
 from portal_common.routing import Controller, Permission, download
 
 controller = Controller("Registration: Applications")
@@ -37,19 +37,19 @@ controller = Controller("Registration: Applications")
 def upload_document(applicationId: str, request: Request, response: Response, file: UploadFile = File(...),
                     documentType: str = Form(...), claims: dict = Permission) -> DocumentInfo:
     try:
-        content = file.file.read(document_service.document_max_bytes() + 1)
+        content = file.file.read(interface.document_max_bytes() + 1)
     finally:
         file.file.close()
-    info = document_service.upload_document(applicationId, claims["sub"], documentType, file.filename, content)
+    info = interface.upload_document(applicationId, claims["sub"], documentType, file.filename, content)
     response.headers["Location"] = f"{request.url.path}/{info.document_id}"
     return info
 
 
 @controller.get("/{documentId}")
 def get_document(applicationId: str, documentId: str, claims: dict = Permission) -> Response:
-    return download(*document_service.document(application_service.own(claims["sub"], applicationId), documentId))
+    return download(*interface.own_document(claims["sub"], applicationId, documentId))
 
 
 @controller.delete("/{documentId}", status_code=204, response_model=None)
 def delete_document(applicationId: str, documentId: str, claims: dict = Permission) -> None:
-    document_service.delete_document(applicationId, documentId, claims["sub"])
+    interface.delete_document(applicationId, documentId, claims["sub"])

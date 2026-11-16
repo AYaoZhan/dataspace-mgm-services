@@ -33,19 +33,18 @@ import uuid
 
 from features.registration.managers import application_repository, config
 from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
 from features.registration.models.applications import DocumentInfo
 from features.registration.models.tables import ApplicationRow
 from features.registration.models.value_sets import ApplicationStatus, DocumentType, Verification
 from features.registration.services.application_service import any_application, own, require_created
 from features.registration.services.shared import (
-    MODULE,
     as_json,
     audit_entry,
     field_error,
     utc_now,
     validation_problem,
 )
-from portal_common.problems import Problem
 
 DOCUMENT_TYPES = tuple(DocumentType)
 SIGNATURES = ((b"%PDF-", "application/pdf"), (b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"))
@@ -78,7 +77,7 @@ def upload_document(application_id: str, sub: str, document_type: str, file_name
     """7.7."""
     a = own(sub, application_id)
     if a.status != ApplicationStatus.CREATED or a.verification == Verification.EBW:
-        raise Problem(MODULE, 409, "invalid-state", detail="only in status CREATED and the verification path DOCUMENTS")
+        raise problems.invalid_state("only in status CREATED and the verification path DOCUMENTS")
     errors, content_type = _file_errors(document_type, file_name, content)
     with applications_lock:
         a = own(sub, application_id)
@@ -102,8 +101,13 @@ def document(a: ApplicationRow, document_id: str) -> tuple[dict, bytes]:
     info = next((d for d in a.documents if d["documentId"] == document_id), None)
     content = application_repository.document_content(document_id) if info else None
     if info is None or content is None:
-        raise Problem(MODULE, 404, "not-found")
+        raise problems.not_found()
     return info, content
+
+
+def own_document(sub: str, application_id: str, document_id: str) -> tuple[dict, bytes]:
+    """7.8, scope `own`."""
+    return document(own(sub, application_id), document_id)
 
 
 def staff_document(application_id: str, document_id: str, sub: str) -> tuple[dict, bytes]:

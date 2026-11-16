@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from features.registration.managers import agreement_repository, application_repository
 from features.registration.managers.application_repository import applications_lock
+from features.registration.models import errors as problems
 from features.registration.models.applications import ApplicationInternal, ApplicationSummary
 from features.registration.models.reference_data import AgreementVersion
 from features.registration.models.steps import ApplicationStep, ApplicationStepResult, CloseApplicationStep
@@ -47,7 +48,7 @@ StepAnswer = StepResult[ApplicationStepResult]
 def _step_application(step: ApplicationStep) -> ApplicationRow:
     a = application_repository.get(step.application_id)
     if not a:
-        raise Problem(MODULE, 404, "not-found", retryable=False)
+        raise problems.not_found(retryable=False)
     return a
 
 
@@ -57,7 +58,7 @@ def _step_result(step: ApplicationStep, a: ApplicationRow) -> StepAnswer:
 
 
 def _invalid_state(a: ApplicationRow) -> Problem:
-    return Problem(MODULE, 409, "invalid-state", detail=f"application is {a.status}", retryable=False)
+    return problems.invalid_state(f"application is {a.status}", retryable=False)
 
 
 def complete_application(input: dict) -> StepAnswer:
@@ -82,8 +83,7 @@ def close_application(input: dict) -> StepAnswer:
     """The review declined: SUBMITTED becomes DECLINED; DECLINED and WITHDRAWN stay as they are."""
     reason = input.get("reason")
     if not (isinstance(reason, str) and 1 <= len(reason) <= 1000):
-        raise Problem(MODULE, 400, "validation", errors=[field_error("reason", "1 to 1000 characters")],
-                      retryable=False)
+        raise problems.validation_problem([field_error("reason", "1 to 1000 characters")], retryable=False)
     step = parse(CloseApplicationStep, input)
     with applications_lock:
         a = _step_application(step)
@@ -100,7 +100,7 @@ def close_application(input: dict) -> StepAnswer:
 def get_application_internal(*, applicationId: str, **_other: object) -> ApplicationInternal:
     a = application_repository.get(applicationId)
     if not a:
-        raise Problem(MODULE, 404, "not-found")
+        raise problems.not_found()
     return internal(a)
 
 
