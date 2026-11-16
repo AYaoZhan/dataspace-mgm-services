@@ -31,7 +31,7 @@ import re
 
 import pytest
 
-from portal_common import events, spec, standin
+from portal_common import events, layout, spec, standin
 from scaffold import registry
 from conftest import needs_admin_api
 from test_demo_scenarios import installation
@@ -61,7 +61,8 @@ QUERIES = sorted(neighbour_queries())
 
 
 def kit_owned(target: str) -> bool:
-    return next(e.kind for e in registry.load() if e.id == target) in ("stand-in", "provided")
+    """Stand-ins, provided modules and migrated features (whose interface keeps the stand-in fallback)."""
+    return next(e.kind for e in registry.load() if e.id == target) in ("stand-in", "provided", "feature")
 
 
 def test_section_11_is_parsed():
@@ -73,7 +74,7 @@ def test_section_11_is_parsed():
 def test_standin_implements_every_query_its_neighbours_call(target, function):
     if not kit_owned(target):
         pytest.skip(f"{target} is a team module")
-    iface = importlib.import_module(f"modules.{spec.module(target).package}.interface")
+    iface = importlib.import_module(layout.interface_package(target))
     assert function in vars(iface), (f"stand-in {target} lacks {function} (called by "
                                      f"{sorted(neighbour_queries()[(target, function)])}); it would answer 501")
 

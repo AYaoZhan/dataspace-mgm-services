@@ -31,8 +31,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import features.application_review as feature
 from conftest import BASE, bearer, person_token
-from modules.c1_m3 import interface, router
+from features.application_review import interface, router
+from features.application_review.managers import neighbour_client
+from features.application_review.managers import review_case_repository as repo
+from features.application_review.models.value_sets import CHECK_ORDER
+from features.application_review.services import view
 from portal_common import events, problems, standin
 from portal_common import http as phttp
 from portal_common.problems import Problem
@@ -187,7 +192,7 @@ def env(tmp_path, monkeypatch):
     e = Env(tmp_path, monkeypatch)
     e.env(STUB_APPLICATIONS_FILE=str(e.files["applications"]), STUB_COMPANIES_FILE=str(e.files["companies"]),
           STUB_CSP_FILE=str(e.files["csp"]))
-    router.reset()
+    feature.reset()
     return e
 
 
@@ -215,12 +220,11 @@ def step(name: str, key: str, n: int = 1) -> dict:
 
 
 def checks_of(key: str) -> dict:
-    case = interface.cases[interface.by_application[APPS[key]["id"]]]
-    return {c["checkKey"]: c for c in interface.view(case)["checks"]}
+    return repo.by_application(APPS[key]["id"]).checks
 
 
 def case_id(key: str) -> str:
-    return interface.by_application[APPS[key]["id"]]
+    return repo.by_application(APPS[key]["id"]).id
 
 
 def events_of(event_type: str) -> list[dict]:
@@ -228,12 +232,12 @@ def events_of(event_type: str) -> list[dict]:
 
 
 def approve(client, key: str, person: str, comment: str | None = None):
-    return client.post(f"/api/c1-m3/review-cases/{case_id(key)}/approve", headers=_h(person),
+    return client.post(f"/api/application-review/review-cases/{case_id(key)}/approve", headers=_h(person),
                        json={"comment": comment} if comment else None)
 
 
 def decline(client, key: str, person: str, reason: str | None = "Company data could not be confirmed"):
-    return client.post(f"/api/c1-m3/review-cases/{case_id(key)}/decline", headers=_h(person),
+    return client.post(f"/api/application-review/review-cases/{case_id(key)}/decline", headers=_h(person),
                        json={"reason": reason} if reason else {})
 
 
@@ -245,12 +249,12 @@ def problem(exc: pytest.ExceptionInfo) -> dict:
 def test_01_02_open_review_six_checks_passed_and_idempotent(env):
     r = step("open", "A1")
     assert r["state"] == "DONE" and r["result"]["status"] == "OPEN"
-    assert [c["checkKey"] for c in r["result"]["checks"]] == interface.checks.ORDER
+    assert [c["checkKey"] for c in r["result"]["checks"]] == CHECK_ORDER
     assert {c["result"] for c in r["result"]["checks"]} == {"PASSED"}
     again = step("open", "A1", 2)
     assert again["result"] == r["result"]
     assert {c["attempts"] for c in checks_of("A1").values()} == {1}
-    assert len(interface.cases) == 1
+    assert repo.count() == 1
 
 
 # -------------------------------------------------------------------------- 3 to 7: single checks
@@ -295,9 +299,10 @@ def test_08_not_submitted_and_unknown(env):
     with pytest.raises(Problem) as e:
         step("open", "A7")
     assert problem(e)["status"] == 409 and problem(e)["type"] == "urn:c1-m3:problem:invalid-state"
-    assert problem(e)["retryable"] is False and not interface.cases
+    assert problem(e)["retryable"] is False and not repo.count()
     with pytest.raises(Problem) as e:
-        interface.open_review({"processId": "p", "stepRunId": "s", "applicationId": standin.stable_id("unknown")})
+        interface.open_review({"processId": standin.stable_id("p"), "stepRunId": standin.stable_id("s"),
+                               "applicationId": standin.stable_id("unknown")})
     assert problem(e)["status"] == 404 and problem(e)["retryable"] is False
 
 
@@ -324,17 +329,19 @@ def test_09_rejected_request_is_not_retryable(env, monkeypatch):
 
     def reject(*_args):
         raise rejected
-    monkeypatch.setattr(interface.calls, "identifier_matches", reject)
+    monkeypatch.setattr(neighbour_client, "identifier_matches", reject)
     with pytest.raises(Problem) as e:
         step("open", "A9")
     assert problem(e)["status"] == 502 and problem(e)["type"] == "urn:c1-m3:problem:neighbour-rejected"
     assert problem(e)["retryable"] is False and problem(e)["pendingChecks"] == ["NO_DUPLICATE"]
     check = checks_of("A9")["NO_DUPLICATE"]
     assert check["result"] == "ERROR" and check["details"] == {"error": "C3-M1 rejected the request"}
-    assert "_rejected" not in interface.view(interface.cases[case_id("A9")])
+    assert "rejected" not in view(repo.get(case_id("A9"))).model_dump()
 
     env.write("csp", "unavailable")   # together with a temporary error, a repetition can still help
-    interface.cases[case_id("A9")]["checks"].pop("CSP_MATCH_EXPECTED")
+    case = repo.get(case_id("A9"))
+    case.checks = {k: c for k, c in case.checks.items() if k != "CSP_MATCH_EXPECTED"}
+    repo.save(case)
     with pytest.raises(Problem) as e:
         step("open", "A9", 2)
     assert problem(e)["type"] == "urn:c1-m3:problem:upstream-error" and problem(e)["retryable"] is True
@@ -347,7 +354,7 @@ def test_09_rejected_request_is_not_retryable(env, monkeypatch):
     env.env(STUB_APPLICATIONS_FILE=str(env.files["applications"]), STUB_COMPANIES_FILE=str(env.files["companies"]),
             STUB_CSP_FILE=str(env.files["csp"]))
     assert step("open", "A9", 3)["state"] == "DONE"
-    assert not interface.cases[case_id("A9")]["_rejected"]
+    assert not repo.get(case_id("A9")).rejected
 
 
 # ------------------------------------------------------------------------------ 10 to 13: CSP match
@@ -481,9 +488,9 @@ def test_19_close_review(env, client):
 def test_19_open_review_of_a_withdrawn_application_without_a_case(env):
     r = step("open", "A16")   # 8.1 step 2: a closed review case, no checks, DONE
     assert r["state"] == "DONE" and r["result"]["status"] == "CLOSED" and r["result"]["checks"] == []
-    case = interface.cases[case_id("A16")]
-    assert case["closure"]["reason"] == "WITHDRAWN" and not events.RELAY.log
-    assert step("open", "A16", 2)["result"] == r["result"] and len(interface.cases) == 1
+    case = repo.get(case_id("A16"))
+    assert case.closure["reason"] == "WITHDRAWN" and not events.RELAY.log
+    assert step("open", "A16", 2)["result"] == r["result"] and repo.count() == 1
 
 
 def test_20_withdrawn_before_close_review(env, client):
@@ -499,20 +506,20 @@ def test_21_list(env, client):
         step("open", key)
     approve(client, "A1", "rolf")
     decline(client, "A3", "rolf")
-    r = client.get("/api/c1-m3/review-cases", headers=_h("rolf")).json()
+    r = client.get("/api/application-review/review-cases", headers=_h("rolf")).json()
     assert [i["applicationId"] for i in r["items"]] == [APPS["A11"]["id"], APPS["A2"]["id"]]
     assert r["items"][0]["application"]["legalName"] == "Andere Beispiel AG"
     assert r["items"][0]["application"]["countryCode"] == "DE" and r["total"] == 2
     assert r["items"][1]["checkCounts"] == {"passed": 5, "failed": 1, "notApplicable": 0, "error": 0}
-    r = client.get("/api/c1-m3/review-cases?kind=TRANSFER", headers=_h("rolf")).json()
+    r = client.get("/api/application-review/review-cases?kind=TRANSFER", headers=_h("rolf")).json()
     assert [i["kind"] for i in r["items"]] == ["TRANSFER"]
-    r = client.get("/api/c1-m3/review-cases?status=APPROVED&status=DECLINED", headers=_h("rolf")).json()
+    r = client.get("/api/application-review/review-cases?status=APPROVED&status=DECLINED", headers=_h("rolf")).json()
     assert {i["status"] for i in r["items"]} == {"APPROVED", "DECLINED"} and r["total"] == 2
 
 
 def test_22_details(env, client):
     step("open", "A4")
-    r = client.get(f"/api/c1-m3/review-cases/{case_id('A4')}", headers=_h("rolf")).json()
+    r = client.get(f"/api/application-review/review-cases/{case_id('A4')}", headers=_h("rolf")).json()
     assert len(r["checks"]) == 6 and r["checks"][3]["details"]["duplicates"]
     assert r["application"]["applicant"]["sub"] == A1["applicant"]["sub"]
 
@@ -522,10 +529,11 @@ def test_23_permissions(env, client):
     cid = case_id("A1")
     for method, path in (("GET", "/review-cases"), ("GET", f"/review-cases/{cid}"),
                          ("POST", f"/review-cases/{cid}/approve"), ("POST", f"/review-cases/{cid}/decline")):
-        assert client.request(method, "/api/c1-m3" + path, headers=_h("erika"), json={"reason": "x"}).status_code == 403
-    assert client.get("/api/c1-m3/review-cases", headers=_h("otto")).status_code == 200
+        r = client.request(method, "/api/application-review" + path, headers=_h("erika"), json={"reason": "x"})
+        assert r.status_code == 403
+    assert client.get("/api/application-review/review-cases", headers=_h("otto")).status_code == 200
     assert approve(client, "A1", "otto").status_code == 403
-    assert client.get("/api/c1-m3/review-cases").status_code == 401
+    assert client.get("/api/application-review/review-cases").status_code == 401
 
 
 # --------------------------------------------------------------------- 24, 25: configuration
@@ -533,16 +541,16 @@ def test_24_auto_approval(env):
     env.env(AUTO_APPROVE_KINDS="ONBOARDING")
     r = step("open", "A1")
     assert r["result"]["status"] == "APPROVED"
-    assert interface.cases[case_id("A1")]["decision"]["autoApproved"] is True
+    assert repo.get(case_id("A1")).decision["autoApproved"] is True
     assert len(events_of("ApplicationApproved")) == 1
     assert step("open", "A2")["result"]["status"] == "OPEN"
     assert step("open", "A12")["result"]["status"] == "OPEN"
-    router.reset()
+    feature.reset()
     env.env(FOUR_EYES_CASES="ALWAYS")
     assert step("open", "A1")["result"]["status"] == "OPEN"
     env.env(AUTO_APPROVE_KINDS="REACTIVATION")
     with pytest.raises(ValueError, match="REACTIVATION"):
-        router.on_startup()
+        feature.on_startup()
 
 
 def test_25_enabled_checks(env):
@@ -565,7 +573,7 @@ def test_26_query(env, client):
         interface.get_review_status_by_application(applicationId=APPS["A7"]["id"])
     assert e.value.status == 404
     token = test_iam.iam().client_token("svc-c1-m3")
-    r = client.get(f"/api/c1-m3/internal/review-cases?applicationId={A1['id']}", headers=bearer(token))
+    r = client.get(f"/api/application-review/internal/review-cases?applicationId={A1['id']}", headers=bearer(token))
     assert r.status_code == 200 and r.json()["reviewCaseId"] == case_id("A1")
 
 
@@ -573,7 +581,7 @@ def test_27_audit_log_and_no_personal_data(env, client):
     step("open", "A2")
     approve(client, "A2", "rolf", "checked")
     decline(client, "A2", "renate")
-    ops = [(a["operation"], a["sub"], a["processId"] is not None) for a in interface.audit_log]
+    ops = [(a.operation, a.sub, a.process_id is not None) for a in repo.audit_log()]
     assert ops == [("open-review", None, True), ("approve", R1, False), ("decline", R2, False)]
     text = json.dumps([c["details"] for c in checks_of("A2").values()]) + json.dumps(events.RELAY.log)
     for value in ("Erika", "Mustermann", "EBWOID-DE-1000000002", "DEXX001T.HRB200002", "DE123456789"):
@@ -583,9 +591,9 @@ def test_27_audit_log_and_no_personal_data(env, client):
 def test_step_over_http_with_service_token(env, client):
     token = test_iam.iam().client_token("svc-c1-m3")
     body = {"processId": standin.stable_id("p"), "stepRunId": standin.stable_id("s"), "applicationId": A1["id"]}
-    r = client.post("/api/c1-m3/steps/open-review", headers=bearer(token), json=body)
+    r = client.post("/api/application-review/steps/open-review", headers=bearer(token), json=body)
     assert r.status_code == 200 and r.json()["result"]["status"] == "OPEN"
-    assert client.post("/api/c1-m3/steps/open-review", headers=_h("rolf"), json=body).status_code == 403
+    assert client.post("/api/application-review/steps/open-review", headers=_h("rolf"), json=body).status_code == 403
 
 
 def test_swagger_tags_c1_m3_as_implemented_not_as_stand_in():
@@ -593,5 +601,11 @@ def test_swagger_tags_c1_m3_as_implemented_not_as_stand_in():
     app = FastAPI()
     app.include_router(router.router)
     tags = {tag for op in app.openapi()["paths"].values() for spec in op.values() for tag in spec["tags"]}
-    assert tags == {"c1-m3 Application Review"}
+    assert tags == {"Application Review: Review Cases", "Application Review: Process Steps and Queries"}
+    assert all(path.startswith("/api/application-review/") for path in app.openapi()["paths"])
+
+
+def test_old_base_path_is_not_served(client):
+    """ADR-0003: the feature is served under its readable name; the spec id path answers 404."""
+    assert client.get("/api/c1-m3/review-cases", headers=_h("rolf")).status_code == 404
 
