@@ -28,7 +28,7 @@ Every call goes through `portal_common.neighbours`, in process or over HTTP (`CO
 """
 from __future__ import annotations
 
-from features.credentials.models.problems import MODULE
+from features.credentials.models.errors import MODULE
 from portal_common import neighbours
 
 

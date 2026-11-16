@@ -466,7 +466,8 @@ def test_confirm_revocation_in_another_status_is_409_invalid_state(osp_factory, 
 def test_confirm_revocation_success_changes_row_history_audit_and_event(osp_factory, companies, monkeypatch):
     # README 7.3 step 3 and 4, 13 case 11 (second half)
     osp = osp_factory()
-    clock = Clock(dt.datetime(2026, 11, 6, 12, 30, tzinfo=dt.UTC)).install(monkeypatch, "features.credentials.services.credential_service")
+    clock = Clock(dt.datetime(2026, 11, 6, 12, 30, tzinfo=dt.UTC)).install(
+        monkeypatch, "features.credentials.services.credential_service")
     (c,) = seed(_pending())
     token = osp.person("p2-osp-staff", ["OSP Admin"], given="Olga", family="Staffer")
     note = "revoked at the Credential Issuer, ticket 4711"

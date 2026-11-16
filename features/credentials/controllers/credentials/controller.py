@@ -30,9 +30,9 @@ import uuid
 
 from fastapi import Query
 
+from features.credentials import interface
 from features.credentials.models.credentials import ConfirmRevocation, CredentialDetail, CredentialPage
 from features.credentials.models.values import CredentialStatus, CredentialType, Route
-from features.credentials.services import credential_service, credential_views
 from portal_common.routing import Controller, Page, Permission, Size
 
 controller = Controller("Credentials: OSP Credentials")
@@ -41,15 +41,16 @@ controller = Controller("Credentials: OSP Credentials")
 @controller.get("", response_model=CredentialPage, summary="List the credentials")
 def list_credentials(page: int = Page, size: int = Size, status: list[CredentialStatus] | None = Query(None),
                      credentialType: CredentialType | None = None, companyId: uuid.UUID | None = None,
-                     route: Route | None = None, requestedBefore: dt.datetime | None = None, _: dict = Permission):
+                     route: Route | None = None, requestedBefore: dt.datetime | None = None,
+                     _: dict = Permission) -> CredentialPage:
     """README 7.2 (OSP staff, `manage_credentials`)."""
-    return credential_views.list_credentials(statuses=status, credential_type=credentialType,
-                                             company_id=str(companyId) if companyId else None, route=route,
-                                             requested_before=requestedBefore, page=page, size=size)
+    return interface.list_credentials(statuses=status, credential_type=credentialType,
+                                      company_id=str(companyId) if companyId else None, route=route,
+                                      requested_before=requestedBefore, page=page, size=size)
 
 
 @controller.post("/{credentialId}/confirm-revocation", response_model=CredentialDetail,
                  summary="Confirm a revocation done by hand")
-def confirm_revocation(credentialId: str, body: ConfirmRevocation, claims: dict = Permission):
+def confirm_revocation(credentialId: str, body: ConfirmRevocation, claims: dict = Permission) -> CredentialDetail:
     """README 7.3 (OSP staff, `manage_credentials`)."""
-    return credential_service.confirm_revocation(credentialId, body, claims)
+    return interface.confirm_revocation(credentialId, body, claims)

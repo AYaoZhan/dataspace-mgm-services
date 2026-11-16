@@ -84,15 +84,17 @@ once. Every change writes a history row. All operations for one company run unde
 | `managers/issuer_clients.py` | clients of the Credential Issuer, the IssuerService and the CSP issuer (README 11.3 to 11.5) |
 | `managers/neighbour_client.py` | C3-M1 `query_company`, C4-M2 `get_wallet_info` and `get_holder_access` |
 | `managers/config.py` | every variable of README 4, read at call time |
-| `models/` | pydantic API models of `openapi.yaml` (`credentials.py`: step inputs and results, `IssuerResponse`, the views, `CredentialPage`), SQLModel tables of README 5 (`tables.py`), value sets (`values.py`), spec id, Problem factories and `parse()` (`problems.py`) |
+| `models/` | pydantic API models of `openapi.yaml` (`credentials.py`: step inputs and results, `IssuerResponse`, the views, `CredentialPage`), SQLModel tables of README 5 (`tables.py`), value sets (`values.py`), spec id, every Problem factory and `parse()` (`errors.py`) |
 
 ### In-process interface
 
 `interface.py` holds the call convention: the steps `issue_credentials(input)` and `revoke_credentials(input)` and
 the query `query_company_credentials(companyId=...)`, with the JSON of `openapi.yaml` as input and answer (validated
 with the models, an invalid input is 400 `validation`), `report_status()` for an issuer in the same process, and
-`store()` and `reset()` for tests. The controllers call the services with the parsed models; the services return
-the API models (`StepResult[IssueResult]`, `CredentialPage`, ...).
+`store()` and `reset()` for tests. The controllers call the model-level functions of the interface (`issue`,
+`revoke`, `own_credentials`, `list_credentials`, `confirm_revocation`, `receive_report`, `company_credentials`),
+which hand the parsed models to the services and return the API models (`StepResult[IssueResult]`,
+`CredentialPage`, ...).
 
 ### Events
 

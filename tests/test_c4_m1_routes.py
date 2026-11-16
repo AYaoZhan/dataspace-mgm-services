@@ -235,7 +235,8 @@ def seed_csp_row(w: World, ctype: str, status: str, **kw) -> dict:
 
 def csp_has_grant(w: World, kind: str) -> None:
     w.osp.csp.holders[w.bpn] = w.did
-    w.osp.csp.grants[(w.bpn, kind)] = {"callbackUrl": f"{BASE}/api/credentials/issuer-callbacks/{kind}", "ospId": OSP_A_ID}
+    w.osp.csp.grants[(w.bpn, kind)] = {"callbackUrl": f"{BASE}/api/credentials/issuer-callbacks/{kind}",
+                                       "ospId": OSP_A_ID}
 
 
 # ------------------------------------------------------------------------- case 14: route CSP_ISSUER

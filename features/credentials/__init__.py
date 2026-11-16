@@ -31,7 +31,7 @@ calls, `on_startup()` (creates the tables) and `reset()` (empties them). The HTT
 """
 from __future__ import annotations
 
-from features.credentials.models.problems import MODULE
+from features.credentials.models.errors import MODULE
 from features.credentials.services import credential_service
 from portal_common import database
 

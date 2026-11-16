@@ -75,4 +75,5 @@ BPN_PATTERN = r"^[Bb][Pp][Nn][Ll][A-Za-z0-9]{12}$"  # openapi.yaml `Bpn` (any ca
 CREDENTIAL_ISSUER, ISSUER_SERVICE, CSP_ISSUER, STUB = (Route.CREDENTIAL_ISSUER, Route.ISSUER_SERVICE,
                                                        Route.CSP_ISSUER, Route.STUB)
 # README 6.3 rule 4: the issuance mode of the wallet each route fits
-FITS = {CREDENTIAL_ISSUER: "ISSUER_WRITES", ISSUER_SERVICE: "HOLDER_REQUESTS", CSP_ISSUER: "HOLDER_REQUESTS"}
+FITS: dict[str, str] = {CREDENTIAL_ISSUER: "ISSUER_WRITES", ISSUER_SERVICE: "HOLDER_REQUESTS",
+                        CSP_ISSUER: "HOLDER_REQUESTS"}

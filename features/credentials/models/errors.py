@@ -22,10 +22,11 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The spec id of the credentials and the Problem Details of README 12 (types `urn:c4-m1:problem:...`)."""
-from __future__ import annotations
+"""The spec id of the credentials and its Problem Details (README 12, types `urn:c4-m1:problem:...`).
 
-from typing import TypeVar
+Every Problem of the feature is built here, so the identifiers and their `retryable` flag sit in one place.
+"""
+from __future__ import annotations
 
 from pydantic import BaseModel, ValidationError
 
@@ -34,18 +35,46 @@ from portal_common.problems import Problem
 MODULE = "c4-m1"
 
 
+def _problem(status: int, name: str, detail: str | None, retryable: bool | None = False) -> Problem:
+    """A Problem of this module; `retryable=None` leaves the flag to the HTTP layer (set for steps only)."""
+    if retryable is None:
+        return Problem(MODULE, status, name, detail=detail)
+    return Problem(MODULE, status, name, detail=detail, retryable=retryable)
+
+
 def upstream(detail: str) -> Problem:
-    return Problem(MODULE, 502, "upstream-error", detail=detail, retryable=True)
+    return _problem(502, "upstream-error", detail, retryable=True)
 
 
 def no_route(detail: str) -> Problem:
-    return Problem(MODULE, 409, "no-issuer-route", detail=detail, retryable=False)
+    return _problem(409, "no-issuer-route", detail)
 
 
-M = TypeVar("M", bound=BaseModel)
+def company_not_ready(detail: str) -> Problem:
+    return _problem(409, "company-not-ready", detail)
 
 
-def parse(model: type[M], data: object) -> M:
+def wallet_not_ready(detail: str) -> Problem:
+    return _problem(409, "wallet-not-ready", detail)
+
+
+def issuer_rejected(detail: str) -> Problem:
+    return _problem(409, "issuer-rejected", detail)
+
+
+def invalid_state(detail: str, retryable: bool | None = None) -> Problem:
+    return _problem(409, "invalid-state", detail, retryable)
+
+
+def unknown_request() -> Problem:
+    return _problem(404, "unknown-request", "no order for this BPN and credential type", retryable=None)
+
+
+def not_found(detail: str) -> Problem:
+    return _problem(404, "not-found", detail, retryable=None)
+
+
+def parse[M: BaseModel](model: type[M], data: object) -> M:
     """`data` as `model`, or 400 `validation` with the fields at fault, as the HTTP layer answers (README 12)."""
     try:
         return model.model_validate(data)

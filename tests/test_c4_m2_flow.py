@@ -104,7 +104,8 @@ def create_wallet(osp, svc, n: int = 1):
 
 
 def issue(osp, svc, n: int = 2):
-    return _routed(osp.post("/api/credentials/steps/issue-credentials", svc, json=step_input(U1["id"], n)), "issue-credentials")
+    return _routed(osp.post("/api/credentials/steps/issue-credentials", svc, json=step_input(U1["id"], n)),
+                   "issue-credentials")
 
 
 def wallet_created(osp) -> dict:

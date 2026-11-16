@@ -35,7 +35,10 @@ import datetime as dt
 import uuid
 
 from features.credentials.managers import config, neighbour_client
+from features.credentials.managers.credential_store import CredentialStore as CredentialStore  # for interface
 from features.credentials.managers.credential_store import store
+from features.credentials.managers.issuer_clients import IssuerRoute
+from features.credentials.models import errors
 from features.credentials.models.credentials import (
     ConfirmRevocation,
     CredentialDetail,
@@ -46,12 +49,11 @@ from features.credentials.models.credentials import (
     RevocationResult,
     RevokeCredentials,
 )
-from features.credentials.models.problems import MODULE, parse
+from features.credentials.models.errors import MODULE, parse
 from features.credentials.models.values import CREDENTIAL_ISSUER, CREDENTIAL_KINDS, CredentialType
 from features.credentials.services import issuer_routes as routes
 from portal_common import events
 from portal_common.models import StepResult
-from portal_common.problems import Problem
 
 
 def now() -> dt.datetime:
@@ -75,7 +77,7 @@ def _truncate(text: str | None, n: int) -> str | None:
     return None if text is None else text[:n]
 
 
-def _change(row: dict, status: str, note: str | None = None, **fields) -> dict:
+def _change(row: dict, status: str, note: str | None = None, **fields: object) -> dict:
     """Sets the status of a row and writes the history entry (README 6.1)."""
     t = now()
     row.update(fields)
@@ -86,8 +88,9 @@ def _change(row: dict, status: str, note: str | None = None, **fields) -> dict:
     return row
 
 
-def _put_run(cid: str, types: list[str], status: str, process_id=None, step_run_id=None,
-             started_at=None, finished_at=None) -> dict:
+def _put_run(cid: str, types: list[CredentialType], status: str, process_id: str | None = None,
+             step_run_id: str | None = None, started_at: dt.datetime | None = None,
+             finished_at: dt.datetime | None = None) -> dict:
     run = {"company_id": cid, "credential_types": list(types), "status": status, "process_id": process_id,
            "step_run_id": step_run_id, "started_at": started_at, "finished_at": finished_at}
     store().put_run(run)
@@ -112,16 +115,13 @@ def _preconditions(cid: str) -> tuple[dict, dict, str]:
     """README 8.1: company, then wallet, then route. Returns (company, wallet, route name)."""
     company = neighbour_client.company(cid)
     if not company or not company.get("bpn") or company.get("status") not in ("REQUESTED", "ACTIVE"):
-        raise Problem(MODULE, 409, "company-not-ready", detail="company without BPN or not REQUESTED/ACTIVE",
-                      retryable=False)
+        raise errors.company_not_ready("company without BPN or not REQUESTED/ACTIVE")
     wallet = neighbour_client.wallet(cid)
     if not wallet or wallet.get("status") != "ACTIVE" or not wallet.get("did"):
-        raise Problem(MODULE, 409, "wallet-not-ready", detail="dataspace wallet not ACTIVE or without DID",
-                      retryable=False)
+        raise errors.wallet_not_ready("dataspace wallet not ACTIVE or without DID")
     route = routes.select_route(wallet)
     if route == CREDENTIAL_ISSUER and not wallet.get("didDocumentLocation"):
-        raise Problem(MODULE, 409, "wallet-not-ready", detail="wallet without location of the DID document",
-                      retryable=False)
+        raise errors.wallet_not_ready("wallet without location of the DID document")
     return company, wallet, route
 
 
@@ -129,25 +129,23 @@ def _preconditions(cid: str) -> tuple[dict, dict, str]:
 def issue_credentials(request: IssueCredentials) -> StepResult[IssueResult]:
     """README 8.1."""
     cid = request.company_id
-    types = list(request.credential_types or config.onboarding_types())
+    types = list(request.credential_types or [CredentialType(t) for t in config.onboarding_types()])
     with store().transaction(cid):
         company, wallet, route_name = _preconditions(cid)
         rows = {t: store().get_credential(cid, t) for t in types}
         if any(r and r["status"] == "REVOCATION_PENDING" for r in rows.values()):
-            raise Problem(MODULE, 409, "invalid-state", detail="a credential waits for the confirmation of its "
-                          "revocation (confirm-revocation)", retryable=False)
+            raise errors.invalid_state("a credential waits for the confirmation of its revocation "
+                                       "(confirm-revocation)", retryable=False)
         t_now = now()
-        to_order = [t for t in types if not (rows[t] and (
-            rows[t]["status"] == "ISSUED"
-            or (rows[t]["status"] == "REQUESTED" and t_now - rows[t]["requested_at"] < config.resend_after())))]
+        to_order = [t for t in types if _needs_order(rows[t], t_now)]
         if to_order:
             route = routes.get(route_name)
             ctx = {"company": company, "wallet": wallet, "route": route_name}
             route.prepare(ctx)
             for t in to_order:
                 _order(ctx, route, rows[t], t)
-        rows = {t: store().get_credential(cid, t) for t in types}
-        all_issued = all(r["status"] == "ISSUED" for r in rows.values())
+        stored = {t: row for t in types if (row := store().get_credential(cid, t)) is not None}
+        all_issued = all(r["status"] == "ISSUED" for r in stored.values())
         run = store().get_run(cid)
         if all_issued:
             started = run["started_at"] if run else now()
@@ -157,11 +155,20 @@ def issue_credentials(request: IssueCredentials) -> StepResult[IssueResult]:
             started = run["started_at"] if run and run["status"] == "RUNNING" else now()
             _put_run(cid, types, "RUNNING", request.process_id, request.step_run_id, started)
         result = IssueResult(company_id=cid, credentials=[
-            CredentialOutcome(credential_type=t, status=rows[t]["status"]) for t in types])
+            CredentialOutcome(credential_type=t, status=stored[t]["status"]) for t in types])
         return (StepResult.done if all_issued else StepResult.running)(request, result)
 
 
-def _order(ctx: dict, route, row: dict | None, ctype: str) -> None:
+def _needs_order(row: dict | None, t_now: dt.datetime) -> bool:
+    """README 8.1 step 2: a type is ordered unless it is `ISSUED` or `REQUESTED` within `RESEND_AFTER_HOURS`."""
+    if row is None:
+        return True
+    if row["status"] == "ISSUED":
+        return False
+    return not (row["status"] == "REQUESTED" and t_now - row["requested_at"] < config.resend_after())
+
+
+def _order(ctx: dict, route: IssuerRoute, row: dict | None, ctype: str) -> None:
     """Sends the order through the route; only after success the row becomes `REQUESTED` (README 8.1 step 2)."""
     attempt = (row["attempt"] if row else 0) + 1
     request_ref, issuer_did = route.order(ctx, ctype, attempt)
@@ -182,9 +189,9 @@ def revoke_credentials(request: RevokeCredentials) -> StepResult[RevocationResul
     through the route of the order (or waits for OSP staff), `REQUESTED`/`FAILED` become `CANCELLED`."""
     cid, reason = request.company_id, request.reason
     types = list(request.credential_types or [CredentialType.MEMBERSHIP])
-    revoked: list[str] = []
-    cancelled: list[str] = []
-    manual: list[str] = []
+    revoked: list[CredentialType] = []
+    cancelled: list[CredentialType] = []
+    manual: list[CredentialType] = []
     with store().transaction(cid):
         for t in types:
             row = store().get_credential(cid, t)
@@ -219,12 +226,12 @@ def report_status(kind: str, bpn: str, status: str, message: str | None = None) 
     ctype = kind.upper()
     found = store().find_credential(bpn.upper(), ctype)
     if found is None:
-        raise Problem(MODULE, 404, "unknown-request", detail="no order for this BPN and credential type")
+        raise errors.unknown_request()
     cid = found["company_id"]
     with store().transaction(cid):
         row = store().get_credential(cid, ctype)
         if row is None:
-            raise Problem(MODULE, 404, "unknown-request", detail="no order for this BPN and credential type")
+            raise errors.unknown_request()
         state, ok = row["status"], status == "SUCCESSFUL"
         if state == "REQUESTED":
             if ok:
@@ -234,7 +241,7 @@ def report_status(kind: str, bpn: str, status: str, message: str | None = None) 
                 _fail(row, message)
         elif state == "ISSUED":
             if not ok:
-                raise Problem(MODULE, 409, "invalid-state", detail="credential is already issued")
+                raise errors.invalid_state("credential is already issued")
         elif state == "FAILED":
             if ok:
                 _change(row, "ISSUED", message, issued_at=now())
@@ -248,7 +255,7 @@ def validate_report(kind: str, body: object) -> IssuerReport:
     """README 7.4 step 2: an unknown kind is 404 `not-found` before the body is looked at; an invalid body is
     400 `validation`. The BPN comes back in upper case."""
     if kind not in CREDENTIAL_KINDS:
-        raise Problem(MODULE, 404, "not-found", detail="credentialKind must be bpn or membership")
+        raise errors.not_found("credentialKind must be bpn or membership")
     report = parse(IssuerReport, body)
     report.bpn = report.bpn.upper()
     return report
@@ -297,13 +304,15 @@ def confirm_revocation(credential_id: str, request: ConfirmRevocation, claims: d
     note = request.note
     found = store().get_credential_by_id(credential_id)
     if found is None:
-        raise Problem(MODULE, 404, "not-found", detail="unknown credential")
+        raise errors.not_found("unknown credential")
     with store().transaction(found["company_id"]):
         row = store().get_credential_by_id(credential_id)
+        if row is None:
+            raise errors.not_found("unknown credential")
         if row["status"] == "REVOKED":
             return CredentialDetail.model_validate(row)
         if row["status"] != "REVOCATION_PENDING":
-            raise Problem(MODULE, 409, "invalid-state", detail=f"credential is {row['status']}, not REVOCATION_PENDING")
+            raise errors.invalid_state(f"credential is {row['status']}, not REVOCATION_PENDING")
         _change(row, "REVOKED", note, revoked_at=now())
         audit(claims, "CONFIRM_REVOCATION", None, row["id"], 200)
         events.publish(MODULE, "CredentialRevoked", {

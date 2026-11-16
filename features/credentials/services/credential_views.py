@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Sequence
 
 from features.credentials.managers import config
 from features.credentials.managers.credential_store import store
@@ -36,7 +37,7 @@ from features.credentials.models.credentials import (
     CredentialStatusView,
     IssuanceRunView,
 )
-from features.credentials.models.values import TYPES
+from features.credentials.models.values import TYPES, CredentialType
 
 
 def _type_order(credential_type: str) -> int:
@@ -61,17 +62,17 @@ def list_company_credentials(company_id: str) -> list[CredentialStatusView]:
     """README 7.1: no messages of the issuer, no routes; onboarding types without a row show `NONE`."""
     views = {r["credential_type"]: CredentialStatusView.model_validate(r) for r in _rows_of(company_id)}
     for t in config.onboarding_types():
-        views.setdefault(t, CredentialStatusView(credential_type=t, status="NONE"))
+        views.setdefault(t, CredentialStatusView(credential_type=CredentialType(t), status="NONE"))
     return [views[t] for t in sorted(views, key=_type_order)]
 
 
-def list_credentials(statuses=None, credential_type=None, company_id=None, route=None, requested_before=None,
-                     page: int = 0, size: int = 20) -> CredentialPage:
+def list_credentials(statuses: Sequence[str] | None = None, credential_type: str | None = None,
+                     company_id: str | None = None, route: str | None = None,
+                     requested_before: dt.datetime | None = None, page: int = 0, size: int = 20) -> CredentialPage:
     """README 7.2: filters, sorted by `changedAt` descending, paged in the store."""
     if requested_before is not None and requested_before.tzinfo is None:
         requested_before = requested_before.replace(tzinfo=dt.UTC)
-    filters = dict(company_id=company_id, statuses=statuses, credential_type=credential_type, route=route,
-                   requested_before=requested_before)
-    rows = store().list_credentials(page=page, size=size, **filters)
+    filters = (company_id, statuses, credential_type, route, requested_before)
+    rows = store().list_credentials(*filters, page=page, size=size)
     return CredentialPage(items=[CredentialDetail.model_validate(r) for r in rows], page=page, size=size,
-                          total=store().count_credentials(**filters))
+                          total=store().count_credentials(*filters))

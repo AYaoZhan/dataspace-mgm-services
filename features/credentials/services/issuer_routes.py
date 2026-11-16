@@ -33,8 +33,8 @@ object. A route object has `name`, `prepare(ctx)` (once per run, before the firs
 from __future__ import annotations
 
 from features.credentials.managers import config
-from features.credentials.managers.issuer_clients import CLIENTS
-from features.credentials.models.problems import no_route
+from features.credentials.managers.issuer_clients import CLIENTS, IssuerRoute
+from features.credentials.models.errors import no_route
 from features.credentials.models.values import CSP_ISSUER, FITS, STUB
 from features.credentials.services.stub_issuer import StubRoute
 
@@ -77,7 +77,7 @@ def flush_stub() -> None:
     _stub.flush()
 
 
-def get(name: str):
+def get(name: str) -> IssuerRoute:
     if name == STUB:
         return _stub
     if name not in CLIENTS:

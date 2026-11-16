@@ -39,12 +39,13 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import threading
-from collections.abc import Iterator
-from typing import Any, Protocol
+from collections.abc import Iterator, Sequence
+from typing import Protocol
 
-from sqlmodel import col, func, select
+from sqlalchemy import ColumnElement
+from sqlmodel import Session, SQLModel, col, func, select
 
-from features.credentials.models.problems import MODULE
+from features.credentials.models.errors import MODULE
 from features.credentials.models.tables import AuditEntryRow, CredentialHistoryRow, CredentialRow, IssuanceRunRow
 from portal_common import database
 
@@ -60,12 +61,12 @@ class CredentialStore(Protocol):
 
     def put_credential(self, row: dict) -> None: ...
 
-    def list_credentials(self, company_id: str | None = None, statuses: list[str] | None = None,
+    def list_credentials(self, company_id: str | None = None, statuses: Sequence[str] | None = None,
                          credential_type: str | None = None, route: str | None = None,
                          requested_before: dt.datetime | None = None, page: int = 0,
                          size: int = 50) -> list[dict]: ...
 
-    def count_credentials(self, company_id: str | None = None, statuses: list[str] | None = None,
+    def count_credentials(self, company_id: str | None = None, statuses: Sequence[str] | None = None,
                           credential_type: str | None = None, route: str | None = None,
                           requested_before: dt.datetime | None = None) -> int: ...
 
@@ -88,7 +89,7 @@ class CredentialStore(Protocol):
     def reset(self) -> None: ...
 
 
-def _jsonable(value: Any) -> Any:
+def _jsonable(value: object) -> object:
     if isinstance(value, dt.datetime):
         return value.isoformat()
     if isinstance(value, dict):
@@ -98,12 +99,16 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def _as_dict(row) -> dict | None:
+def _as_dict(row: SQLModel) -> dict:
     """A table row as the plain dict the services use (README 5 column names, without the write order `seq`)."""
-    return None if row is None else row.model_dump(exclude={"seq"})
+    return row.model_dump(exclude={"seq"})
 
 
-def _fields(table, data: dict) -> dict:
+def _maybe_dict(row: SQLModel | None) -> dict | None:
+    return None if row is None else _as_dict(row)
+
+
+def _fields(table: type[SQLModel], data: dict) -> dict:
     return {name: data.get(name) for name in table.model_fields if name != "seq" and name in data}
 
 
@@ -117,7 +122,7 @@ class SqlCredentialStore:
         self._ready: set[str] = set()                      # database URLs whose tables exist
 
     @contextlib.contextmanager
-    def _session(self):
+    def _session(self) -> Iterator[Session]:
         with self._data:
             url = database.url(MODULE)
             if url not in self._ready:
@@ -129,18 +134,18 @@ class SqlCredentialStore:
     # --- credential ---------------------------------------------------------------------------
     def get_credential(self, company_id: str, credential_type: str) -> dict | None:
         with self._session() as s:
-            return _as_dict(s.get(CredentialRow, (company_id, credential_type)))
+            return _maybe_dict(s.get(CredentialRow, (company_id, credential_type)))
 
     def get_credential_by_id(self, credential_id: str) -> dict | None:
         with self._session() as s:
-            return _as_dict(s.exec(select(CredentialRow).where(CredentialRow.id == credential_id)).first())
+            return _maybe_dict(s.exec(select(CredentialRow).where(CredentialRow.id == credential_id)).first())
 
     def find_credential(self, bpn: str, credential_type: str) -> dict | None:
         """README 5 index (`bpn`, `credential_type`); the BPN is compared in upper case (7.4 step 3)."""
         query = select(CredentialRow).where(CredentialRow.bpn == (bpn or "").upper(),
                                             CredentialRow.credential_type == credential_type)
         with self._session() as s:
-            return _as_dict(s.exec(query).first())
+            return _maybe_dict(s.exec(query).first())
 
     def put_credential(self, row: dict) -> None:
         """One row per (`company_id`, `credential_type`): a put replaces the row of the key. The BPN is stored
@@ -152,42 +157,46 @@ class SqlCredentialStore:
             s.merge(CredentialRow(**data))
 
     @staticmethod
-    def _filtered(query, company_id, statuses, credential_type, route, requested_before):
+    def _filters(company_id: str | None, statuses: Sequence[str] | None, credential_type: str | None,
+                 route: str | None, requested_before: dt.datetime | None) -> list[ColumnElement[bool]]:
+        """The WHERE conditions of README 7.2; an empty or absent filter matches everything."""
+        conditions: list[ColumnElement[bool]] = []
         if company_id:
-            query = query.where(CredentialRow.company_id == company_id)
+            conditions.append(col(CredentialRow.company_id) == company_id)
         if statuses:
-            query = query.where(col(CredentialRow.status).in_(statuses))
+            conditions.append(col(CredentialRow.status).in_(statuses))
         if credential_type:
-            query = query.where(CredentialRow.credential_type == credential_type)
+            conditions.append(col(CredentialRow.credential_type) == credential_type)
         if route:
-            query = query.where(CredentialRow.route == route)
+            conditions.append(col(CredentialRow.route) == route)
         if requested_before is not None:
-            query = query.where(col(CredentialRow.requested_at).is_not(None),
-                                col(CredentialRow.requested_at) < requested_before)
-        return query
+            conditions += [col(CredentialRow.requested_at).is_not(None),
+                           col(CredentialRow.requested_at) < requested_before]
+        return conditions
 
-    def list_credentials(self, company_id: str | None = None, statuses: list[str] | None = None,
+    def list_credentials(self, company_id: str | None = None, statuses: Sequence[str] | None = None,
                          credential_type: str | None = None, route: str | None = None,
                          requested_before: dt.datetime | None = None, page: int = 0,
                          size: int = 50) -> list[dict]:
         """README 7.2: sorted by `changedAt` descending, one page."""
-        query = self._filtered(select(CredentialRow), company_id, statuses, credential_type, route, requested_before)
-        query = query.order_by(col(CredentialRow.changed_at).desc()).offset(page * size).limit(size)
+        where = self._filters(company_id, statuses, credential_type, route, requested_before)
+        query = (select(CredentialRow).where(*where).order_by(col(CredentialRow.changed_at).desc())
+                 .offset(page * size).limit(size))
         with self._session() as s:
             return [_as_dict(r) for r in s.exec(query)]
 
-    def count_credentials(self, company_id: str | None = None, statuses: list[str] | None = None,
+    def count_credentials(self, company_id: str | None = None, statuses: Sequence[str] | None = None,
                           credential_type: str | None = None, route: str | None = None,
                           requested_before: dt.datetime | None = None) -> int:
-        query = self._filtered(select(func.count()).select_from(CredentialRow), company_id, statuses,
-                               credential_type, route, requested_before)
+        where = self._filters(company_id, statuses, credential_type, route, requested_before)
+        query = select(func.count()).select_from(CredentialRow).where(*where)
         with self._session() as s:
             return s.exec(query).one()
 
     # --- issuance_run -------------------------------------------------------------------------
     def get_run(self, company_id: str) -> dict | None:
         with self._session() as s:
-            run = _as_dict(s.get(IssuanceRunRow, company_id))
+            run = _maybe_dict(s.get(IssuanceRunRow, company_id))
         if run is not None:
             run["credential_types"] = list(run["credential_types"])
         return run
@@ -230,10 +239,10 @@ class SqlCredentialStore:
     # --- test support -------------------------------------------------------------------------
     def dump(self) -> dict:
         """The whole state as JSON-serialisable data (for secret scans in tests)."""
-        tables = {"credential": CredentialRow, "issuance_run": IssuanceRunRow,
-                  "credential_history": CredentialHistoryRow, "audit_entry": AuditEntryRow}
+        tables: dict[str, type[SQLModel]] = {"credential": CredentialRow, "issuance_run": IssuanceRunRow,
+                                             "credential_history": CredentialHistoryRow, "audit_entry": AuditEntryRow}
         with self._session() as s:
-            return _jsonable({name: [_as_dict(r) for r in s.exec(select(table))] for name, table in tables.items()})
+            return {name: [_jsonable(_as_dict(r)) for r in s.exec(select(table))] for name, table in tables.items()}
 
     def reset(self) -> None:
         """Empties all tables. The locks stay, so that a transaction that is still open stays valid."""

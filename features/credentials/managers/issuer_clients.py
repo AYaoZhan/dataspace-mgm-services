@@ -34,14 +34,15 @@ Configuration is read from the environment at call time (AGENTS.md rule 6).
 from __future__ import annotations
 
 import time
+from typing import Protocol
 
 import httpx
 
-from features.credentials.models.problems import MODULE, upstream as _upstream
-from features.credentials.models.values import CREDENTIAL_ISSUER, CSP_ISSUER, ISSUER_SERVICE
 from features.credentials.managers import config, neighbour_client
+from features.credentials.models.errors import MODULE, issuer_rejected, wallet_not_ready
+from features.credentials.models.errors import upstream as _upstream
+from features.credentials.models.values import CREDENTIAL_ISSUER, CSP_ISSUER, ISSUER_SERVICE
 from portal_common import csp, http, settings, spec
-from portal_common.problems import Problem
 
 
 # ------------------------------------------------------------------------------------- helpers
@@ -60,7 +61,7 @@ def _holder_access(ctx: dict) -> dict:
     if "access" not in ctx:
         access = neighbour_client.holder_access(ctx["company"]["id"])
         if not access:
-            raise Problem(MODULE, 409, "wallet-not-ready", detail="no holder access for the wallet", retryable=False)
+            raise wallet_not_ready("no holder access for the wallet")
         ctx["access"] = access
     return ctx["access"]
 
@@ -83,10 +84,24 @@ def _identity_request(ctx: dict, credential_type: str, attempt: int, issuer_did:
 
 
 # ------------------------------------------------------------------------------------- CSP_ISSUER
+class IssuerRoute(Protocol):
+    """What a route of README 6.3 does; the services only talk to this."""
+
+    name: str
+
+    def prepare(self, ctx: dict) -> None: ...
+
+    def order(self, ctx: dict, credential_type: str, attempt: int) -> tuple[str, str | None]: ...
+
+    def cancel(self, row: dict) -> None: ...
+
+    def revoke(self, row: dict) -> bool: ...
+
+
 class CspIssuerRoute:
     """CSP issuer (README 11.5): holder and grant at the CSP, request in the holder's wallet."""
 
-    name = CSP_ISSUER
+    name: str = CSP_ISSUER
 
     @staticmethod
     def _csp(method: str, path: str, body: dict | None = None, revocation: bool = False) -> None:
@@ -97,7 +112,7 @@ class CspIssuerRoute:
         if 200 <= status < 300:
             return
         if not revocation and status in (403, 404, 409, 422):
-            raise Problem(MODULE, 409, "issuer-rejected", detail=f"CSP issuer answered {status}", retryable=False)
+            raise issuer_rejected(f"CSP issuer answered {status}")
         raise _upstream(f"CSP issuer answered {status}")
 
     def prepare(self, ctx: dict) -> None:
@@ -106,7 +121,7 @@ class CspIssuerRoute:
 
     def order(self, ctx: dict, credential_type: str, attempt: int) -> tuple[str, str | None]:
         bpn, kind = ctx["company"]["bpn"].upper(), credential_type.lower()
-        grant = {"callbackUrl": _callback_url(kind)}
+        grant: dict[str, str | None] = {"callbackUrl": _callback_url(kind)}
         if kind == "membership":
             grant["memberOf"] = _member_of()
         self._csp("PUT", f"/holders/{bpn}/grants/{kind}", grant)
@@ -133,7 +148,7 @@ _issuer_tokens: dict[str, tuple[str, float]] = {}
 class CredentialIssuerRoute:
     """Own Credential Issuer (README 11.3): the issuer writes into the wallet; revocation is not supported in 0.2."""
 
-    name = CREDENTIAL_ISSUER
+    name: str = CREDENTIAL_ISSUER
 
     @staticmethod
     def _token() -> str:
@@ -183,7 +198,7 @@ class IssuerServiceRoute:
     """Own IssuerService (README 11.4). The paths of the administration interface are provisional (the spec says
     to check them against the version in use, OPEN-QUESTIONS.md)."""
 
-    name = ISSUER_SERVICE
+    name: str = ISSUER_SERVICE
 
     @staticmethod
     def _admin(method: str, path: str, body: dict | None = None, accept: tuple[int, ...] = ()) -> None:
@@ -217,4 +232,5 @@ class IssuerServiceRoute:
 
 
 # route name -> client class (the route `STUB` is the stand-in of services/stub_issuer.py)
-CLIENTS = {CSP_ISSUER: CspIssuerRoute, CREDENTIAL_ISSUER: CredentialIssuerRoute, ISSUER_SERVICE: IssuerServiceRoute}
+CLIENTS: dict[str, type[IssuerRoute]] = {
+    CSP_ISSUER: CspIssuerRoute, CREDENTIAL_ISSUER: CredentialIssuerRoute, ISSUER_SERVICE: IssuerServiceRoute}

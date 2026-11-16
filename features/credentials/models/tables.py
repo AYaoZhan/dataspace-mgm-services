@@ -30,37 +30,37 @@ every database (SQLite keeps no time zone, so `UtcDateTime` stores UTC and gives
 from __future__ import annotations
 
 import datetime as dt
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Column, DateTime, Integer
+from sqlalchemy import JSON, Column, DateTime, Dialect, Integer
 from sqlalchemy.types import TypeDecorator
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
-from features.credentials.models.problems import MODULE
+from features.credentials.models.errors import MODULE
 from features.credentials.models.values import CredentialStatus, CredentialType, RevocationReason, Route, RunStatus
 from portal_common import database
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:
+    Table = SQLModel                          # what `table_base` returns: a SQLModel class with its own MetaData
+else:
+    Table = database.table_base(MODULE)
 
 
-class UtcDateTime(TypeDecorator):
+class UtcDateTime(TypeDecorator[dt.datetime]):
     """A timezone-aware UTC timestamp on every database."""
 
     impl = DateTime(timezone=True)
     cache_ok = True
 
-    def process_bind_param(self, value: dt.datetime | None, dialect) -> dt.datetime | None:
+    def process_bind_param(self, value: dt.datetime | None, dialect: Dialect) -> dt.datetime | None:
         if value is not None and value.tzinfo is not None:
             value = value.astimezone(dt.UTC)
         return value
 
-    def process_result_value(self, value: dt.datetime | None, dialect) -> dt.datetime | None:
+    def process_result_value(self, value: dt.datetime | None, dialect: Dialect) -> dt.datetime | None:
         if value is not None and value.tzinfo is None:
             value = value.replace(tzinfo=dt.UTC)
         return value
-
-
-def _timestamp(*, index: bool = False) -> Field:
-    return Field(default=None, sa_column=Column(UtcDateTime(), index=index))
 
 
 class CredentialRow(Table, table=True):
@@ -78,14 +78,14 @@ class CredentialRow(Table, table=True):
     holder_did: str | None = None
     request_ref: str | None = None
     attempt: int = 0
-    requested_at: dt.datetime | None = _timestamp()
-    issued_at: dt.datetime | None = _timestamp()
-    failed_at: dt.datetime | None = _timestamp()
-    revoked_at: dt.datetime | None = _timestamp()
+    requested_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    issued_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    failed_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    revoked_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
     failure_reason: str | None = None
     revocation_reason: RevocationReason | None = None
-    created_at: dt.datetime | None = _timestamp()
-    changed_at: dt.datetime | None = _timestamp(index=True)
+    created_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    changed_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime, index=True)
 
 
 class IssuanceRunRow(Table, table=True):
@@ -98,8 +98,8 @@ class IssuanceRunRow(Table, table=True):
     status: RunStatus
     process_id: str | None = None
     step_run_id: str | None = None
-    started_at: dt.datetime | None = _timestamp()
-    finished_at: dt.datetime | None = _timestamp()
+    started_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
+    finished_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
 
 
 class CredentialHistoryRow(Table, table=True):
@@ -110,7 +110,7 @@ class CredentialHistoryRow(Table, table=True):
     seq: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
     id: str = Field(index=True)
     credential_id: str = Field(index=True)
-    occurred_at: dt.datetime | None = _timestamp()
+    occurred_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
     status: CredentialStatus
     attempt: int = 0
     note: str | None = None
@@ -123,7 +123,7 @@ class AuditEntryRow(Table, table=True):
 
     seq: int | None = Field(default=None, sa_column=Column(Integer, primary_key=True, autoincrement=True))
     id: str = Field(index=True)
-    occurred_at: dt.datetime | None = _timestamp()
+    occurred_at: dt.datetime | None = Field(default=None, sa_type=UtcDateTime)
     sub: str | None = None
     client_id: str | None = None
     company_id: str | None = None

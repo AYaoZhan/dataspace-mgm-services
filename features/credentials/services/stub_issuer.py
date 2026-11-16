@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass, field
 
 from features.credentials.managers import config
 from features.credentials.managers.credential_store import store
@@ -40,15 +41,25 @@ from portal_common.problems import Problem
 log = logging.getLogger("c4-m1.routes")
 
 
+@dataclass(eq=False)
+class _Pending:
+    """An order whose report is still to come; `generation` ties it to the state before a reset."""
+
+    order: dict
+    generation: int
+    fired: bool = False
+    timer: threading.Timer | None = field(default=None, repr=False)
+
+
 class StubRoute:
     """Remembers the orders and reports their outcome after the configured delay."""
 
-    name = STUB
+    name: str = STUB
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self.orders: list[dict] = []
-        self._pending: list[dict] = []     # {"order", "timer", "fired"}
+        self._pending: list[_Pending] = []
         self._timers: list[threading.Timer] = []   # every started timer, so that flush() can wait for them
         self._generation = 0
 
@@ -61,23 +72,23 @@ class StubRoute:
         delay = config.stub_issuer_delay()
         with self._lock:
             self.orders.append(order)
-            entry = {"order": order, "fired": False, "generation": self._generation}
-            entry["timer"] = threading.Timer(delay, self._fire, args=(entry,))
-            entry["timer"].daemon = True
+            entry = _Pending(order, self._generation)
+            timer = entry.timer = threading.Timer(delay, self._fire, args=(entry,))
+            timer.daemon = True
             self._pending.append(entry)
-            self._timers.append(entry["timer"])
-            entry["timer"].start()
+            self._timers.append(timer)
+            timer.start()
         return f"stub-{attempt}", None
 
-    def _fire(self, entry: dict) -> None:
+    def _fire(self, entry: _Pending) -> None:
         from features.credentials.services import credential_service
         with self._lock:
-            if entry["fired"] or entry["generation"] != self._generation:
+            if entry.fired or entry.generation != self._generation:
                 return
-            entry["fired"] = True
+            entry.fired = True
             if entry in self._pending:
                 self._pending.remove(entry)
-        order = entry["order"]
+        order = entry.order
         failing = order["credential_type"] in config.stub_issuer_fail_types()
         try:
             # Wait for a step that is still ordering this company: with a delay of 0 the timer fires before the
@@ -94,10 +105,11 @@ class StubRoute:
         fired in their own thread (tests)."""
         while True:
             with self._lock:
-                entry = next((e for e in self._pending if not e["fired"]), None)
+                entry = next((e for e in self._pending if not e.fired), None)
             if entry is None:
                 break
-            entry["timer"].cancel()
+            if entry.timer:
+                entry.timer.cancel()
             self._fire(entry)
         with self._lock:
             started = list(self._timers)
@@ -114,7 +126,8 @@ class StubRoute:
         with self._lock:
             self._generation += 1
             for e in self._pending:
-                e["timer"].cancel()
+                if e.timer:
+                    e.timer.cancel()
             self._pending.clear()
             self._timers.clear()
             self.orders.clear()

@@ -25,13 +25,13 @@
 """Credentials of a company for other modules (README 9.1)."""
 from __future__ import annotations
 
+from features.credentials import interface
 from features.credentials.models.credentials import CompanyCredentials
-from features.credentials.services import credential_views
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Credentials: Process Steps and Queries")
 
 
 @controller.get("", response_model=CompanyCredentials, summary="Query: query_company_credentials")
-def query_credentials(companyId: str, _: dict = Permission):
-    return credential_views.query_company_credentials(companyId=companyId)
+def query_credentials(companyId: str, _: dict = Permission) -> CompanyCredentials:
+    return interface.company_credentials(companyId)
