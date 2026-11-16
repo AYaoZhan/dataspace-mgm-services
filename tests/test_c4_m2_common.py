@@ -298,6 +298,7 @@ def osp_factory(monkeypatch, tmp_path):
             csp_app = create_csp()
             phttp.register_local(CSP_URL, csp_app)
         app = scaffold_app.create_app()
+        phttp.register_local(BASE, app)
         client = stack.enter_context(TestClient(app, base_url=BASE))
         started.append((scaffold_app, app))
         return Osp(app, client, csp_app, tmp_path)
@@ -305,6 +306,7 @@ def osp_factory(monkeypatch, tmp_path):
     yield start
     for mod, app in started:
         mod.reset_all(app.state.entries)
+    phttp.unregister_local(BASE)
     stack.close()
 
 

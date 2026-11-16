@@ -54,21 +54,26 @@ def test_function_names_follow_the_convention():
     assert spec.snake_case("getBPNForCompany") == "get_bpn_for_company"
 
 
-def _imported_names(source: str, package: str):
+def _imported_names(source: str, package: str, pkg_parts: tuple[str, ...] | None = None):
     """Full dotted name of everything a file in `modules/<package>/` imports."""
+    if pkg_parts is None:
+        pkg_parts = ("modules", package)
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             yield from (a.name for a in node.names)
         elif isinstance(node, ast.ImportFrom):
             base = node.module or ""
-            if node.level:   # relative: resolve against modules.<package>
-                base = ".".join(["modules", package][: max(0, 3 - node.level)] + ([base] if base else []))
+            if node.level:   # relative: resolve against package hierarchy
+                parts = list(pkg_parts[: max(0, len(pkg_parts) - (node.level - 1))])
+                if base:
+                    parts.append(base)
+                base = ".".join(parts)
             yield from (f"{base}.{a.name}" for a in node.names)
 
 
-def _foreign(source: str, package: str) -> list[str]:
+def _foreign(source: str, package: str, pkg_parts: tuple[str, ...] | None = None) -> list[str]:
     """Imports of another module that do not go through `modules.<id>.interface`."""
-    return [n for n in _imported_names(source, package)
+    return [n for n in _imported_names(source, package, pkg_parts)
             if n.split(".")[0] == "modules" and len(n.split(".")) > 1 and n.split(".")[1] != package
             and n.split(".")[2:3] != ["interface"]]
 
@@ -80,11 +85,17 @@ def test_import_check_itself():
     bad = "from modules.c1_m2 import router\nfrom modules.c1_m2.router import x\nfrom ..c1_m2.service import y\n" \
           "from modules import c1_m2\nimport modules.c1_m2"
     assert len(_foreign(bad, "c3_m1")) == 5
+    # Relative imports within subpackages of the same module
+    nested_ok = "from .. import errors\nfrom ...sub import helper"
+    assert _foreign(nested_ok, "c2_m2", ("modules", "c2_m2", "subpkg", "dao")) == []
+    nested_bad = "from ....c1_m2.service import y"
+    assert len(_foreign(nested_bad, "c2_m2", ("modules", "c2_m2", "subpkg", "dao"))) == 1
 
 
 def test_modules_import_each_other_only_through_interface():
     wrong = []
     for file in sorted(MODULES.glob("*/**/*.py")):
         package = file.relative_to(MODULES).parts[0]
-        wrong += [f"{file.relative_to(MODULES.parent)}: {n}" for n in _foreign(file.read_text(encoding="utf-8"), package)]
+        pkg_parts = ("modules", *file.relative_to(MODULES).parent.parts)
+        wrong += [f"{file.relative_to(MODULES.parent)}: {n}" for n in _foreign(file.read_text(encoding="utf-8"), package, pkg_parts)]
     assert not wrong, "import other modules only from modules.<id>.interface: " + "; ".join(wrong)
