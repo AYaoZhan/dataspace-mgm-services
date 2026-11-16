@@ -24,6 +24,7 @@
 """The catalogue of company roles for other modules (README 9.4)."""
 from __future__ import annotations
 
+from features.company_profile.models.company_role import CompanyRoleDefinition
 from features.company_profile.services import company_query_service
 from portal_common.routing import Controller, Permission
 
@@ -31,5 +32,5 @@ controller = Controller("Company Profile: Process Steps and Queries")
 
 
 @controller.get("")
-def query_company_role_catalog(lang: str | None = None, _: dict = Permission):
+def query_company_role_catalog(lang: str | None = None, _: dict = Permission) -> list[CompanyRoleDefinition]:
     return company_query_service.query_company_role_catalog(lang=lang)

@@ -27,6 +27,13 @@ and the search of OSP staff (7.10).
 from __future__ import annotations
 
 from features.company_profile.managers import company_repository
+from features.company_profile.models.company import (
+    AttestationUpdateResult,
+    Company,
+    CompanyDetail,
+    CompanySummary,
+)
+from features.company_profile.models.value_sets import RoleStatus
 from features.company_profile.services import attestation_verifier, company_validation
 from features.company_profile.services.company_changes import (
     CORE_TEXT_FIELDS,
@@ -36,13 +43,14 @@ from features.company_profile.services.company_changes import (
     validate_merge,
     wallet_identifier_conflict,
 )
-from features.company_profile.services.company_views import company_view, get_company
+from features.company_profile.services.company_views import company_detail, company_view, get_company
 from features.company_profile.services.shared import MODULE, parse_timestamp, utc_now
 from portal_common import events
+from portal_common.models import Page
 from portal_common.problems import Problem
 
 
-def update_company(companyId: str, body: dict, sub: str | None = None) -> dict:
+def update_company(companyId: str, body: dict, sub: str | None = None) -> Company:
     """7.2: the Company Admin changes the short name."""
     with company_repository.lock(companyId):
         row = get_company(companyId)
@@ -73,7 +81,7 @@ OSP_LOCKED_FIELDS = {"bpn", "status", "coreDataSource", "applicationId", "verifi
                      "deactivationReason", "createdAt", "changedAt"}
 
 
-def correct_company(companyId: str, body: dict, sub: str | None = None) -> dict:
+def correct_company(companyId: str, body: dict, sub: str | None = None) -> CompanyDetail:
     """7.12: correction by OSP staff, always with a justification."""
     with company_repository.lock(companyId):
         row = get_company(companyId)
@@ -102,7 +110,7 @@ def correct_company(companyId: str, body: dict, sub: str | None = None) -> dict:
 
         changed = changed_fields(row, fields, identifiers)
         if not changed:
-            return company_view(companyId, detail=True)
+            return company_detail(companyId)
 
         core_changed = any(company_validation.field_name(key) in CORE_TEXT_FIELDS for key in fields)
         if identifiers is not None and identifier_core_changed(row, identifiers):
@@ -124,22 +132,19 @@ def correct_company(companyId: str, body: dict, sub: str | None = None) -> dict:
                        {"companyId": companyId, "changedFields": changed,
                         "coreDataChanged": core_changed,
                         "coreDataSource": updates.get("core_data_source", row["core_data_source"])})
-    return company_view(companyId, detail=True)
+    return company_detail(companyId)
 
 
 # ---------------------------------------------------------------------- search for OSP (7.10)
-def _summary(row: dict) -> dict:
-    return {"id": row["id"], "name": row["name"], "status": row["status"], "bpn": row["bpn"],
-            "coreDataSource": row["core_data_source"], "countryCode": row["country_code"],
-            "companyRoles": [role for role, status in company_repository.list_roles(row["id"]).items()
-                             if status == "ACTIVE"],
-            "createdAt": row["created_at"]}
+def _summary(row: dict, roles: dict[str, str]) -> CompanySummary:
+    return CompanySummary.model_validate(row | {
+        "company_roles": [role for role, status in roles.items() if status == RoleStatus.ACTIVE]})
 
 
 def list_companies(*, status: list[str] | str | None = None, name: str | None = None,
                    bpn: str | None = None, hasBpn: bool | str | None = None,
                    companyRole: str | None = None, coreDataSource: str | None = None,
-                   page: int | str = 0, size: int | str = 20) -> dict:
+                   page: int | str = 0, size: int | str = 20) -> Page[CompanySummary]:
     """7.10: filters, newest first, paged; `companyRole` matches active roles only."""
     has_bpn = None if hasBpn in (None, "") else str(hasBpn).lower() in ("1", "true", "yes")
     try:
@@ -147,9 +152,10 @@ def list_companies(*, status: list[str] | str | None = None, name: str | None = 
             status=status, name=name, bpn=bpn, has_bpn=has_bpn, company_role=companyRole,
             core_data_source=coreDataSource, page=int(page or 0), size=int(size or 20))
     except ValueError as error:
-        raise Problem(MODULE, 400, "validation", errors=[{"field": "filter", "reason": str(error)}])
-    return {"items": [_summary(row) for row in items], "page": int(page or 0),
-            "size": int(size or 20), "total": total}
+        raise Problem(MODULE, 400, "validation", errors=[{"field": "filter", "reason": str(error)}]) from None
+    roles = company_repository.roles_by_company([row["id"] for row in items])
+    return Page[CompanySummary](items=[_summary(row, roles.get(row["id"], {})) for row in items],
+                                page=int(page or 0), size=int(size or 20), total=total)
 
 
 # ----------------------------------------------------- change with an attestation (7.3, 6.3, 6.7)
@@ -185,7 +191,7 @@ def _attested_values(row: dict, claims: dict) -> tuple[dict, dict[str, dict]]:
     return fields, {entry["type"]: entry for entry in identifiers}
 
 
-def update_company_from_attestation(companyId: str, body: dict, sub: str | None = None) -> dict:
+def update_company_from_attestation(companyId: str, body: dict, sub: str | None = None) -> AttestationUpdateResult:
     """7.3: core data from a new verification attestation, immediately and without OSP staff."""
     with company_repository.lock(companyId):
         row = get_company(companyId)
@@ -234,4 +240,4 @@ def update_company_from_attestation(companyId: str, body: dict, sub: str | None 
             events.publish(MODULE, "CompanyDataChanged",
                            {"companyId": companyId, "changedFields": changed,
                             "coreDataChanged": True, "coreDataSource": "EBW"})
-    return {"changedFields": changed, "company": company_view(companyId)}
+    return AttestationUpdateResult(changed_fields=changed, company=company_view(companyId))

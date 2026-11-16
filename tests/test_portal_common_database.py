@@ -58,8 +58,10 @@ def fresh(monkeypatch):
 
 
 def test_each_feature_has_its_own_tables_and_database():
-    assert set(database.metadata(A).tables) == {"test_company"}
-    assert set(database.metadata(B).tables) == {"test_application"}
+    # the features' own tables sit next to the test tables, each in its own MetaData only
+    assert "test_company" in database.metadata(A).tables
+    assert "test_application" in database.metadata(B).tables
+    assert not set(database.metadata(A).tables) & set(database.metadata(B).tables)
     assert database.engine(A) is not database.engine(B)
 
 

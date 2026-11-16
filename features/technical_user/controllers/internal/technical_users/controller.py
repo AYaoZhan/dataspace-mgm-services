@@ -26,11 +26,13 @@
 from __future__ import annotations
 
 from features.technical_user import interface
+from features.technical_user.models.responses import WIRE, TechnicalUserCheck
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Technical User: Process Steps and Queries")
 
 
-@controller.get("/{id}", summary="Can the account be used for a connector?")
-def check_technical_user(id: str, companyId: str, offerSubscriptionId: str | None = None, _: dict = Permission):
+@controller.get("/{id}", summary="Can the account be used for a connector?", response_model=TechnicalUserCheck,
+                **WIRE)
+def check_technical_user(id: str, companyId: str, offerSubscriptionId: str | None = None, _: dict = Permission) -> dict:
     return interface.check_technical_user(id=id, companyId=companyId, offerSubscriptionId=offerSubscriptionId)

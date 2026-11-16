@@ -31,6 +31,8 @@ import datetime as dt
 import uuid
 from dataclasses import dataclass
 
+from portal_common.models import StepRequest
+
 from ..managers.technical_user_repository import repository
 from ..models import ActorType, TechnicalUserRecord
 
@@ -53,9 +55,10 @@ class Actor:
         return cls(ActorType.PERSON, sub)
 
     @classmethod
-    def process(cls, step_input: dict | None = None) -> Actor:
-        step_input = step_input or {}
-        return cls(ActorType.PROCESS, None, step_input.get("processId"), step_input.get("stepRunId"))
+    def process(cls, step: StepRequest | None = None) -> Actor:
+        if step is None:
+            return cls(ActorType.PROCESS)
+        return cls(ActorType.PROCESS, None, step.process_id, step.step_run_id)
 
 
 def record(row: TechnicalUserRecord, operation: str, actor: Actor) -> None:

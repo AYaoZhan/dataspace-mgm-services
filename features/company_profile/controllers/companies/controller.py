@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from fastapi import Body
 
+from features.company_profile.models.company import AttestationUpdateResult, Company
 from features.company_profile.services import company_service, company_views
 from features.company_profile.services.shared import MODULE
 from portal_common.routing import Controller, Permission, company_scope
@@ -34,18 +35,19 @@ controller = Controller("Company Profile: Own Company")
 
 
 @controller.get("/{companyId}")
-def read_own_company(companyId: str, claims: dict = Permission):
+def read_own_company(companyId: str, claims: dict = Permission) -> Company:
     company_scope(MODULE, claims, companyId)
-    return company_views.role_view(companyId)
+    return company_views.company_view(companyId)
 
 
 @controller.post("/{companyId}/attestation-updates")
-def update_from_attestation(companyId: str, body: dict = Body(...), claims: dict = Permission):
+def update_from_attestation(companyId: str, body: dict = Body(...),
+                            claims: dict = Permission) -> AttestationUpdateResult:
     company_scope(MODULE, claims, companyId)
     return company_service.update_company_from_attestation(companyId, body, claims.get("sub"))
 
 
 @controller.patch("/{companyId}")
-def update_own_company(companyId: str, body: dict = Body(...), claims: dict = Permission):
+def update_own_company(companyId: str, body: dict = Body(...), claims: dict = Permission) -> Company:
     company_scope(MODULE, claims, companyId)
     return company_service.update_company(companyId, body, claims.get("sub"))

@@ -39,12 +39,13 @@ import uvicorn
 from fastapi import FastAPI
 
 from conftest import BASE, person_token
-from modules.c11_m1 import router as c11
+from features import notifications as c11
+from features.notifications.managers import store as c11_store
+from features.notifications.router import router as c11_router
 from modules.c12_m1 import engine as eng
 from modules.c12_m1 import router as c12
-from portal_common import events
+from portal_common import events, problems
 from portal_common import http as phttp
-from portal_common import problems
 from tools import test_iam
 
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
@@ -76,7 +77,7 @@ def server(monkeypatch):
     c11.reset()
     app = FastAPI()
     problems.install(app)
-    for r in (test_iam.router, c12.router, c11.router):
+    for r in (test_iam.router, c12.router, c11_router):
         app.include_router(r)
     phttp.register_local(BASE, app)   # JWKS of the test IAM for the token check
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="off",
@@ -219,7 +220,7 @@ def test_reconnect_replays_missed_process_events(server):
 def test_stream_needs_a_token_in_the_header(server):
     pid = str(uuid.uuid4())
     for path in (f"/api/c12-m1/processes/{pid}/events", f"/api/c12-m1/applications/{APPLICATION}/events",
-                 "/api/c11-m1/notifications/events"):
+                 "/api/notifications/notifications/events"):
         assert server(path).status == 401
         assert server(path, token="not-a-token").status == 401
         token_in_url = server(f"{path}?access_token={person_token('otto')}")
@@ -231,14 +232,14 @@ def test_stream_needs_a_token_in_the_header(server):
 
 
 def test_inbox_stream_created_and_done(server):
-    erika = server("/api/c11-m1/notifications/events", "erika")
-    otto = server("/api/c11-m1/notifications/events", "otto")
+    erika = server("/api/notifications/notifications/events", "erika")
+    otto = server("/api/notifications/notifications/events", "otto")
     trigger = submitted()
     c11.on_event(trigger)
     created = erika.next()
     assert created["event"] == "notification-created" and created["data"]["type"] == "APPLICATION_SUBMITTED"
     assert "content" not in created["data"] and otto.quiet(0.3)
-    assert c11.notifications[0]["sourceEventId"] == trigger["id"]   # the CloudEvent `id` (FRAMEWORK 6)
+    assert c11_store.notifications()[0]["sourceEventId"] == trigger["id"]   # the CloudEvent `id` (FRAMEWORK 6)
     pid = str(uuid.uuid4())
     c11.on_event(ev("ProcessStepFailed", processId=pid, flowKey="onboarding", subjectType="APPLICATION",
                     subjectId=APPLICATION, stepKey="register-company", errorType="x", retryable=False))
@@ -251,12 +252,12 @@ def test_inbox_stream_created_and_done(server):
 
 
 def test_inbox_reconnect_replays_or_resyncs(server):
-    s = server("/api/c11-m1/notifications/events", "erika")
+    s = server("/api/notifications/notifications/events", "erika")
     c11.on_event(submitted())
     last = s.next()["id"]
     s.stop.set()
     c11.on_event(ev("ApplicationCompleted", applicationId=APPLICATION))
-    again = server("/api/c11-m1/notifications/events", "erika", last_id=last)
+    again = server("/api/notifications/notifications/events", "erika", last_id=last)
     assert again.next()["data"]["type"] == "APPLICATION_COMPLETED"
-    unknown = server("/api/c11-m1/notifications/events", "erika", last_id="gone-1")
+    unknown = server("/api/notifications/notifications/events", "erika", last_id="gone-1")
     assert unknown.next()["event"] == "resync"

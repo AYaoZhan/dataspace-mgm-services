@@ -3,7 +3,10 @@
 **Status:** proposed (9 Nov 2026, updated 13 Nov 2026), proof of concept with the onboarding: the features `registration` (C1-M2) and
 `company_profile` (C3-M1), migrated from the hackathon folders `modules/c1_m2/` and `modules/c3_m1/`; then
 `technical_user` (C2-M3) from `modules/c2_m3/`.
-Then `app_access` (C2-M2) from `modules/c2_m2/`.
+Also migrated: `csp_connection` (C3-M2) from `modules/c3_m2/`.
+Then `notifications` (C11-M1) from `modules/c11_m1/`.
+Also migrated: `connector` (C6-M1) from `modules/c6_m1/`.
+Also migrated: `app_access` (C2-M2) from `modules/c2_m2/`.
 **Builds on:** [ADR-0002](ADR-0002-runtime-per-module.md) (one image, many runtimes), the call convention of
 `AGENTS.md`, and the layered backend of the Eclipse Tractus-X Industry Core Hub (`controllers/`, `services/`,
 `managers/`, `models/`, `runtimes/`).
@@ -125,11 +128,16 @@ adapters, models, and runtimes that assemble the app.
      stays below `max_connections` (PgBouncer when it does not). A feature that outgrows the shared instance moves to
      its own with dump and restore plus a new URL, without a code change.
    - **State of the PoC:**
-     - `company_profile` has a PostgreSQL transport (`managers/postgres_backend.py`) that reads the interim
-       variable `C3_M1_DATABASE_URL`, with the plain `DATABASE_URL` as fallback for a single-feature runtime (#54);
+     - `company_profile` keeps its state in SQLModel tables (`models/tables.py`) on `portal_common.database`, so it
+       reads `COMPANY_PROFILE_DATABASE_URL`, then `C3_M1_DATABASE_URL`, then `DATABASE_URL`, and runs on a private
+       in-memory SQLite database without one; the tables are created at start (no migrations yet);
      - `registration` and `technical_user` keep their data in memory;
-     - `app_access` (C2-M2) has a PostgreSQL DAO layer with Alembic migrations (`managers/dao/`) and reads
-       `C2_M2_DATABASE_URL` (`managers/config/application.properties`), so in today's monolith the two no longer share one
+     - `csp_connection` keeps its tables in its own database through `portal_common.database` (SQLModel);
+     - `notifications` keeps its inbox in SQLModel tables of its own database (`portal_common.database`);
+     - `connector` keeps its register in SQLModel tables of its own database (`portal_common.database`);
+     - `app_access` (C2-M2) keeps its tables in SQLModel tables of its own database (`portal_common.database`), with
+       Alembic migrations on PostgreSQL, and reads `APP_ACCESS_DATABASE_URL` or `C2_M2_DATABASE_URL`, so in today's
+       monolith the two no longer share one
        database as long as the plain `DATABASE_URL` stays unset.
 
      `portal_common.database` (SQLModel engine and session per feature, URL order of decision 6) is in place.

@@ -27,7 +27,7 @@
 module of the repository, C12 with its worker and the event relay) plus the shared CSP stand-in
 with `asyncOperations`. The CSP answers register-company with 202. The test only plays the CSP's
 operator, who finishes the operation at the CSP (`POST /admin/operations/{id}/complete` of the
-stand-in); the CSP then calls back POST /api/c3-m2/csp-notifications itself, with the token of its
+stand-in); the CSP then calls back POST /api/csp-connection/csp-notifications itself, with the token of its
 service account `sa-csp` from the Portal IAM, and Process Orchestration finishes the onboarding
 (README 4, 7.2, 8.1, 13 case 4; FRAMEWORK 5.2). Scenario 1 of demo.py drives it and checks it."""
 import contextlib
@@ -40,7 +40,7 @@ from fastapi.testclient import TestClient
 import demo
 from conftest import BASE, needs_admin_api
 from modules.c12_m1 import engine as eng
-from modules.c3_m2 import store
+from features.csp_connection.managers import store
 from portal_common import csp as csp_client
 from portal_common import http as phttp
 from scaffold import app as scaffold_app
@@ -48,14 +48,14 @@ from tools.csp_standin.app import create_app as create_csp
 from tools.keys import ec_jwk
 
 CSP = "http://csp.test"
-NOTIFICATIONS = f"{BASE}/api/c3-m2/csp-notifications"
+NOTIFICATIONS = f"{BASE}/api/csp-connection/csp-notifications"
 
 
 def csp_operator(csp, stop: threading.Event) -> None:
     """Finishes every operation the CSP started for C3-M2, once C3-M2 waits for it (status PENDING)."""
     done: set[str] = set()
     while not stop.is_set():
-        for row in list(store.registrations.values()):
+        for row in store.registrations():
             operation = row.pending_operation_id
             if row.status == "PENDING" and operation and operation not in done:
                 done.add(operation)
@@ -106,7 +106,7 @@ def test_onboarding_completes_through_the_csp_callback(tmp_path, monkeypatch):
         assert ok and not failed, failed
 
         # 1. the CSP answered register-company with 202: the operation was long-running
-        registered = [a for a in store.audit if a.operation == "register-company"]
+        registered = [a for a in store.audit_entries() if a.operation == "register-company"]
         assert [a.http_status for a in registered] == [202], registered
 
         # 2. the CSP itself called back, authenticated as sa-csp through the Portal IAM, and C3-M2 took it
@@ -119,7 +119,7 @@ def test_onboarding_completes_through_the_csp_callback(tmp_path, monkeypatch):
         # 3. C3-M2 holds the company as REGISTERED with the BPN of the callback, nothing left aside
         row = store.find_by_bpn(bpn)
         assert row is not None and (row.status, row.membership) == ("REGISTERED", "REGISTERED")
-        assert row.pending_operation_id is None and store.early_completions == {}
+        assert row.pending_operation_id is None and store.early_completions() == []
 
         # 4. C12: register-company first answered RUNNING, the completing event finished it with that
         #    BPN, and the rest of the onboarding ran after it
