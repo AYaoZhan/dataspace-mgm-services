@@ -1,0 +1,61 @@
+#################################################################################
+#  Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+#  See the NOTICE file(s) distributed with this work for additional
+#  information regarding copyright ownership.
+#
+#  This program and the accompanying materials are made available under the
+#  terms of the Apache License, Version 2.0 which is available at
+#  https://www.apache.org/licenses/LICENSE-2.0.
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#  License for the specific language governing permissions and limitations
+#  under the License.
+#
+#  AI Disclosure: This file was entirely AI-generated.
+#  The AI-generated portions are made available under CC0-1.0 and not subject
+#  to the project's license. The human contributor has reviewed and verified
+#  that the code is correct.
+#
+#  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
+#  Assisted-By: Claude Code (claude-opus-5-5)
+#################################################################################
+"""In-process contract of the subscriptions (call convention, AGENTS.md): the steps `notify-provider` and
+`send-activation-callback` (client ID of the instance and a rotated secret of the technical user to the provider's
+`callbackUrl`, C10-M1 11.2) and the queries of section 9 under their convention names. Other modules and Process
+Orchestration import only from here; the logic lives in `services/`."""
+from __future__ import annotations
+
+from features.subscriptions import services
+from features.subscriptions.models.subscription import MODULE
+from features.subscriptions.services import reset
+from portal_common import standin
+
+__all__ = ["MODULE", "find_subscriptions", "get_subscription_internal", "notify_provider", "reset",
+           "send_activation_callback"]
+
+
+# -- steps for Process Orchestration: input = JSON body incl. processId and stepRunId ---------------
+def notify_provider(input: dict) -> dict:
+    return services.notify_provider(input)
+
+
+def send_activation_callback(input: dict) -> dict:
+    return services.send_activation_callback(input)
+
+
+# -- queries (section 9) -------------------------------------------------------------------------------
+def find_subscriptions(*, customerCompanyId: str | None = None, offerId: str | None = None,
+                       status: list[str] | str | None = None, **_other) -> list[dict]:
+    """9.1: `SubscriptionRef` of the matching subscriptions."""
+    return services.find_subscriptions(customerCompanyId=customerCompanyId, offerId=offerId, status=status)
+
+
+def get_subscription_internal(*, offerSubscriptionId: str) -> dict:
+    """9.2: `SubscriptionInternal`."""
+    return services.get_subscription_internal(offerSubscriptionId=offerSubscriptionId)
+
+
+__getattr__ = standin.missing_interface(MODULE)   # steps and queries not implemented yet: stand-in
