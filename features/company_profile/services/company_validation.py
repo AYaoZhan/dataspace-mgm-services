@@ -42,14 +42,23 @@ import unicodedata
 from pathlib import Path
 
 from features.company_profile.managers.company_repository import value_normalized  # noqa: F401 (part of this API)
+from features.company_profile.models.value_sets import (
+    CompanyStatus,
+    CoreDataSource,
+    DeactivationReason,
+    IdentifierSource,
+    IdentifierType,
+    MediaType,
+    values,
+)
 from portal_common import settings
 
-IDENTIFIER_TYPES = ("EUID", "EBWOID", "VAT_ID", "COMMERCIAL_REG_NUMBER", "LEI_CODE", "EORI")
-IDENTIFIER_SOURCES = ("BUSINESS_WALLET", "DECLARED")
-STATUSES = ("REQUESTED", "ACTIVE", "REJECTED", "INACTIVE")
-DEACTIVATION_REASONS = ("MANUAL", "TRANSFERRED")
-CORE_DATA_SOURCES = ("EBW", "MANUAL")
-MEDIA_TYPES = ("application/pdf", "image/png", "image/jpeg")
+IDENTIFIER_TYPES = values(IdentifierType)
+IDENTIFIER_SOURCES = values(IdentifierSource)
+STATUSES = values(CompanyStatus)
+DEACTIVATION_REASONS = values(DeactivationReason)
+CORE_DATA_SOURCES = values(CoreDataSource)
+MEDIA_TYPES = values(MediaType)
 
 NAME_MAX = 160
 SHORT_NAME_MAX = 100
@@ -224,15 +233,10 @@ def validate_company(data: dict, *, partial: bool = False) -> list[dict]:
         bpn = flat["bpn"]
         if not isinstance(bpn, str) or not BPN_PATTERN.match(bpn.upper()):
             errors.append(_error("bpn", "format"))
-    if flat.get("status") not in (None, ""):
-        if flat["status"] not in STATUSES:
-            errors.append(_error("status", "unknown"))
-    if flat.get("deactivation_reason") not in (None, ""):
-        if flat["deactivation_reason"] not in DEACTIVATION_REASONS:
-            errors.append(_error("deactivation_reason", "unknown"))
-    if flat.get("core_data_source") not in (None, ""):
-        if flat["core_data_source"] not in CORE_DATA_SOURCES:
-            errors.append(_error("core_data_source", "unknown"))
+    for field, allowed in (("status", STATUSES), ("deactivation_reason", DEACTIVATION_REASONS),
+                           ("core_data_source", CORE_DATA_SOURCES)):
+        if flat.get(field) not in (None, "") and flat[field] not in allowed:
+            errors.append(_error(field, "unknown"))
     return errors
 
 

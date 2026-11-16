@@ -124,8 +124,9 @@ adapters, models, and runtimes that assemble the app.
      stays below `max_connections` (PgBouncer when it does not). A feature that outgrows the shared instance moves to
      its own with dump and restore plus a new URL, without a code change.
    - **State of the PoC:**
-     - `company_profile` has a PostgreSQL transport (`managers/postgres_backend.py`) that reads the interim
-       variable `C3_M1_DATABASE_URL`, with the plain `DATABASE_URL` as fallback for a single-feature runtime (#54);
+     - `company_profile` keeps its state in SQLModel tables (`models/tables.py`) on `portal_common.database`, so it
+       reads `COMPANY_PROFILE_DATABASE_URL`, then `C3_M1_DATABASE_URL`, then `DATABASE_URL`, and runs on a private
+       in-memory SQLite database without one; the tables are created at start (no migrations yet);
      - `registration` and `technical_user` keep their data in memory;
      - C2-M2 (not migrated) reads `C2_M2_DATABASE_URL`, so in today's monolith the two no longer share one
        database as long as the plain `DATABASE_URL` stays unset.

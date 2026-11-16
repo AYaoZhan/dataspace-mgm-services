@@ -21,5 +21,6 @@
 #
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: GitHub Copilot (claude-opus-5.5)
-"""Managers of the company profile: the company repository with its memory and PostgreSQL backends.
+"""Managers of the company profile: the company repository on the feature's own database
+(SQLModel tables of `models/tables.py`), the configuration and the stand-in data.
 """
