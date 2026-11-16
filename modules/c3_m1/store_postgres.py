@@ -38,7 +38,6 @@ import contextlib
 import datetime as dt
 import hashlib
 import json
-import os
 import zlib
 import uuid
 from pathlib import Path
@@ -64,9 +63,10 @@ COMPANY_KEYWORDS = (
 )
 
 def _dsn() -> str:
-    dsn = os.environ.get("DATABASE_URL")
+    from .store import database_url   # at call time: store imports this module on first use
+    dsn = database_url()
     if not dsn:
-        raise RuntimeError("DATABASE_URL is empty; the PostgreSQL transport needs the database `c3_m1`")
+        raise RuntimeError("C3_M1_DATABASE_URL (or DATABASE_URL) is empty; the PostgreSQL transport needs the database `c3_m1`")
     return dsn
 
 

@@ -22,5 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Align the Docker build and runtime images with the project's required Python 3.12 version.
+- Every module of an installation reads its own database variable (`C2_M2_DATABASE_URL`, `C3_M1_DATABASE_URL`); `DATABASE_URL` stays the fallback for a module that runs alone. Before, one `DATABASE_URL` switched C2-M2 and C3-M1 to the same database ([#54](https://github.com/eclipse-tractusx/dataspace-mgm-services/issues/54)).
 
 [Unreleased]: https://github.com/eclipse-tractusx/dataspace-mgm-service/commits/main

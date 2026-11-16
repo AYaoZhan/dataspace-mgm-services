@@ -53,7 +53,7 @@ def _truncate(url: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _empty_c2_m2_database():
-    url = os.environ.get("DATABASE_URL")
+    url = os.environ.get("C2_M2_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if url:
         module.reset()
         _truncate(url)
