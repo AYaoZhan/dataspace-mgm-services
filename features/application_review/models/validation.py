@@ -26,18 +26,12 @@
 400 `validation` that the HTTP layer answers, with the field and the message, never the input value."""
 from __future__ import annotations
 
-from typing import TypeVar
-
 from pydantic import BaseModel, ValidationError
 
-from portal_common.problems import Problem
-
-from ..models.value_sets import MODULE
-
-Model = TypeVar("Model", bound=BaseModel)
+from .errors import problem
 
 
-def parse(model: type[Model], data: object) -> Model:
+def parse[Model: BaseModel](model: type[Model], data: object) -> Model:
     """`data` as `model`; an instance of the model is passed through unchanged (HTTP already validated it)."""
     if isinstance(data, model):
         return data
@@ -46,4 +40,4 @@ def parse(model: type[Model], data: object) -> Model:
     except ValidationError as exc:
         errors = [{"field": ".".join(str(part) for part in issue["loc"]), "message": issue["msg"]}
                   for issue in exc.errors(include_url=False, include_input=False, include_context=False)]
-        raise Problem(MODULE, 400, "validation", errors=errors, retryable=False) from exc
+        raise problem(400, "validation", errors=errors, retryable=False) from exc

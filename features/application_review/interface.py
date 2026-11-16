@@ -24,15 +24,17 @@
 #################################################################################
 """In-process contract of the application review (call convention, AGENTS.md): the steps `open-review` and
 `close-review` of README 8, the query `getReviewStatusByApplication` of README 9, and the decisions of OSP staff
-(README 7). Other modules and Process Orchestration import only from here and get the JSON form of the answer
-(camelCase, as over HTTP); the logic lives in `services/`."""
+(README 7). The controllers, other modules and Process Orchestration import only from here and get the JSON form
+of the answer (camelCase, as over HTTP); the logic lives in `services/`."""
 from __future__ import annotations
 
-from pydantic import BaseModel
+from collections.abc import Sequence
 
 from features.application_review import services
+from features.application_review.models.requests import CloseReviewStep, OpenReviewStep
 from features.application_review.models.value_sets import MODULE
 from features.application_review.services import config, reset
+from portal_common.models import ApiModel
 
 __all__ = [
     "MODULE", "approve", "close_review", "config", "decline", "get_case", "get_review_status_by_application",
@@ -40,27 +42,27 @@ __all__ = [
 ]
 
 
-def _json(model: BaseModel) -> dict:
+def _json(model: ApiModel) -> dict:
     """The answer as over HTTP: JSON field names, fields that were never set left out."""
     return model.model_dump(mode="json", by_alias=True, exclude_unset=True)
 
 
 # -- steps for Process Orchestration (README 8): input = JSON body incl. processId and stepRunId ---
-def open_review(input: dict) -> dict:
+def open_review(input: dict | OpenReviewStep) -> dict:
     return _json(services.open_review(input))
 
 
-def close_review(input: dict) -> dict:
+def close_review(input: dict | CloseReviewStep) -> dict:
     return _json(services.close_review(input))
 
 
 # -- queries for other modules (README 9): parameters by their openapi names ------------------------
-def get_review_status_by_application(*, applicationId: str, **_other) -> dict:
+def get_review_status_by_application(*, applicationId: str, **_other: object) -> dict:
     return _json(services.get_review_status_by_application(applicationId=applicationId))
 
 
 # -- operations of OSP staff (README 7) -----------------------------------------------------------
-def list_cases(status: list[str] | None, kind: list[str] | None, verification: list[str] | None,
+def list_cases(status: Sequence[str] | None, kind: Sequence[str] | None, verification: Sequence[str] | None,
                application_id: str | None, page: int, size: int) -> dict:
     return _json(services.list_cases(status, kind, verification, application_id, page, size))
 

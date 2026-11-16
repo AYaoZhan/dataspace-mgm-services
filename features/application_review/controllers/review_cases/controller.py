@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from fastapi import Body, Query
 
-from features.application_review import services
+from features.application_review import interface
 from features.application_review.models.requests import ApproveRequest, DeclineRequest
 from features.application_review.models.review_case import ReviewCase, ReviewCasePage
 from features.application_review.models.value_sets import Kind, Status, Verification
@@ -39,20 +39,20 @@ controller = Controller("Application Review: Review Cases")
 @controller.get("", response_model=ReviewCasePage, response_model_exclude_unset=True)
 def list_review_cases(status: list[Status] | None = Query(None), kind: list[Kind] | None = Query(None),
                       verification: list[Verification] | None = Query(None), applicationId: str | None = None,
-                      page: int = Page, size: int = Size, _: dict = Permission):
-    return services.list_cases(status, kind, verification, applicationId, page, size)
+                      page: int = Page, size: int = Size, _: dict = Permission) -> dict:
+    return interface.list_cases(status, kind, verification, applicationId, page, size)
 
 
 @controller.get("/{reviewCaseId}", response_model=ReviewCase, response_model_exclude_unset=True)
-def get_review_case(reviewCaseId: str, _: dict = Permission):
-    return services.get_case(reviewCaseId)
+def get_review_case(reviewCaseId: str, _: dict = Permission) -> dict:
+    return interface.get_case(reviewCaseId)
 
 
 @controller.post("/{reviewCaseId}/approve", response_model=ReviewCase, response_model_exclude_unset=True)
-def approve_review_case(reviewCaseId: str, body: ApproveRequest | None = Body(None), claims: dict = Permission):
-    return services.approve(reviewCaseId, claims["sub"], body.comment if body else None)
+def approve_review_case(reviewCaseId: str, body: ApproveRequest | None = Body(None), claims: dict = Permission) -> dict:
+    return interface.approve(reviewCaseId, claims["sub"], body.comment if body else None)
 
 
 @controller.post("/{reviewCaseId}/decline", response_model=ReviewCase, response_model_exclude_unset=True)
-def decline_review_case(reviewCaseId: str, body: DeclineRequest, claims: dict = Permission):
-    return services.decline(reviewCaseId, claims["sub"], body.reason)
+def decline_review_case(reviewCaseId: str, body: DeclineRequest, claims: dict = Permission) -> dict:
+    return interface.decline(reviewCaseId, claims["sub"], body.reason)

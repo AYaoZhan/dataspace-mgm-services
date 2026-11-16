@@ -31,8 +31,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from conftest import BASE, bearer, person_token
 import features.application_review as feature
+from conftest import BASE, bearer, person_token
 from features.application_review import interface, router
 from features.application_review.managers import neighbour_client
 from features.application_review.managers import review_case_repository as repo
@@ -301,7 +301,8 @@ def test_08_not_submitted_and_unknown(env):
     assert problem(e)["status"] == 409 and problem(e)["type"] == "urn:c1-m3:problem:invalid-state"
     assert problem(e)["retryable"] is False and not repo.count()
     with pytest.raises(Problem) as e:
-        interface.open_review({"processId": standin.stable_id("p"), "stepRunId": standin.stable_id("s"), "applicationId": standin.stable_id("unknown")})
+        interface.open_review({"processId": standin.stable_id("p"), "stepRunId": standin.stable_id("s"),
+                               "applicationId": standin.stable_id("unknown")})
     assert problem(e)["status"] == 404 and problem(e)["retryable"] is False
 
 
@@ -528,7 +529,8 @@ def test_23_permissions(env, client):
     cid = case_id("A1")
     for method, path in (("GET", "/review-cases"), ("GET", f"/review-cases/{cid}"),
                          ("POST", f"/review-cases/{cid}/approve"), ("POST", f"/review-cases/{cid}/decline")):
-        assert client.request(method, "/api/application-review" + path, headers=_h("erika"), json={"reason": "x"}).status_code == 403
+        r = client.request(method, "/api/application-review" + path, headers=_h("erika"), json={"reason": "x"})
+        assert r.status_code == 403
     assert client.get("/api/application-review/review-cases", headers=_h("otto")).status_code == 200
     assert approve(client, "A1", "otto").status_code == 403
     assert client.get("/api/application-review/review-cases").status_code == 401

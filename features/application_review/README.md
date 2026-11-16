@@ -71,12 +71,11 @@ such neighbour rejected the request; `upstream-error`, retryable, otherwise).
 | `controllers/steps/` | `POST /steps/open-review`, `POST /steps/close-review` |
 | `controllers/internal/review_cases/` | `GET /internal/review-cases?applicationId=...` |
 | `services/review_cases.py` | status rules, four-eyes principle, own application, automatic approval, decisions, steps, query, audit log entries, events; returns the API models |
-| `services/validation.py` | validates in-process step input into the step models (400 `validation`) |
 | `services/checks.py` | the six checks of the pre-check (README 6.2) and the evaluation of the CSP matches (README 6.3) |
 | `managers/review_case_repository.py` | the only code that opens a database session: review cases (looked up by id or application), paged lists, audit log; its lock stands for the row lock of README 6.8 |
 | `managers/neighbour_client.py` | calls to C1-M2, C3-M1 and C3-M2 through `portal_common.neighbours`, with the built-in stand-in files |
 | `managers/config.py` | the configuration of README 4 |
-| `models/` | `value_sets.py` (status, kind, check keys and results as `Literal`), `requests.py` (`ApproveRequest`, `DeclineRequest`, the step inputs `OpenReviewStep`, `CloseReviewStep` on `StepRequest`), `review_case.py` (`ReviewCase`, `ReviewCaseSummary`, `ReviewCasePage` = `Page[ReviewCaseSummary]`, `ReviewStatusInfo`, the step results in `StepResult[...]`), `tables.py` (SQLModel tables `review_case` and `audit_log`) |
+| `models/` | `value_sets.py` (status, kind, check keys and results as `StrEnum`), `errors.py` (the Problem factory), `validation.py` (in-process step input into the step models, 400 `validation`), `requests.py` (`ApproveRequest`, `DeclineRequest`, the step inputs `OpenReviewStep`, `CloseReviewStep` on `StepRequest`), `review_case.py` (`ReviewCase`, `ReviewCaseSummary`, `ReviewCasePage` = `Page[ReviewCaseSummary]`, `ReviewStatusInfo`, the step results in `StepResult[...]`), `tables.py` (SQLModel tables `review_case` and `audit_log`) |
 
 All paths are relative to the base path `/api/application-review`.
 
@@ -85,7 +84,7 @@ All paths are relative to the base path `/api/application-review`.
 `interface.py` is the contract that other modules and Process Orchestration call: the steps `open_review(input)` and
 `close_review(input)`, the query `get_review_status_by_application(applicationId=...)`, and the operations of staff
 `list_cases`, `get_case`, `approve`, `decline`, plus `reset()` and `config()`. They take the JSON input of the spec
-and return the JSON form of the answer (camelCase), the same as over HTTP. The controllers call `services/` directly
+and return the JSON form of the answer (camelCase), the same as over HTTP. The controllers call this interface too
 and declare the models as body and `response_model`.
 
 ### Events

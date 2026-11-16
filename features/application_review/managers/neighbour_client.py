@@ -36,20 +36,21 @@ import re
 from pathlib import Path
 
 from portal_common import neighbours
-from portal_common.problems import Problem
 
+from ..models.errors import problem
 from ..models.value_sets import MODULE
 from . import config
+
 C1_M2, C3_M1, C3_M2 = "c1-m2", "c3-m1", "c3-m2"
 
 
 def _stub(var: str, target: str) -> list[dict]:
     path = config.stub_file(var)
     if not path:
-        raise Problem(MODULE, 502, "upstream-error", detail=f"{target} stand-in: {var} not set", retryable=True)
+        raise problem(502, "upstream-error", detail=f"{target} stand-in: {var} not set", retryable=True)
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if data == "unavailable" or not isinstance(data, list):
-        raise Problem(MODULE, 502, "upstream-error", detail=f"{target} not reachable", retryable=True)
+        raise problem(502, "upstream-error", detail=f"{target} not reachable", retryable=True)
     return data
 
 

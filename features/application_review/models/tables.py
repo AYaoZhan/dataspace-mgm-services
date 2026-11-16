@@ -30,14 +30,19 @@ the one of the API models in `review_case.py`, in JSON field names.
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import JSON, Column
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from portal_common import database
 
-from .value_sets import MODULE
+from .value_sets import MODULE, Kind, Status, Verification
 
-Table = database.table_base(MODULE)
+if TYPE_CHECKING:
+    Table = SQLModel   # the static type of the base; at run time it is the feature's own base and MetaData
+else:
+    Table = database.table_base(MODULE)
 
 
 class ReviewCaseRow(Table, table=True):
@@ -48,11 +53,11 @@ class ReviewCaseRow(Table, table=True):
     id: str = Field(primary_key=True)
     application_id: str = Field(index=True, unique=True)
     company_id: str
-    kind: str
+    kind: Kind
     existing_company: bool
-    verification: str
+    verification: Verification
     applicant_sub: str | None = None
-    status: str = Field(index=True)
+    status: Status = Field(index=True)
     opened_at: str
     seq: int = Field(index=True)   # order of opening: lists are sorted oldest first (7.1)
     csp_bpn: str | None = None

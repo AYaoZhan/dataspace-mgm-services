@@ -32,14 +32,15 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from collections.abc import Sequence
 
 from portal_common import events
 from portal_common.models import StepResult
-from portal_common.problems import Problem
 
 from ..managers import neighbour_client
 from ..managers import review_case_repository as repository
 from ..managers.config import config
+from ..models.errors import problem
 from ..models.requests import CloseReviewStep, OpenReviewStep
 from ..models.review_case import (
     ApplicationBrief,
@@ -53,9 +54,9 @@ from ..models.review_case import (
     ReviewStatusInfo,
 )
 from ..models.tables import AuditLogRow, ReviewCaseRow
-from ..models.value_sets import CHECK_ORDER, IN_REVIEW, MODULE
+from ..models.validation import parse
+from ..models.value_sets import CHECK_ORDER, IN_REVIEW, MODULE, Status
 from . import checks
-from .validation import parse
 
 _COUNTS = {"passed": "PASSED", "failed": "FAILED", "not_applicable": "NOT_APPLICABLE", "error": "ERROR"}
 
@@ -88,7 +89,7 @@ def _event_fields(case: ReviewCaseRow) -> dict:
 
 def _approved(case: ReviewCaseRow, sub: str | None, comment: str | None, auto: bool = False) -> None:
     now = _now()
-    case.status, case.changed_at = "APPROVED", now
+    case.status, case.changed_at = Status.APPROVED, now
     case.decision = {"decidedAt": now, "comment": comment, "decidedBy": sub, "autoApproved": auto}
     data = _event_fields(case)
     if case.kind in ("TRANSFER", "REACTIVATION"):
@@ -108,20 +109,20 @@ def view(case: ReviewCaseRow, application: dict | None = None) -> ReviewCase:
     return ReviewCase.model_validate(data)
 
 
-def _new_case(app: dict, status: str) -> ReviewCaseRow:
+def _new_case(app: dict, status: Status) -> ReviewCaseRow:
     now = _now()
     return ReviewCaseRow(
         id=str(uuid.uuid4()), application_id=app["id"], company_id=app["companyId"], kind=app["kind"],
         existing_company=bool(app.get("existingCompany")), verification=app["verification"],
         applicant_sub=(app.get("applicant") or {}).get("sub"), status=status, opened_at=now,
-        seq=repository.next_seq(), closure={"closedAt": now, "reason": "WITHDRAWN"} if status == "CLOSED" else None,
-        changed_at=now)
+        seq=repository.next_seq(), changed_at=now,
+        closure={"closedAt": now, "reason": "WITHDRAWN"} if status == Status.CLOSED else None)
 
 
 def _application(application_id: str) -> dict:
     app = neighbour_client.get_application(application_id)
     if app is None:
-        raise Problem(MODULE, 404, "not-found", detail="application unknown", retryable=False)
+        raise problem(404, "not-found", detail="application unknown", retryable=False)
     return app
 
 
@@ -172,11 +173,11 @@ def open_review(input: dict | OpenReviewStep) -> StepResult[OpenReviewResult]:
             app = _application(aid)
             if case is None:
                 if app["status"] == "SUBMITTED":
-                    case = _new_case(app, "OPEN")
+                    case = _new_case(app, Status.OPEN)
                 elif app["status"] == "WITHDRAWN":
-                    case = _new_case(app, "CLOSED")
+                    case = _new_case(app, Status.CLOSED)
                 else:
-                    raise Problem(MODULE, 409, "invalid-state", detail=f"application is {app['status']}",
+                    raise problem(409, "invalid-state", detail=f"application is {app['status']}",
                                   retryable=False)
             if case.status == "OPEN":
                 _run_checks(case, app, cfg)
@@ -186,10 +187,10 @@ def open_review(input: dict | OpenReviewStep) -> StepResult[OpenReviewResult]:
             case = repository.save(case)
         _audit(case, "open-review", step=step)
         if errors and set(errors) <= set(case.rejected):   # a repetition does not help (OPEN-QUESTIONS 11)
-            raise Problem(MODULE, 502, "neighbour-rejected", detail=f"checks with ERROR: {', '.join(errors)}",
+            raise problem(502, "neighbour-rejected", detail=f"checks with ERROR: {', '.join(errors)}",
                           pendingChecks=errors, retryable=False)
         if errors:
-            raise Problem(MODULE, 502, "upstream-error", detail=f"checks with ERROR: {', '.join(errors)}",
+            raise problem(502, "upstream-error", detail=f"checks with ERROR: {', '.join(errors)}",
                           pendingChecks=errors, retryable=True)
         outcomes = [CheckOutcome.model_validate(c) for c in _ordered_checks(case)]
         return StepResult[OpenReviewResult].done(step, OpenReviewResult(
@@ -204,13 +205,13 @@ def close_review(input: dict | CloseReviewStep) -> StepResult[CloseReviewResult]
         if case is None:
             app = _application(aid)
             if app["status"] != "WITHDRAWN":
-                raise Problem(MODULE, 409, "invalid-state", detail=f"application is {app['status']}", retryable=False)
-            case = repository.save(_new_case(app, "CLOSED"))
+                raise problem(409, "invalid-state", detail=f"application is {app['status']}", retryable=False)
+            case = repository.save(_new_case(app, Status.CLOSED))
         elif case.status == "APPROVED":
-            raise Problem(MODULE, 409, "invalid-state", detail="review case already approved", retryable=False)
+            raise problem(409, "invalid-state", detail="review case already approved", retryable=False)
         elif case.status in IN_REVIEW:
             now = _now()
-            case.status, case.changed_at, case.closure = "CLOSED", now, {"closedAt": now, "reason": step.reason}
+            case.status, case.changed_at, case.closure = Status.CLOSED, now, {"closedAt": now, "reason": step.reason}
             case = repository.save(case)
         _audit(case, "close-review", step=step)
         return StepResult[CloseReviewResult].done(step, CloseReviewResult(
@@ -218,10 +219,10 @@ def close_review(input: dict | CloseReviewStep) -> StepResult[CloseReviewResult]
 
 
 # ------------------------------------------------------------------------------ query (README 9)
-def get_review_status_by_application(*, applicationId: str, **_other) -> ReviewStatusInfo:
+def get_review_status_by_application(*, applicationId: str, **_other: object) -> ReviewStatusInfo:
     case = repository.by_application(applicationId)
     if case is None:
-        raise Problem(MODULE, 404, "not-found")
+        raise problem(404, "not-found")
     return ReviewStatusInfo(review_case_id=case.id, application_id=applicationId, status=case.status,
                             decided_at=(case.decision or {}).get("decidedAt"))
 
@@ -230,7 +231,7 @@ def get_review_status_by_application(*, applicationId: str, **_other) -> ReviewS
 def _case(case_id: str) -> ReviewCaseRow:
     case = repository.get(case_id)
     if case is None:
-        raise Problem(MODULE, 404, "not-found")
+        raise problem(404, "not-found")
     return case
 
 
@@ -245,7 +246,7 @@ def _summary(case: ReviewCaseRow, application: dict | None) -> ReviewCaseSummary
     return summary
 
 
-def list_cases(status: list[str] | None, kind: list[str] | None, verification: list[str] | None,
+def list_cases(status: Sequence[str] | None, kind: Sequence[str] | None, verification: Sequence[str] | None,
                application_id: str | None, page: int, size: int) -> ReviewCasePage:
     """7.1: one page of cases, with one call to C1-M2 for the summaries of the whole page."""
     rows, total = repository.find(status or IN_REVIEW, kind, verification, application_id, page, size)
@@ -261,7 +262,7 @@ def get_case(case_id: str) -> ReviewCase:
 
 def _decision_allowed(case: ReviewCaseRow) -> None:
     if neighbour_client.application_status(case.application_id) == "WITHDRAWN":
-        raise Problem(MODULE, 409, "application-withdrawn")
+        raise problem(409, "application-withdrawn")
 
 
 def approve(case_id: str, sub: str, comment: str | None) -> ReviewCase:
@@ -273,24 +274,24 @@ def approve(case_id: str, sub: str, comment: str | None) -> ReviewCase:
         if case.status == "APPROVED":
             return view(case)
         if case.status not in IN_REVIEW:
-            raise Problem(MODULE, 409, "invalid-state", detail=f"review case is {case.status}")
+            raise problem(409, "invalid-state", detail=f"review case is {case.status}")
         if sub == case.applicant_sub:
-            raise Problem(MODULE, 403, "own-application")
-        if case.status == "AWAITING_SECOND_APPROVAL" and sub == case.first_approval["approvedBy"]:
+            raise problem(403, "own-application")
+        if case.status == "AWAITING_SECOND_APPROVAL" and sub == (case.first_approval or {}).get("approvedBy"):
             return view(case)
         pending = [k for k in required_checks(case, cfg) if _result(case, k) in (None, "ERROR")]
         if pending:
-            raise Problem(MODULE, 409, "checks-incomplete", pendingChecks=pending)
+            raise problem(409, "checks-incomplete", pendingChecks=pending)
         csp = case.checks.get("CSP_MATCH_EXPECTED", {})
         if case.kind in ("TRANSFER", "REACTIVATION") and csp.get("result") != "PASSED":
-            raise Problem(MODULE, 409, "csp-match-required", cspOutcome=(csp.get("details") or {}).get("cspOutcome"))
+            raise problem(409, "csp-match-required", cspOutcome=(csp.get("details") or {}).get("cspOutcome"))
         failed = [k for k in CHECK_ORDER if _result(case, k) == "FAILED"]
         if case.status == "OPEN" and failed and not comment:
-            raise Problem(MODULE, 400, "comment-required", failedChecks=failed)
+            raise problem(400, "comment-required", failedChecks=failed)
         reasons = _four_eyes(case, cfg)
         if case.status == "OPEN" and reasons:
             now = _now()
-            case.status, case.changed_at = "AWAITING_SECOND_APPROVAL", now
+            case.status, case.changed_at = Status.AWAITING_SECOND_APPROVAL, now
             case.first_approval = {"approvedBy": sub, "approvedAt": now, "comment": comment, "fourEyesReasons": reasons}
             events.publish(MODULE, "ApplicationAwaitingSecondApproval",
                            {**_event_fields(case), "reviewCaseId": case.id, "firstApproval": case.first_approval})
@@ -309,11 +310,11 @@ def decline(case_id: str, sub: str, reason: str) -> ReviewCase:
         if case.status == "DECLINED":
             return view(case)
         if case.status not in IN_REVIEW:
-            raise Problem(MODULE, 409, "invalid-state", detail=f"review case is {case.status}")
+            raise problem(409, "invalid-state", detail=f"review case is {case.status}")
         if sub == case.applicant_sub:
-            raise Problem(MODULE, 403, "own-application")
+            raise problem(403, "own-application")
         now = _now()
-        case.status, case.changed_at = "DECLINED", now
+        case.status, case.changed_at = Status.DECLINED, now
         case.decision = {"decidedAt": now, "comment": reason, "decidedBy": sub, "autoApproved": False}
         events.publish(MODULE, "ApplicationDeclined", {**_event_fields(case), "reason": reason})
         case = repository.save(case)

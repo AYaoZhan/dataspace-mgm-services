@@ -22,26 +22,72 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets of C1-M3 (openapi.yaml, README 4, 6.2, 6.6) and the spec id."""
+"""Value sets of C1-M3 (openapi.yaml, README 4, 6.2, 6.6) and the spec id. `StrEnum`, so a member is the plain
+string of the spec in JSON, in the database and in comparisons."""
 from __future__ import annotations
 
-from typing import Literal
+from enum import StrEnum
 
 MODULE = "c1-m3"
 
-Status = Literal["OPEN", "AWAITING_SECOND_APPROVAL", "APPROVED", "DECLINED", "CLOSED"]
-Kind = Literal["ONBOARDING", "REACTIVATION", "TRANSFER"]
-Verification = Literal["EBW", "DOCUMENTS"]
-CheckKey = Literal["ATTESTATION_VALID", "REPRESENTATION_CONFIRMED", "COMPANY_DATA_MATCH", "NO_DUPLICATE",
-                   "CSP_MATCH_EXPECTED", "CONSENTS_COMPLETE"]
-CheckResult = Literal["PASSED", "FAILED", "NOT_APPLICABLE", "ERROR"]
-FourEyesCase = Literal["CHECK_FAILED", "DOCUMENTS", "ALWAYS"]
-CspOutcome = Literal["NO_MATCH", "EXPECTED_MATCH", "REGISTERED_HERE", "REGISTERED_AT_OTHER_OSP", "MULTIPLE_MATCHES",
-                     "NAME_MATCH_ONLY", "BPN_MISMATCH"]
-ClosureReason = Literal["WITHDRAWN"]
 
-CHECK_ORDER: list[str] = list(CheckKey.__args__)
+class Status(StrEnum):
+    OPEN = "OPEN"
+    AWAITING_SECOND_APPROVAL = "AWAITING_SECOND_APPROVAL"
+    APPROVED = "APPROVED"
+    DECLINED = "DECLINED"
+    CLOSED = "CLOSED"
+
+
+class Kind(StrEnum):
+    ONBOARDING = "ONBOARDING"
+    REACTIVATION = "REACTIVATION"
+    TRANSFER = "TRANSFER"
+
+
+class Verification(StrEnum):
+    EBW = "EBW"
+    DOCUMENTS = "DOCUMENTS"
+
+
+class CheckKey(StrEnum):
+    ATTESTATION_VALID = "ATTESTATION_VALID"
+    REPRESENTATION_CONFIRMED = "REPRESENTATION_CONFIRMED"
+    COMPANY_DATA_MATCH = "COMPANY_DATA_MATCH"
+    NO_DUPLICATE = "NO_DUPLICATE"
+    CSP_MATCH_EXPECTED = "CSP_MATCH_EXPECTED"
+    CONSENTS_COMPLETE = "CONSENTS_COMPLETE"
+
+
+class CheckResult(StrEnum):
+    PASSED = "PASSED"
+    FAILED = "FAILED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    ERROR = "ERROR"
+
+
+class FourEyesCase(StrEnum):
+    CHECK_FAILED = "CHECK_FAILED"
+    DOCUMENTS = "DOCUMENTS"
+    ALWAYS = "ALWAYS"
+
+
+class CspOutcome(StrEnum):
+    NO_MATCH = "NO_MATCH"
+    EXPECTED_MATCH = "EXPECTED_MATCH"
+    REGISTERED_HERE = "REGISTERED_HERE"
+    REGISTERED_AT_OTHER_OSP = "REGISTERED_AT_OTHER_OSP"
+    MULTIPLE_MATCHES = "MULTIPLE_MATCHES"
+    NAME_MATCH_ONLY = "NAME_MATCH_ONLY"
+    BPN_MISMATCH = "BPN_MISMATCH"
+
+
+class ClosureReason(StrEnum):
+    WITHDRAWN = "WITHDRAWN"
+
+
+CHECK_ORDER: list[str] = [key.value for key in CheckKey]
 """The checks in the order of README 6.2; responses list them in this order."""
-FOUR_EYES = set(FourEyesCase.__args__)
-AUTO_KINDS = {"ONBOARDING", "TRANSFER"}   # REACTIVATION is never approved automatically (6.6)
-IN_REVIEW = ("OPEN", "AWAITING_SECOND_APPROVAL")
+FOUR_EYES = {case.value for case in FourEyesCase}
+AUTO_KINDS = {Kind.ONBOARDING.value, Kind.TRANSFER.value}   # REACTIVATION is never approved automatically (6.6)
+IN_REVIEW = (Status.OPEN, Status.AWAITING_SECOND_APPROVAL)

@@ -32,9 +32,10 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterable
+from contextlib import AbstractContextManager
 
 from sqlalchemy import func
-from sqlmodel import select
+from sqlmodel import Session, col, select
 
 from portal_common import database
 
@@ -56,7 +57,7 @@ def reset() -> None:
         _created.add(database.url(MODULE))
 
 
-def _session():
+def _session() -> AbstractContextManager[Session]:
     """A session of C1-M3; creates the tables first if neither `on_startup()` nor `reset()` ran (in-process use)."""
     if database.url(MODULE) not in _created:
         create_tables()
@@ -75,7 +76,7 @@ def by_application(application_id: str) -> ReviewCaseRow | None:
 
 def next_seq() -> int:
     with _session() as session:
-        return (session.exec(select(func.max(ReviewCaseRow.seq))).one() or 0) + 1
+        return (session.exec(select(func.max(col(ReviewCaseRow.seq)))).one() or 0) + 1
 
 
 def save(case: ReviewCaseRow) -> ReviewCaseRow:
@@ -87,16 +88,16 @@ def save(case: ReviewCaseRow) -> ReviewCaseRow:
 def find(statuses: Iterable[str], kinds: Iterable[str] | None, verifications: Iterable[str] | None,
          application_id: str | None, page: int, size: int) -> tuple[list[ReviewCaseRow], int]:
     """One page of the cases that match the filters of 7.1, oldest first, and the number of all matches."""
-    query = select(ReviewCaseRow).where(ReviewCaseRow.status.in_(list(statuses)))
+    query = select(ReviewCaseRow).where(col(ReviewCaseRow.status).in_(list(statuses)))
     if kinds:
-        query = query.where(ReviewCaseRow.kind.in_(list(kinds)))
+        query = query.where(col(ReviewCaseRow.kind).in_(list(kinds)))
     if verifications:
-        query = query.where(ReviewCaseRow.verification.in_(list(verifications)))
+        query = query.where(col(ReviewCaseRow.verification).in_(list(verifications)))
     if application_id:
         query = query.where(ReviewCaseRow.application_id == application_id)
     with _session() as session:
         total = session.exec(select(func.count()).select_from(query.subquery())).one()
-        rows = list(session.exec(query.order_by(ReviewCaseRow.seq).offset(page * size).limit(size)))
+        rows = list(session.exec(query.order_by(col(ReviewCaseRow.seq)).offset(page * size).limit(size)))
     return rows, total
 
 
@@ -112,4 +113,4 @@ def audit(entry: AuditLogRow) -> None:
 
 def audit_log() -> list[AuditLogRow]:
     with _session() as session:
-        return list(session.exec(select(AuditLogRow).order_by(AuditLogRow.id)))
+        return list(session.exec(select(AuditLogRow).order_by(col(AuditLogRow.id))))

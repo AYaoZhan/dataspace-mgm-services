@@ -59,7 +59,8 @@ def attestation_valid(app: dict) -> tuple[str, dict]:
     issued, expires, submitted = _time(att.get("issuedAt")), _time(att.get("expiresAt")), _time(app.get("submittedAt"))
     expired = bool(expires and submitted and submitted >= expires)
     in_time = bool(issued and expires and submitted and issued <= submitted < expires)
-    return ("PASSED" if sig == "VALID" and in_time else "FAILED"), {"signatureCheck": sig, "expiredAtSubmission": expired}
+    result = "PASSED" if sig == "VALID" and in_time else "FAILED"
+    return result, {"signatureCheck": sig, "expiredAtSubmission": expired}
 
 
 def representation_confirmed(app: dict) -> tuple[str, dict]:
@@ -114,25 +115,24 @@ def _merge(found: list[dict]) -> list[dict]:
     return list(merged.values())
 
 
-def _evaluate(kind: str, matches: list[dict], company_bpn: str | None, existing: bool) -> tuple[str, dict | None]:
-    """Table of 6.3, the first matching row applies. Returns `cspOutcome` and the expected match."""
-    here = [m for m in matches if m["homeIsThisOsp"]]
-    if kind == "ONBOARDING":
-        return ("NO_MATCH" if not matches else "REGISTERED_HERE" if here else "REGISTERED_AT_OTHER_OSP"), None
-    if not matches:
-        return "NO_MATCH", None
-    if kind == "TRANSFER":
-        if here:
-            return "REGISTERED_HERE", None
-        if len(matches) > 1:
-            return "MULTIPLE_MATCHES", None
-        only = matches[0]
-        if not {"EBWOID", "EUID"} & set(only["matchedBy"]):
-            return "NAME_MATCH_ONLY", None
-        if existing and only["bpn"] != company_bpn:
-            return "BPN_MISMATCH", None
-        return "EXPECTED_MATCH", only
-    own = next((m for m in matches if company_bpn and m["bpn"] == company_bpn), None)   # REACTIVATION
+Outcome = tuple[str, dict | None]   # `cspOutcome` and the expected match, if any
+
+
+def _evaluate_transfer(matches: list[dict], here: list[dict], company_bpn: str | None, existing: bool) -> Outcome:
+    if here:
+        return "REGISTERED_HERE", None
+    if len(matches) > 1:
+        return "MULTIPLE_MATCHES", None
+    only = matches[0]
+    if not {"EBWOID", "EUID"} & set(only["matchedBy"]):
+        return "NAME_MATCH_ONLY", None
+    if existing and only["bpn"] != company_bpn:
+        return "BPN_MISMATCH", None
+    return "EXPECTED_MATCH", only
+
+
+def _evaluate_reactivation(matches: list[dict], company_bpn: str | None) -> Outcome:
+    own = next((m for m in matches if company_bpn and m["bpn"] == company_bpn), None)
     if own is None:
         return "BPN_MISMATCH", None
     if not own["homeIsThisOsp"]:
@@ -140,6 +140,18 @@ def _evaluate(kind: str, matches: list[dict], company_bpn: str | None, existing:
     if len(matches) > 1:
         return "MULTIPLE_MATCHES", None
     return "EXPECTED_MATCH", own
+
+
+def _evaluate(kind: str, matches: list[dict], company_bpn: str | None, existing: bool) -> Outcome:
+    """Table of 6.3, the first matching row applies."""
+    here = [m for m in matches if m["homeIsThisOsp"]]
+    if kind == "ONBOARDING":
+        return ("NO_MATCH" if not matches else "REGISTERED_HERE" if here else "REGISTERED_AT_OTHER_OSP"), None
+    if not matches:
+        return "NO_MATCH", None
+    if kind == "TRANSFER":
+        return _evaluate_transfer(matches, here, company_bpn, existing)
+    return _evaluate_reactivation(matches, company_bpn)
 
 
 def csp_match_expected(app: dict) -> tuple[str, dict]:

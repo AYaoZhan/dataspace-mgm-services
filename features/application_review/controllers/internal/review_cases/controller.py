@@ -25,7 +25,7 @@
 """Status of the review case of an application (README 9)."""
 from __future__ import annotations
 
-from features.application_review import services
+from features.application_review import interface
 from features.application_review.models.review_case import ReviewStatusInfo
 from portal_common.routing import Controller, Permission
 
@@ -33,5 +33,5 @@ controller = Controller("Application Review: Process Steps and Queries")
 
 
 @controller.get("", response_model=ReviewStatusInfo, response_model_exclude_unset=True)
-def get_review_status_by_application(applicationId: str, _: dict = Permission):
-    return services.get_review_status_by_application(applicationId=applicationId)
+def get_review_status_by_application(applicationId: str, _: dict = Permission) -> dict:
+    return interface.get_review_status_by_application(applicationId=applicationId)
