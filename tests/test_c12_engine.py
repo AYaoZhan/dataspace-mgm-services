@@ -354,7 +354,7 @@ def test_failed_lookup_is_an_error_not_found_false(engine, fake, monkeypatch):
 def test_lookup_5xx_is_retried_and_404_is_found_false(engine, fake, monkeypatch):
     monkeypatch.setenv("C2_M2_URL", FAKE)
     answers = iter([(503, {"type": "x"}), (200, [])])
-    fake.answers["/api/c2-m2/internal/app-instance-clients"] = lambda b: next(answers)
+    fake.answers["/api/app-access/internal/app-instance-clients"] = lambda b: next(answers)
     engine.on_event(ev("SubscriptionDeactivated", offerSubscriptionId="s1"))
     p = proc_of(engine, "subscription-ended")
     sr = step(p, "disable-instance-client")
