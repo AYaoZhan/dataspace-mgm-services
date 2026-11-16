@@ -32,7 +32,8 @@ adapters, models, and runtimes that assemble the app.
        controllers/     HTTP only, one folder per path segment of the API; `controller.py` per folder
        services/        business logic, shared by the controllers and by interface.py; no HTTP
        managers/        state and adapters: repositories, storage backends, clients of neighbours
-       models/          value sets and data models of the API (when the feature has its own)
+       models/          pydantic models of the API: requests, steps, responses, value sets
+       README.md        migrated from which module, what the feature does, how it works
    ```
 
    The layers of the Industry Core Hub stay. They are cut **per feature (vertical slice)**, not per layer across the
@@ -77,6 +78,15 @@ adapters, models, and runtimes that assemble the app.
    `features.<name>.interface`; `tests/test_interfaces.py` enforces this for `features/` and `modules/` alike.
    The shared building blocks of controllers (`Controller`, `Permission`, `mount`, paging, `download`) are in
    `portal_common.routing`.
+   Every feature defines its own models with pydantic in `models/`, on the shared bases of `portal_common.models`
+   (`ApiModel`: snake_case in Python, camelCase in JSON; `RequestBody`, `StepRequest`, `StepResult[T]`, `Page[T]`
+   and the formats `Uuid`, `Bpnl`, `CountryCode`). Code that two or more features need lives in `portal_common/`;
+   a feature never imports another feature's models or services.
+
+   Persistent state lives in tables defined with SQLAlchemy through SQLModel, as in the Industry Core Hub backend
+   (`models/tables.py` on `portal_common.database.table_base(MODULE)`, one `MetaData` per feature). A row is a
+   pydantic model, so table and API model combine without mapping code. `portal_common.database` resolves the URL of
+   the feature (decision 6) and falls back to a private in-memory SQLite database for tests and `demo.py`.
 5. **Runtimes are made of features** (`runtimes/`):
    - `runtimes/installation.py`: every module, the modular monolith (the default);
    - `runtimes/onboarding.py`: a **hybrid** runtime, `create_runtime(registration, company_profile)`;
@@ -120,7 +130,8 @@ adapters, models, and runtimes that assemble the app.
      - C2-M2 (not migrated) reads `C2_M2_DATABASE_URL`, so in today's monolith the two no longer share one
        database as long as the plain `DATABASE_URL` stays unset.
 
-     Next steps: `portal_common.database`, the per-feature variable in `company_repository`, the Helm Secrets and
+     `portal_common.database` (SQLModel engine and session per feature, URL order of decision 6) is in place.
+     Next steps: the features move their stores onto it, the Helm Secrets and
      provisioning job, and a PostgreSQL service in the compose PoC.
 7. **Discovery instead of registration.** `portal_common.layout` finds a feature by its readable name
    (`features/<name>/` exists), so migrating a module needs no central list. `scaffold.registry` mounts it as kind
