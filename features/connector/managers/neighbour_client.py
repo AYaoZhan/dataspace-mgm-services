@@ -22,19 +22,44 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Neighbouring modules of C6-M1 (README 11) with their built-in stand-ins (empty address, `data/`)."""
+"""Neighbouring modules of C6-M1 (README 11) with their built-in stand-ins (empty address).
+
+The stand-in data is read-only reference data, not state of C6-M1: `stub_companies` (companyId -> status of
+C3-M1) and `stub_subscriptions` (offerSubscriptionId -> subscription of C10-M1) from `data/`, reloaded by
+`reset_standins()`.
+"""
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 from portal_common import neighbours
 
 from ..models import ACTIVE, MODULE
-from . import store
+
+DATA = Path(__file__).resolve().parent / "data"
+
+stub_companies: dict[str, str] = {}
+stub_subscriptions: dict[str, dict] = {}
+
+
+def _load(name: str) -> dict:
+    path = DATA / name
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def reset_standins() -> None:
+    stub_companies.clear()
+    stub_companies.update(_load("stub-companies.json").get("companies", {}))
+    stub_subscriptions.clear()
+    stub_subscriptions.update({s["offerSubscriptionId"]: s
+                               for s in _load("stub-subscriptions.json").get("subscriptions", [])})
 
 
 def company_status(company_id: str) -> str | None:
     """C3-M1 `query_company`: status of the company; None if C3-M1 does not know it."""
     if neighbours.is_standin("c3-m1"):
-        return store.stub_companies.get(company_id, ACTIVE)
+        return stub_companies.get(company_id, ACTIVE)
     company = neighbours.query(MODULE, "c3-m1", "query_company", companyId=company_id)
     return (company or {}).get("status")
 
@@ -53,5 +78,8 @@ def technical_user_usable(technical_user_id: str, host_company_id: str, offer_su
 def subscription(offer_subscription_id: str) -> dict | None:
     """C10-M1 `get_subscription_internal`: `status`, `providerCompanyId`, `customerCompanyId`."""
     if neighbours.is_standin("c10-m1"):
-        return store.stub_subscriptions.get(offer_subscription_id)
+        return stub_subscriptions.get(offer_subscription_id)
     return neighbours.query(MODULE, "c10-m1", "get_subscription_internal", offerSubscriptionId=offer_subscription_id)
+
+
+reset_standins()

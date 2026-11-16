@@ -26,7 +26,8 @@
 README 8) and the query (`queries`, README 9). No HTTP; the controllers pass the calling company and person."""
 from __future__ import annotations
 
-from ..managers import store as _store
+from ..managers import connector_repository as _repository
+from ..managers import neighbour_client as _neighbour_client
 from .connectors import (
     change_endpoint,
     delete_connector,
@@ -39,12 +40,19 @@ from .queries import list_connectors_internal
 from .steps import deactivate_subscription_connectors, unlink_technical_user
 
 
+def start() -> None:
+    """Creates the tables of the feature's database (start-up)."""
+    _repository.create_tables()
+
+
 def reset() -> None:
-    _store.reset()
+    """Empty register and audit log, stand-in data as in `managers/data/`."""
+    _repository.reset()
+    _neighbour_client.reset_standins()
 
 
 __all__ = [
     "change_endpoint", "deactivate_subscription_connectors", "delete_connector", "get_connector", "list_connectors",
-    "list_connectors_internal", "register_connector", "register_connector_as_a_service", "reset",
+    "list_connectors_internal", "register_connector", "register_connector_as_a_service", "reset", "start",
     "unlink_technical_user",
 ]

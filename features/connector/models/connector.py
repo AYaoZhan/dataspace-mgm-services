@@ -22,25 +22,96 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The connector of openapi.yaml: spec id, value sets and the view of a row of the register."""
+"""The models of openapi.yaml of C6-M1: value sets, request bodies, step inputs and responses.
+
+The request bodies check the shape and the formats of the spec (types, lengths, `Uuid`, `CountryCode`). They
+accept unknown fields, as openapi.yaml does not set `additionalProperties: false`. The rules that need more
+than the shape (HTTPS endpoint, the country list of the installation) are checks of `services/connectors.py`.
+"""
 from __future__ import annotations
 
-from typing import Literal
+from enum import Enum
+
+from pydantic import Field
+
+from portal_common.models import ApiModel, CountryCode, StepRequest, Uuid
 
 MODULE = "c6-m1"
 
-ACTIVE, INACTIVE = "ACTIVE", "INACTIVE"
-COMPANY_CONNECTOR, CONNECTOR_AS_A_SERVICE = "COMPANY_CONNECTOR", "CONNECTOR_AS_A_SERVICE"
 
-Role = Literal["provider", "host"]
-Type = Literal["COMPANY_CONNECTOR", "CONNECTOR_AS_A_SERVICE"]
-Status = Literal["ACTIVE", "INACTIVE"]
+class ConnectorType(str, Enum):
+    COMPANY_CONNECTOR = "COMPANY_CONNECTOR"
+    CONNECTOR_AS_A_SERVICE = "CONNECTOR_AS_A_SERVICE"
 
 
-def view(c: dict) -> dict:
-    """`Connector` of openapi.yaml."""
-    return {"connectorId": c["id"], "name": c["name"], "endpoint": c["endpoint"], "location": c["location"],
-            "type": c["type"], "status": c["status"], "providerCompanyId": c["provider_company_id"],
-            "hostCompanyId": c["host_company_id"], "technicalUserId": c["technical_user_id"],
-            "offerSubscriptionId": c["offer_subscription_id"], "createdAt": c["created_at"],
-            "changedAt": c["changed_at"]}
+class ConnectorStatus(str, Enum):
+    """README 6.1."""
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+
+
+class Role(str, Enum):
+    """Filter of 7.1: connectors the own company runs (`provider`) or that a provider runs for it (`host`)."""
+    PROVIDER = "provider"
+    HOST = "host"
+
+
+ACTIVE, INACTIVE = ConnectorStatus.ACTIVE.value, ConnectorStatus.INACTIVE.value
+COMPANY_CONNECTOR = ConnectorType.COMPANY_CONNECTOR.value
+CONNECTOR_AS_A_SERVICE = ConnectorType.CONNECTOR_AS_A_SERVICE.value
+
+
+# ---------------------------------------------------------------- requests (README 7)
+class ConnectorInput(ApiModel):
+    """`ConnectorInput` (7.2)."""
+    name: str = Field(min_length=1, max_length=255)
+    endpoint: str
+    location: CountryCode
+    technical_user_id: Uuid | None = None
+
+
+class ConnectorAsAServiceInput(ConnectorInput):
+    """`ConnectorAsAServiceInput` (7.3)."""
+    offer_subscription_id: Uuid
+
+
+class EndpointChange(ApiModel):
+    """Body of 7.5."""
+    endpoint: str
+
+
+# ---------------------------------------------------------------- steps (README 8)
+class DeactivateSubscriptionConnectorsInput(StepRequest):
+    offer_subscription_id: Uuid
+
+
+class UnlinkTechnicalUserInput(StepRequest):
+    technical_user_id: Uuid
+
+
+class ConnectorIds(ApiModel):
+    """`result` of both steps: the connectors this call changed."""
+    connector_ids: list[str]
+
+
+# ---------------------------------------------------------------- responses
+class Connector(ApiModel):
+    """`Connector`; built from a row with `Connector.model_validate(row, from_attributes=True)`."""
+    connector_id: str
+    name: str
+    endpoint: str
+    location: str
+    type: ConnectorType
+    status: ConnectorStatus
+    provider_company_id: str
+    host_company_id: str
+    technical_user_id: str | None = None
+    offer_subscription_id: str | None = None
+    created_at: str
+    changed_at: str | None = None
+
+
+class ConnectorRef(ApiModel):
+    """`ConnectorRef` (9.1)."""
+    connector_id: str
+    status: ConnectorStatus

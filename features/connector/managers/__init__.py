@@ -22,5 +22,6 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""State and adapters of the connectors: the register (`store`), the neighbours C3-M1, C2-M3 and C10-M1 with
-their built-in stand-ins (`neighbour_client`, `data/`) and the reference data of the installation (`config`)."""
+"""State and adapters of the connectors: the register in the feature's database (`connector_repository`), the
+neighbours C3-M1, C2-M3 and C10-M1 with their built-in stand-ins (`neighbour_client`, `data/`) and the reference
+data of the installation (`config`)."""

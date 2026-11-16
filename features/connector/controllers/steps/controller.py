@@ -25,19 +25,21 @@
 """The steps of the connectors in the flows of Process Orchestration (README 8)."""
 from __future__ import annotations
 
-from fastapi import Body
-
 from features.connector import interface
+from features.connector.models import ConnectorIds, DeactivateSubscriptionConnectorsInput, UnlinkTechnicalUserInput
+from portal_common.models import StepResult
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Connector: Process Steps and Queries")
 
 
-@controller.post("/deactivate-subscription-connectors", summary="Deactivate the connector of an ended subscription")
-def deactivate_subscription_connectors(body: dict = Body(...), _: dict = Permission):
+@controller.post("/deactivate-subscription-connectors", summary="Deactivate the connector of an ended subscription",
+                 response_model=StepResult[ConnectorIds])
+def deactivate_subscription_connectors(body: DeactivateSubscriptionConnectorsInput, _: dict = Permission):
     return interface.deactivate_subscription_connectors(body)
 
 
-@controller.post("/unlink-technical-user", summary="Remove the link to a deleted technical user")
-def unlink_technical_user(body: dict = Body(...), _: dict = Permission):
+@controller.post("/unlink-technical-user", summary="Remove the link to a deleted technical user",
+                 response_model=StepResult[ConnectorIds])
+def unlink_technical_user(body: UnlinkTechnicalUserInput, _: dict = Permission):
     return interface.unlink_technical_user(body)

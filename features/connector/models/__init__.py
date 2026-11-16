@@ -22,7 +22,7 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets and the API view of a connector (openapi.yaml of C6-M1)."""
+"""Models of the connectors: the pydantic models of openapi.yaml (`connector`) and the tables (`tables`)."""
 from __future__ import annotations
 
 from .connector import (
@@ -31,11 +31,21 @@ from .connector import (
     CONNECTOR_AS_A_SERVICE,
     INACTIVE,
     MODULE,
+    Connector,
+    ConnectorAsAServiceInput,
+    ConnectorIds,
+    ConnectorInput,
+    ConnectorRef,
+    ConnectorStatus,
+    ConnectorType,
+    DeactivateSubscriptionConnectorsInput,
+    EndpointChange,
     Role,
-    Status,
-    Type,
-    view,
+    UnlinkTechnicalUserInput,
 )
 
-__all__ = ["ACTIVE", "COMPANY_CONNECTOR", "CONNECTOR_AS_A_SERVICE", "INACTIVE", "MODULE", "Role", "Status", "Type",
-           "view"]
+__all__ = [
+    "ACTIVE", "COMPANY_CONNECTOR", "CONNECTOR_AS_A_SERVICE", "INACTIVE", "MODULE", "Connector",
+    "ConnectorAsAServiceInput", "ConnectorIds", "ConnectorInput", "ConnectorRef", "ConnectorStatus", "ConnectorType",
+    "DeactivateSubscriptionConnectorsInput", "EndpointChange", "Role", "UnlinkTechnicalUserInput",
+]

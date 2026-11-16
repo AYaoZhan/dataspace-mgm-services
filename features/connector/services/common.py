@@ -22,19 +22,41 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Helpers of the connector services: UUIDs in one spelling, the step input and the deactivation event."""
+"""Helpers of the connector services: UUIDs in one spelling, input models from in-process calls, and the
+deactivation event."""
 from __future__ import annotations
 
 import uuid
+from typing import TypeVar
+
+from pydantic import BaseModel, ValidationError
 
 from portal_common import events
 from portal_common.problems import Problem
 
 from ..models import MODULE
+from ..models.tables import ConnectorRow
+
+M = TypeVar("M", bound=BaseModel)
 
 
-def publish_deactivated(c: dict) -> None:
-    events.publish(MODULE, "ConnectorDeactivated", {"connectorId": c["id"], "companyId": c["host_company_id"]})
+def parse(model: type[M], data: M | dict, *, retryable: bool | None = None) -> M:
+    """`data` as `model`: a controller passes the validated model, an in-process caller (Process Orchestration,
+    tests) a dict, which is checked here before anything changes (README 8, FRAMEWORK 4.4)."""
+    if isinstance(data, model):
+        return data
+    extra = {} if retryable is None else {"retryable": retryable}
+    if not isinstance(data, dict):
+        raise Problem(MODULE, 400, "validation", detail="JSON object required", **extra)
+    try:
+        return model.model_validate(data)
+    except ValidationError as e:
+        errors = [{"field": ".".join(str(x) for x in err["loc"]), "message": err["msg"]} for err in e.errors()]
+        raise Problem(MODULE, 400, "validation", errors=errors, **extra) from None
+
+
+def publish_deactivated(c: ConnectorRow) -> None:
+    events.publish(MODULE, "ConnectorDeactivated", {"connectorId": c.connector_id, "companyId": c.host_company_id})
 
 
 def is_uuid(value) -> bool:
@@ -51,15 +73,3 @@ def canonical(value: str) -> str:
     """One spelling per UUID (lower case, with hyphens), so that comparisons and links do not depend
     on the casing a caller used."""
     return str(uuid.UUID(value))
-
-
-def step_input(input: dict, key: str) -> str:
-    """StepInput of openapi.yaml: `processId`, `stepRunId` and the business key, all UUIDs.
-    Checked before anything changes (README 8, FRAMEWORK 4.4)."""
-    if not isinstance(input, dict):
-        raise Problem(MODULE, 400, "validation", detail="JSON object required", retryable=False)
-    errors = [{"field": f, "message": "UUID required"} for f in ("processId", "stepRunId", key)
-              if not is_uuid(input.get(f))]
-    if errors:
-        raise Problem(MODULE, 400, "validation", errors=errors, retryable=False)
-    return canonical(input[key])

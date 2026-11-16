@@ -27,16 +27,14 @@ from __future__ import annotations
 
 from portal_common.problems import Problem
 
-from ..managers.store import LOCK, connectors
-from ..models import ACTIVE, MODULE
+from ..managers import connector_repository as repository
+from ..models import ACTIVE, MODULE, ConnectorRef
 from .common import canonical, is_uuid
 
 
-def list_connectors_internal(*, technical_user_id: str | None = None) -> list:
-    """9.1: the ACTIVE connectors that use this technical user, as `ConnectorRef`."""
+def list_connectors_internal(*, technical_user_id: str | None = None) -> list[ConnectorRef]:
+    """9.1: the ACTIVE connectors that use this technical user."""
     if not is_uuid(technical_user_id):
         raise Problem(MODULE, 400, "validation", detail="technicalUserId must be a UUID")
-    technical_user_id = canonical(technical_user_id)
-    with LOCK:
-        return [{"connectorId": c["id"], "status": c["status"]} for c in connectors.values()
-                if c["technical_user_id"] == technical_user_id and c["status"] == ACTIVE]
+    rows = repository.find(technical_user_id=canonical(technical_user_id), status=ACTIVE)
+    return [ConnectorRef.model_validate(row, from_attributes=True) for row in rows]

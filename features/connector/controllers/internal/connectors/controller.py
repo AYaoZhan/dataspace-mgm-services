@@ -26,11 +26,12 @@
 from __future__ import annotations
 
 from features.connector import interface
+from features.connector.models import ConnectorRef
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Connector: Process Steps and Queries")
 
 
-@controller.get("", summary="Active connectors that use a technical user")
+@controller.get("", summary="Active connectors that use a technical user", response_model=list[ConnectorRef])
 def list_connectors_internal(technicalUserId: str | None = None, _: dict = Permission):
     return interface.list_connectors_internal(technicalUserId=technicalUserId)

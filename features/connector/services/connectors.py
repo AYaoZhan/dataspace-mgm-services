@@ -24,7 +24,7 @@
 #################################################################################
 """Operations of people on the connector register (README 7) with the checks of README 6.2 and the
 calls to the neighbours C3-M1, C2-M3 and C10-M1 (README 11, `managers/neighbour_client.py`). No token checks
-here; the controllers pass the calling company and person."""
+here; the controllers pass the calling company and person and the validated body."""
 from __future__ import annotations
 
 import ipaddress
@@ -33,19 +33,25 @@ import uuid
 from urllib.parse import urlparse
 
 from portal_common import events
+from portal_common.models import Page
 from portal_common.problems import Problem
 
 from ..managers import config, neighbour_client
-from ..managers.store import (
-    LOCK,
-    connectors,
-    deleted_technical_users,
-    ended_subscriptions,
-    now,
-    write_audit,
+from ..managers import connector_repository as repository
+from ..managers.connector_repository import LOCK, now
+from ..models import (
+    ACTIVE,
+    COMPANY_CONNECTOR,
+    CONNECTOR_AS_A_SERVICE,
+    INACTIVE,
+    MODULE,
+    Connector,
+    ConnectorAsAServiceInput,
+    ConnectorInput,
+    EndpointChange,
 )
-from ..models import ACTIVE, COMPANY_CONNECTOR, CONNECTOR_AS_A_SERVICE, INACTIVE, MODULE, view
-from .common import canonical, publish_deactivated
+from ..models.tables import ConnectorRow
+from .common import canonical, is_uuid, publish_deactivated
 
 
 # ---------------------------------------------------------------- checks (README 6.2)
@@ -83,43 +89,27 @@ def _endpoint_error(endpoint) -> str | None:
     return None
 
 
-def _check_input(name, endpoint, location, technical_user_id=None) -> None:
+def _check_endpoint_and_location(endpoint: str, location: str | None = None) -> None:
+    """The checks beyond the shape of the body: a usable HTTPS endpoint and a country of the reference data."""
     errors = []
-    if not isinstance(name, str) or not name or len(name) > 255:
-        errors.append({"field": "name", "message": "1 to 255 characters"})
     if (message := _endpoint_error(endpoint)) is not None:
         errors.append({"field": "endpoint", "message": message})
-    countries = config.known_countries()
-    if technical_user_id is not None and not _is_uuid(technical_user_id):
-        errors.append({"field": "technicalUserId", "message": "UUID"})
-    if not isinstance(location, str) or len(location) != 2 or not (location.isalpha() and location.isupper()) or (countries is not None and location not in countries):
+    countries = config.known_countries() if location is not None else None
+    if countries is not None and location not in countries:
         errors.append({"field": "location", "message": "unknown country code"})
     if errors:
         raise Problem(MODULE, 400, "validation", errors=errors)
 
 
-def _is_uuid(value) -> bool:
-    try:
-        uuid.UUID(str(value))
-        return isinstance(value, str)
-    except ValueError:
-        return False
-
-
-def _live() -> list[dict]:
-    with LOCK:   # a concurrent insert or delete must not change the dict while it is read
-        return [c for c in connectors.values() if c["status"] != INACTIVE]
-
-
 def _check_duplicate(name: str, endpoint: str, ignore: str | None = None) -> None:
-    if any(c["name"] == name and c["endpoint"] == endpoint and c["id"] != ignore for c in _live()):
+    if repository.live_exists(name=name, endpoint=endpoint, ignore=ignore):
         raise Problem(MODULE, 409, "duplicate", detail="a connector with this name and endpoint exists")
 
 
 def _check_technical_user(tu_id: str | None, host: str, sub_id: str | None) -> None:
     if not tu_id:
         return
-    linked = any(c["technical_user_id"] == tu_id for c in _live())
+    linked = repository.live_exists(technical_user_id=tu_id)
     if linked or not neighbour_client.technical_user_usable(tu_id, host, sub_id):
         raise Problem(MODULE, 409, "technical-user-not-usable")
 
@@ -135,157 +125,127 @@ def _own_company(company_id: str | None) -> str:
     return company_id
 
 
-def _visible(connector_id: str, company_id: str) -> dict:
-    c = connectors.get(canonical(connector_id)) if _is_uuid(connector_id) else None
-    if not c or company_id not in (c["provider_company_id"], c["host_company_id"]):
+def _visible(connector_id: str, company_id: str) -> ConnectorRow:
+    c = repository.get(canonical(connector_id)) if is_uuid(connector_id) else None
+    if not c or company_id not in (c.provider_company_id, c.host_company_id):
         raise Problem(MODULE, 404, "not-found")
     return c
 
 
+def _view(c: ConnectorRow) -> Connector:
+    return Connector.model_validate(c, from_attributes=True)
+
+
 # ---------------------------------------------------------------- operations (README 7)
-def _register(*, name, endpoint, location, technical_user_id, ctype, provider, host, sub_id, sub) -> dict:
+def _register(body: ConnectorInput, *, technical_user_id: str | None, ctype: str, provider: str, host: str,
+              sub_id: str | None, sub: str | None) -> Connector:
     """The final uniqueness checks of README 5 and the insert as one unit under LOCK: of two concurrent
     requests that both passed the earlier checks, the second gets 409."""
     with LOCK:
-        if sub_id in ended_subscriptions:
+        if sub_id and repository.subscription_ended(sub_id):
             raise Problem(MODULE, 409, "invalid-state", detail="subscription ended or declined")
-        if sub_id and any(c["offer_subscription_id"] == sub_id for c in _live()):
+        if sub_id and repository.live_exists(offer_subscription_id=sub_id):
             raise Problem(MODULE, 409, "subscription-linked")
-        _check_duplicate(name, endpoint)
-        if technical_user_id in deleted_technical_users:
+        _check_duplicate(body.name, body.endpoint)
+        if technical_user_id and repository.technical_user_deleted(technical_user_id):
             raise Problem(MODULE, 409, "technical-user-not-usable", detail="technical user was deleted")
-        if technical_user_id and any(c["technical_user_id"] == technical_user_id for c in _live()):
+        if technical_user_id and repository.live_exists(technical_user_id=technical_user_id):
             raise Problem(MODULE, 409, "technical-user-not-usable")
-        return _insert(name=name, endpoint=endpoint, location=location, technical_user_id=technical_user_id,
-                       ctype=ctype, provider=provider, host=host, sub_id=sub_id, sub=sub)
-
-
-def _insert(*, name, endpoint, location, technical_user_id, ctype, provider, host, sub_id, sub) -> dict:
-    c = {"id": str(uuid.uuid4()), "name": name, "endpoint": endpoint, "location": location, "type": ctype,
-         "status": ACTIVE, "provider_company_id": provider, "host_company_id": host,
-         "technical_user_id": technical_user_id, "offer_subscription_id": sub_id,
-         "created_at": now(), "changed_at": None}
-    connectors[c["id"]] = c
-    write_audit("register-connector", c["id"], sub, provider)
-    events.publish(MODULE, "ConnectorRegistered", {
-        "connectorId": c["id"], "companyId": host, "providerCompanyId": provider, "type": ctype,
-        "endpoint": endpoint, "location": location})
-    return view(c)
+        c = repository.add(ConnectorRow(
+            connector_id=str(uuid.uuid4()), name=body.name, endpoint=body.endpoint, location=body.location,
+            type=ctype, status=ACTIVE, provider_company_id=provider, host_company_id=host,
+            technical_user_id=technical_user_id, offer_subscription_id=sub_id, created_at=now()))
+        repository.write_audit("register-connector", c.connector_id, sub, provider)
+        events.publish(MODULE, "ConnectorRegistered", {
+            "connectorId": c.connector_id, "companyId": host, "providerCompanyId": provider, "type": ctype,
+            "endpoint": c.endpoint, "location": c.location})
+        return _view(c)
 
 
 def list_connectors(company_id: str | None, *, role: str | None = None, type: str | None = None,
-                    status: str | None = None, page: int = 0, size: int = 20) -> dict:
+                    status: str | None = None, page: int = 0, size: int = 20) -> Page[Connector]:
     """7.1"""
-    own = _own_company(company_id)
-
-    def matches(c: dict) -> bool:
-        as_provider = c["provider_company_id"] == own
-        as_host = c["host_company_id"] == own and c["type"] == CONNECTOR_AS_A_SERVICE and not as_provider
-        if role == "provider" and not as_provider or role == "host" and not as_host or not (as_provider or as_host):
-            return False
-        if type and c["type"] != type:
-            return False
-        return c["status"] == status if status else c["status"] != INACTIVE
-
-    with LOCK:   # filter and serialize from the same state
-        items = sorted((c for c in connectors.values() if matches(c)), key=lambda c: (c["created_at"], c["id"]))
-        return {"items": [view(c) for c in items[page * size:(page + 1) * size]], "page": page, "size": size,
-                "total": len(items)}
+    rows, total = repository.page_of_company(_own_company(company_id), role=role, type=type, status=status,
+                                             page=page, size=size)
+    return Page[Connector](items=[_view(c) for c in rows], page=page, size=size, total=total)
 
 
-def register_connector(company_id: str | None, sub: str | None, body: dict) -> dict:
+def register_connector(company_id: str | None, sub: str | None, body: ConnectorInput) -> Connector:
     """7.2: company connector of the own company."""
     own = _own_company(company_id)
-    _check_input(body.get("name"), body.get("endpoint"), body.get("location"), body.get("technicalUserId"))
-    body = body | {"technicalUserId": canonical(body["technicalUserId"]) if body.get("technicalUserId") else None}
+    _check_endpoint_and_location(body.endpoint, body.location)
+    tu_id = canonical(body.technical_user_id) if body.technical_user_id else None
     _check_host_active(own)
-    _check_duplicate(body["name"], body["endpoint"])
-    _check_technical_user(body.get("technicalUserId"), own, None)
-    return _register(name=body["name"], endpoint=body["endpoint"], location=body["location"],
-                     technical_user_id=body.get("technicalUserId"), ctype=COMPANY_CONNECTOR, provider=own,
-                     host=own, sub_id=None, sub=sub)
+    _check_duplicate(body.name, body.endpoint)
+    _check_technical_user(tu_id, own, None)
+    return _register(body, technical_user_id=tu_id, ctype=COMPANY_CONNECTOR, provider=own, host=own, sub_id=None,
+                     sub=sub)
 
 
-def register_connector_as_a_service(company_id: str | None, sub: str | None, body: dict) -> dict:
+def register_connector_as_a_service(company_id: str | None, sub: str | None,
+                                    body: ConnectorAsAServiceInput) -> Connector:
     """7.3: provider = own company, host = customer of the subscription of an own offer."""
     own = _own_company(company_id)
-    _check_input(body.get("name"), body.get("endpoint"), body.get("location"), body.get("technicalUserId"))
-    sub_id = body.get("offerSubscriptionId")
-    if not _is_uuid(sub_id):
-        raise Problem(MODULE, 400, "validation", errors=[{"field": "offerSubscriptionId", "message": "UUID"}])
-    sub_id = canonical(sub_id)
-    body = body | {"technicalUserId": canonical(body["technicalUserId"]) if body.get("technicalUserId") else None}
+    _check_endpoint_and_location(body.endpoint, body.location)
+    sub_id = canonical(body.offer_subscription_id)
+    tu_id = canonical(body.technical_user_id) if body.technical_user_id else None
     s = neighbour_client.subscription(sub_id)
     if not s or s.get("providerCompanyId") != own:
         raise Problem(MODULE, 404, "not-found", detail="subscription unknown or not of an own offer")
     if s.get("status") not in ("PENDING", "ACTIVE"):
         raise Problem(MODULE, 409, "invalid-state", detail=f"subscription is {s.get('status')}")
-    if any(c["offer_subscription_id"] == sub_id for c in _live()):
+    if repository.live_exists(offer_subscription_id=sub_id):
         raise Problem(MODULE, 409, "subscription-linked")
     host = s["customerCompanyId"]
     _check_host_active(host)
-    _check_duplicate(body["name"], body["endpoint"])
-    _check_technical_user(body.get("technicalUserId"), host, sub_id)
-    return _register(name=body["name"], endpoint=body["endpoint"], location=body["location"],
-                     technical_user_id=body.get("technicalUserId"), ctype=CONNECTOR_AS_A_SERVICE, provider=own,
-                     host=host, sub_id=sub_id, sub=sub)
+    _check_duplicate(body.name, body.endpoint)
+    _check_technical_user(tu_id, host, sub_id)
+    return _register(body, technical_user_id=tu_id, ctype=CONNECTOR_AS_A_SERVICE, provider=own, host=host,
+                     sub_id=sub_id, sub=sub)
 
 
-def get_connector(company_id: str | None, connector_id: str) -> dict:
+def get_connector(company_id: str | None, connector_id: str) -> Connector:
     """7.4"""
-    with LOCK:
-        return view(_visible(connector_id, _own_company(company_id)))
+    return _view(_visible(connector_id, _own_company(company_id)))
 
 
-def change_endpoint(company_id: str | None, sub: str | None, connector_id: str, body: dict) -> dict:
-    """7.5 under LOCK, so that its duplicate check and change do not interleave with other changes."""
-    with LOCK:
-        return _change_endpoint(company_id, sub, connector_id, body)
-
-
-def _change_endpoint(company_id: str | None, sub: str | None, connector_id: str, body: dict) -> dict:
-    """7.5: only the provider company; same value = 200 without change."""
+def change_endpoint(company_id: str | None, sub: str | None, connector_id: str, body: EndpointChange) -> Connector:
+    """7.5: only the provider company; same value = 200 without change. Under LOCK, so that its duplicate
+    check and change do not interleave with other changes."""
     own = _own_company(company_id)
-    c = _visible(connector_id, own)
-    if c["provider_company_id"] != own:
-        raise Problem(MODULE, 403, "forbidden", detail="only the provider company changes the endpoint")
-    if c["status"] == INACTIVE:
-        raise Problem(MODULE, 409, "invalid-state", detail="connector is INACTIVE")
-    endpoint = body.get("endpoint")
-    _check_input(c["name"], endpoint, c["location"])
-    if endpoint == c["endpoint"]:
-        return view(c)
-    _check_duplicate(c["name"], endpoint, ignore=c["id"])
-    c.update(endpoint=endpoint, changed_at=now())
-    write_audit("change-endpoint", c["id"], sub, own)
-    events.publish(MODULE, "ConnectorEndpointChanged", {"connectorId": c["id"], "companyId": c["host_company_id"],
-                                                        "endpoint": endpoint})
-    return view(c)
+    with LOCK:
+        c = _visible(connector_id, own)
+        if c.provider_company_id != own:
+            raise Problem(MODULE, 403, "forbidden", detail="only the provider company changes the endpoint")
+        if c.status == INACTIVE:
+            raise Problem(MODULE, 409, "invalid-state", detail="connector is INACTIVE")
+        _check_endpoint_and_location(body.endpoint)
+        if body.endpoint == c.endpoint:
+            return _view(c)
+        _check_duplicate(c.name, body.endpoint, ignore=c.connector_id)
+        c = repository.update(c.connector_id, endpoint=body.endpoint)
+        repository.write_audit("change-endpoint", c.connector_id, sub, own)
+        events.publish(MODULE, "ConnectorEndpointChanged", {"connectorId": c.connector_id,
+                                                            "companyId": c.host_company_id, "endpoint": c.endpoint})
+        return _view(c)
 
 
 def delete_connector(company_id: str | None, sub: str | None, connector_id: str) -> None:
-    """7.6: C10-M1 is asked outside LOCK (it may be slow); the change runs under LOCK on the current row."""
+    """7.6: with a linked subscription the connector becomes INACTIVE and keeps the link; otherwise removed.
+    C10-M1 is asked outside LOCK (it may be slow); the change runs under LOCK on the current row."""
     own = _own_company(company_id)
-    with LOCK:
-        sub_id = _visible(connector_id, own)["offer_subscription_id"]
+    sub_id = _visible(connector_id, own).offer_subscription_id
     s = neighbour_client.subscription(sub_id) if sub_id else None
     with LOCK:
-        _delete_connector(company_id, sub, connector_id, s)
-
-
-def _delete_connector(company_id: str | None, sub: str | None, connector_id: str, s: dict | None) -> None:
-    """7.6: with a linked subscription the connector becomes INACTIVE and keeps the link; otherwise removed."""
-    own = _own_company(company_id)
-    c = _visible(connector_id, own)   # may have been deleted meanwhile: 404
-    if c["offer_subscription_id"]:
-        if s and s.get("status") == ACTIVE:
-            raise Problem(MODULE, 409, "subscription-active")
-        if c["status"] != INACTIVE:
-            c.update(status=INACTIVE, changed_at=now())
-            write_audit("delete-connector", c["id"], sub, own)
-            publish_deactivated(c)
-        return
-    del connectors[c["id"]]
-    write_audit("delete-connector", c["id"], sub, own)
-    events.publish(MODULE, "ConnectorDeleted", {"connectorId": c["id"], "companyId": c["host_company_id"]})
-    return
+        c = _visible(connector_id, own)   # may have been deleted meanwhile: 404
+        if c.offer_subscription_id:
+            if s and s.get("status") == ACTIVE:
+                raise Problem(MODULE, 409, "subscription-active")
+            if c.status != INACTIVE:
+                c = repository.update(c.connector_id, status=INACTIVE)
+                repository.write_audit("delete-connector", c.connector_id, sub, own)
+                publish_deactivated(c)
+            return
+        repository.delete(c.connector_id)
+        repository.write_audit("delete-connector", c.connector_id, sub, own)
+        events.publish(MODULE, "ConnectorDeleted", {"connectorId": c.connector_id, "companyId": c.host_company_id})

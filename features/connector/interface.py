@@ -24,11 +24,14 @@
 #################################################################################
 """In-process contract of the connectors (call convention, AGENTS.md): the steps of README 8 and the query of
 README 9 under their convention names, and the operations of people (README 7), which only the controllers call.
-Other modules and Process Orchestration import only from here; the logic lives in `services/`."""
+Other modules and Process Orchestration import only from here; the logic lives in `services/`.
+
+Steps and queries take the JSON of the spec (a dict, or the validated model from a controller) and answer JSON,
+as over HTTP. The operations of people answer the models of `models/` for the controllers' `response_model`."""
 from __future__ import annotations
 
 from features.connector import services
-from features.connector.models import MODULE
+from features.connector.models import MODULE, DeactivateSubscriptionConnectorsInput, UnlinkTechnicalUserInput
 from features.connector.services import (
     change_endpoint,
     delete_connector,
@@ -47,15 +50,15 @@ __all__ = [
 
 
 # -- steps for Process Orchestration (README 8): input = JSON body incl. processId and stepRunId ---
-def deactivate_subscription_connectors(input: dict) -> dict:
-    return services.deactivate_subscription_connectors(input)
+def deactivate_subscription_connectors(input: dict | DeactivateSubscriptionConnectorsInput) -> dict:
+    return services.deactivate_subscription_connectors(input).to_json()
 
 
-def unlink_technical_user(input: dict) -> dict:
-    return services.unlink_technical_user(input)
+def unlink_technical_user(input: dict | UnlinkTechnicalUserInput) -> dict:
+    return services.unlink_technical_user(input).to_json()
 
 
 # -- queries for other modules (README 9): parameters by their openapi names ------------------------
 def list_connectors_internal(*, technicalUserId: str | None = None, **_other) -> list:
     """9.1: the ACTIVE connectors that use this technical user, as `ConnectorRef`."""
-    return services.list_connectors_internal(technical_user_id=technicalUserId)
+    return [ref.to_json() for ref in services.list_connectors_internal(technical_user_id=technicalUserId)]

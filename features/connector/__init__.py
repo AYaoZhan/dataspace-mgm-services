@@ -24,10 +24,10 @@
 #################################################################################
 """Connector (spec C6-M1): the register of the connectors of the companies of this installation (README 5),
 company connectors and connectors as a service, with the steps for Process Orchestration (README 8) and the
-query for C2-M3 (README 9). In memory (README 4 names an own database `c6_m1`; OPEN-QUESTIONS.md 1).
+query for C2-M3 (README 9). The register is in the feature's own database (`portal_common.database`).
 
 Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hook a runtime
-calls, `reset()`. The HTTP API is `features.connector.router.router`.
+calls, `on_startup()` and `reset()`. The HTTP API is `features.connector.router.router`.
 """
 from __future__ import annotations
 
@@ -36,7 +36,11 @@ from features.connector.models import MODULE
 
 NAME = "connector"
 
-__all__ = ["MODULE", "NAME", "reset"]
+__all__ = ["MODULE", "NAME", "on_startup", "reset"]
+
+
+def on_startup() -> None:
+    services.start()
 
 
 def reset() -> None:
