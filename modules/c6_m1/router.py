@@ -36,6 +36,8 @@ from . import interface, service
 from .interface import MODULE
 
 router = standin.router(MODULE)
+# standin.router() tags every router "<module> (stand-in)" in Swagger; C6-M1 is implemented.
+router.tags = ["c6-m1 Connectors"]
 
 Role = Literal["provider", "host"]
 Type = Literal["COMPANY_CONNECTOR", "CONNECTOR_AS_A_SERVICE"]

@@ -177,7 +177,6 @@ def test_every_http_endpoint_requires_authentication(client, public):
             assert "retryable" in response.json()
 
 
-@needs_database
 def test_private_queries_still_work_with_service_tokens_and_reject_people(client):
     response = client.get(API + "/internal/company-users", params={"companyId": COMPANY},
                           headers=bearer(person_token("otto")))
@@ -192,8 +191,6 @@ def test_private_queries_still_work_with_service_tokens_and_reject_people(client
     assert response.json()["type"] == "urn:c2-m2:problem:validation"
 
 
-@needs_database
-@needs_admin_api
 def test_public_handlers_preserve_scope_validation_and_camel_case(client):
     interface.assign_company_admin({
         "processId": COMPANY, "stepRunId": USER,

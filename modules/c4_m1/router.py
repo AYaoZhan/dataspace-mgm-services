@@ -41,6 +41,8 @@ from . import interface, service
 from .interface import MODULE
 
 router = standin.router(MODULE)
+# standin.router() tags every router "<module> (stand-in)" in Swagger; C4-M1 is implemented.
+router.tags = ["c4-m1 Credentials"]
 
 
 def reset() -> None:

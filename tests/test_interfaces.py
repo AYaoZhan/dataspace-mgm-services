@@ -112,6 +112,11 @@ def test_import_check_itself():
           "from features.registration.managers import application_repository\n" \
           "from modules.c1_m2.interface import get_application_internal"   # migrated: stale path
     assert len(_foreign(bad, "modules.c3_m2")) == 8
+    # relative imports in a sub-package resolve against that sub-package (#67)
+    nested_ok = "from .. import errors\nfrom ...sub import helper"
+    assert _foreign(nested_ok, "modules.c2_m2.subpkg.dao") == []
+    nested_bad = "from ....c1_m2.service import y"
+    assert len(_foreign(nested_bad, "modules.c2_m2.subpkg.dao")) == 1
 
 
 def _code_files():

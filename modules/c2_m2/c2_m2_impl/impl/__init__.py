@@ -38,7 +38,10 @@ from .user_service_impl import UserServiceImpl
 
 
 def portal_iam(config: Config) -> PortalIam:
-    """The Keycloak Admin API at `IAM_URL`."""
+    """The Keycloak Admin API at `IAM_URL`, or in-memory test IAM when `iam.url` is empty."""
+    if not config.from_properties("iam.url"):
+        from .test_iam_portal_iam import TestIamPortalIamAdapter
+        return TestIamPortalIamAdapter(config)
     return KeycloakPortalIam(config)
 
 
