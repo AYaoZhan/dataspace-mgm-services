@@ -29,8 +29,9 @@ import datetime as dt
 
 import pytest
 
-from modules.c11_m1 import closing, rules, worker
-from modules.c11_m1 import router as c11
+from features import notifications as c11
+from features.notifications.managers import store, worker
+from features.notifications.services import closing, rules
 from portal_common import events
 
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
@@ -61,7 +62,7 @@ def ev(module: str, etype: str, time: str | None = T0, **data) -> dict:
 
 
 def of_type(ntype: str) -> list[dict]:
-    return [n for n in c11.notifications if n["type"] == ntype]
+    return [n for n in store.notifications if n["type"] == ntype]
 
 
 def submitted(time: str = T0) -> dict:

@@ -247,12 +247,12 @@ Processes are kept in memory.
 
 Live state for the UI (README 7.6 to 7.8): `GET /api/c12-m1/processes/{processId}/events` for OSP
 staff and `GET /api/c12-m1/applications/{applicationId}/events` for the applicant, event
-`process-changed` with the full state of the process. The stand-in of C11-M1 streams its inbox at
-`GET /api/c11-m1/notifications/events`. Try it:
+`process-changed` with the full state of the process. C11-M1 (feature `notifications`) streams its inbox at
+`GET /api/notifications/notifications/events`. Try it:
 
 ```bash
 TOKEN=$(uv run python iam/test/get-token.py erika)
-curl -N -H "Authorization: Bearer $TOKEN" localhost:8000/api/c11-m1/notifications/events
+curl -N -H "Authorization: Bearer $TOKEN" localhost:8000/api/notifications/notifications/events
 ```
 
 ## Provisional readings of the spec

@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Callable
 from portal_common import sse, tokens
 
 if TYPE_CHECKING:
-    from modules.c11_m1.rules import Rule
+    from features.notifications.models.rule import Rule
 
 LOCK = threading.RLock()
 notifications: list[dict] = []           # README 5 `notification`; items carry `sourceEventId` (tests/test_sse.py)

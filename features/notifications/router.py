@@ -22,11 +22,11 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Public interface of C11-M1. The spec has no steps or queries for C11-M1 (README 8 and 9)."""
+"""HTTP API of the notifications: the controller tree of `controllers/` under the base path of the feature."""
 from __future__ import annotations
 
-from portal_common import standin
+from features.notifications import controllers
+from features.notifications.models import MODULE
+from portal_common.routing import mount
 
-MODULE = "c11-m1"
-
-__getattr__ = standin.missing_interface(MODULE)   # README 8 and 9: none; any call gets the scaffold fallback
+router = mount(controllers, MODULE)

@@ -30,8 +30,8 @@ another's (acceptance 13.9). Every function takes a stored notification of the c
 """
 from __future__ import annotations
 
-from modules.c11_m1 import store
-from modules.c11_m1.interface import MODULE
+from features.notifications.managers import store
+from features.notifications.models import MODULE
 from portal_common.problems import Problem
 
 

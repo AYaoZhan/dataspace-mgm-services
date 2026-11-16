@@ -25,28 +25,25 @@
 #################################################################################
 """HTTP operations on the own inbox (README 7): token, permission and parameters, then `inbox`
 (what the caller sees), `listing` (the list query) and `marks` (the caller's read and hidden state).
+
+`/count` and `/events` are declared before `/{notificationId}`, so they are matched first.
 """
 from __future__ import annotations
 
 import datetime as dt
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import Header, Query, Request, Response
 
-from modules.c11_m1 import inbox, listing, marks, store
-from modules.c11_m1.interface import MODULE
-from portal_common import problems, spec, sse, tokens
+from features.notifications.services import inbox, listing, marks
+from portal_common import sse
+from portal_common.routing import Controller, Permission
 
-router = APIRouter(prefix=spec.module(MODULE).base_path, route_class=problems.route_class(MODULE), tags=[MODULE])
-
-
-def _perm(method: str, path: str):
-    """The permission of the spec operation (`x-permission`, here `view_notifications`); returns the claims."""
-    return Depends(tokens.require_spec(MODULE, method, path))
+controller = Controller("Notifications: Inbox")
 
 
-@router.get("/notifications")
-def list_notifications(claims: dict = _perm("GET", "/notifications"),
+@controller.get("")
+def list_notifications(claims: dict = Permission,
                        topic: Literal["INFO", "ACTION"] | None = None,
                        ntype: Annotated[str | None, Query(alias="type")] = None,
                        read: bool | None = None,
@@ -60,42 +57,42 @@ def list_notifications(claims: dict = _perm("GET", "/notifications"),
     return listing.list_page(inbox.own(claims), filters, newest_first=sort == "createdAt.desc", page=page, size=size)
 
 
-@router.get("/notifications/count")
-def count_notifications(claims: dict = _perm("GET", "/notifications/count")):
+@controller.get("/count")
+def count_notifications(claims: dict = Permission):
     """README 7.2: counters of the own inbox (hidden ones left out)."""
     return inbox.count(claims)
 
 
-@router.get("/notifications/events")
-def stream_notification_events(request: Request, claims: dict = _perm("GET", "/notifications/events"),
+@controller.get("/events")
+def stream_notification_events(request: Request, claims: dict = Permission,
                                last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None):
     """README 7.6: without `Last-Event-ID` only new events; an id no longer kept gives `resync`."""
-    return sse.response(store.BROKER, request, claims, last_event_id,
-                        visible=lambda meta: store.stream_visible(meta, claims), on_gap=lambda: [("resync", {})])
+    return sse.response(inbox.events(), request, claims, last_event_id,
+                        visible=inbox.stream_filter(claims), on_gap=lambda: [("resync", {})])
 
 
-@router.get("/notifications/{notificationId}")
-def get_notification(notificationId: str, claims: dict = _perm("GET", "/notifications/{notificationId}")):
+@controller.get("/{notificationId}")
+def get_notification(notificationId: str, claims: dict = Permission):
     """README 7.3: one notification of the own inbox with `read` for the caller."""
     return inbox.get(notificationId, claims)
 
 
-@router.post("/notifications/{notificationId}/read", status_code=204)
-def mark_read(notificationId: str, claims: dict = _perm("POST", "/notifications/{notificationId}/read")):
+@controller.post("/{notificationId}/read", status_code=204)
+def mark_read(notificationId: str, claims: dict = Permission):
     """README 7.4: set `read_at` for the caller; idempotent, the first time is kept."""
     marks.mark_read(inbox.find(notificationId, claims), claims.get("sub"))
     return Response(status_code=204)
 
 
-@router.post("/notifications/{notificationId}/unread", status_code=204)
-def mark_unread(notificationId: str, claims: dict = _perm("POST", "/notifications/{notificationId}/unread")):
+@controller.post("/{notificationId}/unread", status_code=204)
+def mark_unread(notificationId: str, claims: dict = Permission):
     """README 7.4: remove `read_at` for the caller; idempotent."""
     marks.mark_unread(inbox.find(notificationId, claims), claims.get("sub"))
     return Response(status_code=204)
 
 
-@router.post("/notifications/{notificationId}/hide", status_code=204)
-def hide_notification(notificationId: str, claims: dict = _perm("POST", "/notifications/{notificationId}/hide")):
+@controller.post("/{notificationId}/hide", status_code=204)
+def hide_notification(notificationId: str, claims: dict = Permission):
     """README 7.5: hide for the caller; an open task gives 409 `task-open`; idempotent."""
     marks.hide(inbox.find(notificationId, claims), claims.get("sub"))
     return Response(status_code=204)

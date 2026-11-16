@@ -29,7 +29,7 @@ import threading
 
 import pytest
 
-from modules.c11_m1 import retry, store, worker
+from features.notifications.managers import retry, store, worker
 
 
 @pytest.fixture(autouse=True)

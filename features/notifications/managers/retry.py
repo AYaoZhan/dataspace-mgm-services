@@ -35,7 +35,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from modules.c11_m1 import store
+from features.notifications.managers import store
 
 log = logging.getLogger("portal.c11-m1")
 

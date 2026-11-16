@@ -34,8 +34,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from conftest import BASE, bearer, person_token
-from modules.c11_m1 import inbox, listing, marks, store, worker
-from modules.c11_m1 import router as c11
+from features import notifications as c11
+from features.notifications.managers import store, worker
+from features.notifications.router import router as c11_router
+from features.notifications.services import inbox, listing, marks
 from portal_common import events, problems, tokens
 from portal_common import http as phttp
 from portal_common.problems import Problem
@@ -44,7 +46,7 @@ from tools import test_iam
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
 COMPANY = "c0000001-0000-4000-8000-000000000001"
 CHANGE_REQUEST = "44444444-4444-4444-8444-444444444444"
-API = "/api/c11-m1/notifications"
+API = "/api/notifications/notifications"
 
 
 @pytest.fixture(autouse=True)
@@ -263,7 +265,7 @@ def test_only_a_task_that_is_not_done_is_open(topic, done, is_open):
 def client():
     app = FastAPI()
     problems.install(app)
-    for r in (test_iam.router, c11.router):
+    for r in (test_iam.router, c11_router):
         app.include_router(r)
     phttp.register_local(BASE, app)   # JWKS of the test IAM for the token check
     return TestClient(app, base_url=BASE)

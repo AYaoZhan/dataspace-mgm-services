@@ -28,8 +28,9 @@ import threading
 
 import pytest
 
-from modules.c11_m1 import recipients, rules, store, worker
-from modules.c11_m1 import router as c11
+from features import notifications as c11
+from features.notifications.managers import store, worker
+from features.notifications.services import recipients, rules
 from portal_common import events, tokens
 
 APPLICATION = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
@@ -62,7 +63,7 @@ def submitted() -> dict:
 
 
 def of_type(ntype: str) -> list[dict]:
-    return [n for n in c11.notifications if n["type"] == ntype]
+    return [n for n in store.notifications if n["type"] == ntype]
 
 
 def claims(sub: str, *perms: str) -> dict:
@@ -87,7 +88,7 @@ def test_same_event_id_twice_creates_no_second_notification():
     event = submitted()
     c11.on_event(event)
     c11.on_event(event)   # at-least-once delivery (README 4, 6.4)
-    assert len(c11.notifications) == 2
+    assert len(store.notifications) == 2
 
 
 def test_the_same_id_from_another_source_is_another_event():
@@ -96,19 +97,19 @@ def test_the_same_id_from_another_source_is_another_event():
     other = events.cloudevent("c1-m2", "ApplicationSubmitted", submitted()["data"], id=failed["id"])
     c11.on_event(failed)
     c11.on_event(other)
-    assert sorted(n["type"] for n in c11.notifications) == \
+    assert sorted(n["type"] for n in store.notifications) == \
         ["APPLICATION_SUBMITTED", "PROCESS_STEP_FAILED", "REVIEW_CASE_OPENED"]
 
 
 def test_a_failing_closing_step_still_applies_the_rules_and_marks_the_event_failed(monkeypatch):
-    from modules.c11_m1 import closing
+    from features.notifications.services import closing
 
     def broken(event):
         raise RuntimeError("closing broke")
     monkeypatch.setattr(closing, "handle", broken)
     event = submitted()
     c11.on_event(event)
-    assert sorted(n["type"] for n in c11.notifications) == ["APPLICATION_SUBMITTED", "REVIEW_CASE_OPENED"]
+    assert sorted(n["type"] for n in store.notifications) == ["APPLICATION_SUBMITTED", "REVIEW_CASE_OPENED"]
     assert store.processed[store.event_key(event)]["status"] == "FAILED"
 
 
@@ -133,7 +134,7 @@ def test_processed_events_and_dedup_keys_are_bounded_oldest_first(monkeypatch):
     for event in sent:
         c11.on_event(event)
     assert list(store.processed) == [store.event_key(e) for e in sent[2:]]
-    assert len(store._dedup) == 3 and len(c11.notifications) == 5   # notifications themselves stay
+    assert len(store._dedup) == 3 and len(store.notifications) == 5   # notifications themselves stay
 
 
 def test_notifications_are_stored_in_created_order_across_threads():
@@ -151,7 +152,7 @@ def test_notifications_are_stored_in_created_order_across_threads():
         t.start()
     for t in threads:
         t.join()
-    created = [n["createdAt"] for n in c11.notifications]
+    created = [n["createdAt"] for n in store.notifications]
     assert len(created) == 1600 and created == sorted(created)
 
 
@@ -189,7 +190,7 @@ def test_disabled_rules_are_skipped(monkeypatch):
     monkeypatch.setattr(worker, "submit", lambda job, *, label: jobs.append(label))
     c11.on_event(submitted())
     c11.on_event(ev("c4-m2", "WalletAccountCreated", companyId=COMPANY, technicalUserId=TECHNICAL_USER))
-    assert [n["type"] for n in c11.notifications] == ["APPLICATION_SUBMITTED"] and jobs == []
+    assert [n["type"] for n in store.notifications] == ["APPLICATION_SUBMITTED"] and jobs == []
 
 
 def test_company_role_rule_gives_one_personal_notification_per_person(monkeypatch):
@@ -253,4 +254,4 @@ def test_reset_stops_the_worker_before_clearing_the_inbox(monkeypatch):
     c11.on_event(ev("c6-m1", "ConnectorRegistered", connectorId=CONNECTOR, companyId=COMPANY))
     assert started.wait(2)
     c11.reset()
-    assert c11.notifications == []
+    assert store.notifications == []

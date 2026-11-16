@@ -22,3 +22,12 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Configuration of README section 4, read from the environment at call time."""
+from __future__ import annotations
+
+import os
+
+
+def disabled_rules() -> set[str]:
+    """`DISABLED_RULES` (README 4), read at every event so a test can change it."""
+    return {r.strip().upper() for r in os.environ.get("DISABLED_RULES", "").split(",") if r.strip()}

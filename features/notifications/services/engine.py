@@ -34,19 +34,14 @@ notifications are stored at once. Logs carry rule ids and event ids only, never 
 from __future__ import annotations
 
 import logging
-import os
 
-from modules.c11_m1 import closing, recipients, rules, store, worker
-from modules.c11_m1.rules import Rule
+from features.notifications.managers import config, store, worker
+from features.notifications.models.rule import Rule
+from features.notifications.services import closing, recipients, rules
 
 log = logging.getLogger("portal.c11-m1")
 
 _APPLICATION_ENDED = ("ApplicationCompleted", "ApplicationDeclined", "ApplicationWithdrawn")
-
-
-def disabled_rules() -> set[str]:
-    """`DISABLED_RULES` (README 4), read at every event so a test can change it."""
-    return {r.strip().upper() for r in os.environ.get("DISABLED_RULES", "").split(",") if r.strip()}
 
 
 def handle(event: dict) -> None:
@@ -65,7 +60,7 @@ def handle(event: dict) -> None:
     _guarded(event, "closing", lambda: closing.handle(event))
     _guarded(event, "applicant", lambda: _remember_applicant(event_type, data))
 
-    off = disabled_rules()
+    off = config.disabled_rules()
     for rule in rules.for_event(event_type):
         if rule.id not in off:
             _guarded(event, f"rule {rule.id}", lambda rule=rule: _apply(rule, event))

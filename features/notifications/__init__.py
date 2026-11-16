@@ -23,21 +23,28 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""C11-M1 Notifications: the module contract of the scaffold (`router`, `reset`, `on_event`).
+"""Notifications (spec C11-M1): the inbox of a person, filled by the events of the other modules.
 
-The work happens in the other files of the folder: `rules` (R1 to R17), `engine` (one event in),
-`closing` (tasks done), `recipients` (who gets a personal notification), `worker` and `retry`
-(background delivery and its retries), `store` (the data), `inbox`, `listing` and `marks` (what a
-person sees, the list query, read and hidden state) and `api` (README 7).
+Every event of the relay passes the fixed rules R1 to R17; a rule creates information or a task for the
+applicant, for the staff with a permission or for people with a role in a company. A closing event sets a
+task done. A person lists, reads, marks and hides the notifications of the own inbox and follows them as
+a stream.
+
+Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
+calls, `reset()` and `on_event()`. The HTTP API is `features.notifications.router.router`. The work is in
+`services/` (`rules`, `engine`, `closing`, `recipients`, `inbox`, `listing`, `marks`) and `managers/`
+(`store`, the background `worker` and its `retry` policy, the neighbour client and the stand-in data).
+The delivery thread of `worker` starts on the first job, so the feature needs no `on_startup()`.
 """
 from __future__ import annotations
 
-from modules.c11_m1 import closing, engine, store, worker
-from modules.c11_m1.api import router
+from features.notifications.managers import store, worker
+from features.notifications.models import MODULE
+from features.notifications.services import closing, engine
 
-notifications = store.notifications   # the same list object; store.reset() clears it in place
+NAME = "notifications"
 
-__all__ = ["router", "reset", "on_event", "notifications"]
+__all__ = ["MODULE", "NAME", "on_event", "reset"]
 
 
 def reset() -> None:

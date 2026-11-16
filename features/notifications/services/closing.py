@@ -44,8 +44,9 @@ import datetime as dt
 import logging
 from collections import deque
 
-from modules.c11_m1 import rules, store
-from modules.c11_m1.rules import Rule
+from features.notifications.managers import store
+from features.notifications.models.rule import Rule
+from features.notifications.services import rules
 
 log = logging.getLogger("portal.c11-m1")
 

@@ -31,8 +31,11 @@ the token; hidden ones are left out. Notifications are shown as the schema `Noti
 """
 from __future__ import annotations
 
-from modules.c11_m1 import marks, store
-from modules.c11_m1.interface import MODULE
+from collections.abc import Callable
+
+from features.notifications.managers import store
+from features.notifications.models import MODULE
+from features.notifications.services import marks
 from portal_common.problems import Problem
 
 FIELDS = ("notificationId", "type", "topic", "companyId", "subjectType", "subjectId", "content", "forStaff",
@@ -76,3 +79,13 @@ def count(claims: dict) -> dict:
             "unread": sum(not v["read"] for v in items),
             "openTasks": sum(marks.is_open_task(v) for v in items),
             "unreadInfo": sum(v["topic"] == "INFO" and not v["read"] for v in items)}
+
+
+def events():
+    """README 7.6: the broker of the stream events of every inbox (`managers.store.BROKER`)."""
+    return store.BROKER
+
+
+def stream_filter(claims: dict) -> Callable[[dict], bool]:
+    """README 7.6: which stream events the caller sees, by the `meta` of the event (as `visible_to`)."""
+    return lambda meta: store.stream_visible(meta, claims)
