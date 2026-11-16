@@ -22,3 +22,10 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""Value sets of Process Orchestration (README 5, 7.1): process states, step states and subject types."""
+from __future__ import annotations
+
+STATUSES = {"RUNNING", "WAITING", "FAILED", "COMPLETED", "ENDED"}
+OPEN = {"RUNNING", "WAITING", "FAILED"}          # a process that a trigger with the same correlation value joins
+FINAL_STEP = {"DONE", "SKIPPED"}                  # step states after which the next step runs
+SUBJECT_TYPES = {"APPLICATION", "COMPANY", "TECHNICAL_USER", "OFFER", "SUBSCRIPTION", "CONNECTOR"}

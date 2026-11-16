@@ -45,7 +45,7 @@ from fastapi import FastAPI
 
 def create_runtime(*features: ModuleType | str) -> FastAPI:
     """App serving `features`: feature packages (`from features import registration`) or the readable
-    names / spec ids of modules that are not migrated yet (`"process_orchestration"`, `"c12-m1"`)."""
+    names / spec ids of modules that are not migrated yet (`"c1-m3"`)."""
     from scaffold import app
 
     return app.create_app([f.NAME if isinstance(f, ModuleType) else f for f in features])

@@ -32,8 +32,8 @@ from conftest import BASE, bearer, person_token
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from modules.c12_m1 import engine as eng
-from modules.c12_m1 import router as c12_router
+from features.process_orchestration.services import engine as eng
+from features.process_orchestration import router as c12_router
 from portal_common import events, problems, spec, standin, tokens
 from portal_common import http as phttp
 from portal_common.problems import Problem
@@ -381,7 +381,7 @@ def test_retrigger_permissions_and_state(engine, fake, monkeypatch):
     engine.on_event(submitted())
     p = proc_of(engine, "onboarding")
     c = _api(engine)
-    url = f"/api/c12-m1/processes/{p['id']}/steps/create-company/retrigger"
+    url = f"/api/process-orchestration/processes/{p['id']}/steps/create-company/retrigger"
     assert c.post(url, headers=bearer(person_token("rolf")), json={}).status_code == 403
     fake.answers.pop("/api/company-profile/steps/create-company")
     r = c.post(url, headers=bearer(person_token("otto")), json={"comment": "fixed"})
@@ -393,10 +393,10 @@ def test_retrigger_permissions_and_state(engine, fake, monkeypatch):
 def test_processes_of_a_subject(engine):
     engine.on_event(ev("SubscriptionSetupStarted", offerSubscriptionId="s9", offerId="o1", customerCompanyId="c1"))
     c = _api(engine)
-    r = c.get("/api/c12-m1/internal/processes", params={"subjectType": "SUBSCRIPTION", "subjectId": "s9"},
+    r = c.get("/api/process-orchestration/internal/processes", params={"subjectType": "SUBSCRIPTION", "subjectId": "s9"},
               headers=bearer(tokens.service_token("c10-m1")))
     assert r.status_code == 200 and r.json()[0]["flowKey"] == "subscription-setup"
-    r = c.get("/api/c12-m1/processes", headers=bearer(person_token("otto")), params={"flowKey": "subscription-setup"})
+    r = c.get("/api/process-orchestration/processes", headers=bearer(person_token("otto")), params={"flowKey": "subscription-setup"})
     assert r.json()["total"] == 1
 
 

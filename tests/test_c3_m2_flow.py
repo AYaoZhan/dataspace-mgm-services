@@ -33,7 +33,7 @@ import pytest
 from fastapi import FastAPI
 
 from conftest import BASE
-from modules.c12_m1 import engine as eng
+from features.process_orchestration.services import engine as eng
 from modules.c3_m2 import csp_client, interface
 from portal_common import events
 from portal_common import http as phttp

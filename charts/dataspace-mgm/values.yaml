@@ -189,7 +189,7 @@ backend:
 # Set `backend.enabled=false` when you use it. The settings of `backend.*` (IAM, CSP, secrets, env, probes,
 # security context) apply to every runtime. The ingress of the backend routes
 # `/api/<feature>` (`_` as `-`) to the runtime: a migrated feature by its readable name (`/api/company-profile`), a
-# module not migrated yet by its spec id (`/api/c12-m1`, ADR-0003).
+# module not migrated yet by its spec id (`/api/<module id>`, ADR-0003).
 runtimes:
   # -- Whether the runtimes below are installed
   enabled: false
@@ -205,8 +205,9 @@ runtimes:
   # - name: onboarding                       # hybrid: one pod, both features
   #   runtime: onboarding
   #   features: [registration, company_profile]
-  # - name: process-orchestration            # not migrated yet: the installation runtime, narrowed
-  #   features: [c12-m1]
+  # - name: process-orchestration            # one feature alone
+  #   runtime: process_orchestration
+  #   features: [process_orchestration]
 
 frontend:
   # -- Whether the Dataspace Management UI is installed

@@ -129,11 +129,11 @@ class Target:
         """Waits until the process of `flow` for `subject` has one of the states in `until`."""
         end, p = time.time() + timeout, None
         while time.time() < end:
-            r = self.call("GET", f"{base}/api/c12-m1/processes", self.staff_token(base, admin),
+            r = self.call("GET", f"{base}/api/process-orchestration/processes", self.staff_token(base, admin),
                           params={"flowKey": flow, "subjectId": subject})
             items = r.json().get("items", []) if r.status_code == 200 else []
             if items:
-                p = self.call("GET", f"{base}/api/c12-m1/processes/{items[0]['id']}", self.staff_token(base, admin)).json()
+                p = self.call("GET", f"{base}/api/process-orchestration/processes/{items[0]['id']}", self.staff_token(base, admin)).json()
                 if p["status"] in until:
                     return p
             time.sleep(0.2)
@@ -147,7 +147,7 @@ class Target:
         return f"{p['status']}: {out}" + (f" | lastError {errors}" if errors else "")
 
     def step_result(self, base: str, admin: str, p: dict, key: str) -> dict:
-        return self.call("GET", f"{base}/api/c12-m1/processes/{p['id']}/steps/{key}", self.staff_token(base, admin)).json()
+        return self.call("GET", f"{base}/api/process-orchestration/processes/{p['id']}/steps/{key}", self.staff_token(base, admin)).json()
 
 
 # ============================================================================ scenario 1
@@ -353,7 +353,7 @@ def scenario_4(t: Target) -> None:
     a = t.call("GET", f"{t.osp_b}/api/company-profile/osp/companies/{t.ctx['maschinenbau.companyId']}", t.token(t.osp_b, "rita")) \
         if t.ctx.get("maschinenbau.companyId") else None
     t.check("installations are separate: OSP B does not know the company of OSP A", a is None or a.status_code == 404)
-    r = t.call("GET", f"{t.osp_b}/api/c12-m1/processes", t.token(t.osp_a, "otto"))
+    r = t.call("GET", f"{t.osp_b}/api/process-orchestration/processes", t.token(t.osp_a, "otto"))
     t.check("a token of OSP A is rejected by OSP B (401)", r.status_code == 401, str(r.status_code))
 
 

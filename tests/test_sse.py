@@ -40,8 +40,8 @@ from fastapi import FastAPI
 
 from conftest import BASE, person_token
 from modules.c11_m1 import router as c11
-from modules.c12_m1 import engine as eng
-from modules.c12_m1 import router as c12
+from features.process_orchestration.services import engine as eng
+from features.process_orchestration import router as c12
 from portal_common import events
 from portal_common import http as phttp
 from portal_common import problems
@@ -171,7 +171,7 @@ def test_staff_follows_a_process_until_completed(server):
     e = eng.get_engine()
     e.on_event(submitted())
     pid = next(iter(e.processes))
-    s = server(f"/api/c12-m1/processes/{pid}/events", "otto")
+    s = server(f"/api/process-orchestration/processes/{pid}/events", "otto")
     assert s.status == 200 and s.content_type.startswith("text/event-stream")
     first = s.next()   # README 7.6: without Last-Event-ID the current state first
     assert s.retry == "3000" and first["event"] == "process-changed" and first["data"]["status"] == "WAITING"
@@ -186,17 +186,17 @@ def test_staff_follows_a_process_until_completed(server):
 
 
 def test_applicant_follows_own_application_only(server):
-    erika = server(f"/api/c12-m1/applications/{APPLICATION}/events", "erika")
-    lieschen = server(f"/api/c12-m1/applications/{APPLICATION}/events", "lieschen")
+    erika = server(f"/api/process-orchestration/applications/{APPLICATION}/events", "erika")
+    lieschen = server(f"/api/process-orchestration/applications/{APPLICATION}/events", "lieschen")
     assert erika.status == 200 and lieschen.status == 200 and erika.quiet(0.3)   # no process yet: open, empty
     eng.get_engine().on_event(submitted())
     msg = erika.until(lambda m: m["data"]["status"] == "WAITING")[-1]
     assert msg["data"]["flowKey"] == "onboarding" and msg["data"]["subjectId"] == APPLICATION
     assert lieschen.quiet(0.5)   # another person's application: nothing, and no 404
     pid = msg["data"]["processId"]
-    staff_only = server(f"/api/c12-m1/processes/{pid}/events", "erika")
+    staff_only = server(f"/api/process-orchestration/processes/{pid}/events", "erika")
     assert staff_only.status == 403 and staff_only.body["type"] == "urn:c12-m1:problem:forbidden"
-    bad = server("/api/c12-m1/applications/not-a-uuid/events", "erika")
+    bad = server("/api/process-orchestration/applications/not-a-uuid/events", "erika")
     assert bad.status == 400
 
 
@@ -204,27 +204,27 @@ def test_reconnect_replays_missed_process_events(server):
     e = eng.get_engine()
     e.on_event(submitted())
     pid = next(iter(e.processes))
-    s = server(f"/api/c12-m1/processes/{pid}/events", "otto")
+    s = server(f"/api/process-orchestration/processes/{pid}/events", "otto")
     last = s.next()["id"]
     s.stop.set()                     # connection lost ...
     e.on_event(approved())           # ... while the process runs to the end
-    again = server(f"/api/c12-m1/processes/{pid}/events", "otto", last_id=last)
+    again = server(f"/api/process-orchestration/processes/{pid}/events", "otto", last_id=last)
     replayed = again.until(lambda m: m["data"]["status"] == "COMPLETED")
     assert len(replayed) > 1 and all(m["id"] != last for m in replayed)
     assert [m["data"]["status"] for m in replayed][0] == "RUNNING"   # the first missed change, not a snapshot
-    unknown = server(f"/api/c12-m1/processes/{pid}/events", "otto", last_id="gone-7")
+    unknown = server(f"/api/process-orchestration/processes/{pid}/events", "otto", last_id="gone-7")
     assert unknown.next()["data"]["status"] == "COMPLETED"           # not kept: current state
 
 
 def test_stream_needs_a_token_in_the_header(server):
     pid = str(uuid.uuid4())
-    for path in (f"/api/c12-m1/processes/{pid}/events", f"/api/c12-m1/applications/{APPLICATION}/events",
+    for path in (f"/api/process-orchestration/processes/{pid}/events", f"/api/process-orchestration/applications/{APPLICATION}/events",
                  "/api/c11-m1/notifications/events"):
         assert server(path).status == 401
         assert server(path, token="not-a-token").status == 401
         token_in_url = server(f"{path}?access_token={person_token('otto')}")
         assert token_in_url.status == 401 and token_in_url.body["type"].endswith(":problem:unauthorized")
-    assert server(f"/api/c12-m1/processes/{pid}/events", "otto").status == 404
+    assert server(f"/api/process-orchestration/processes/{pid}/events", "otto").status == 404
 
 
 # ------------------------------------------------------------------ C11-M1 README 7.6

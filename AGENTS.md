@@ -111,6 +111,7 @@ Its API is served under its readable name (`/api/registration`, `/api/technical-
 Problem types, events, permissions and service accounts keep the spec id. Other modules import only
 `features.<name>.interface`. Runtimes in `runtimes/` import features
 (`create_runtime(registration, company_profile)`); `RUNTIME=<name> python -m runtimes` starts one.
+Process Orchestration (C12-M1) is the feature `process_orchestration` under `/api/process-orchestration`.
 The binding folder rules of a feature (F1 to F14) are in [`features/AGENTS.md`](features/AGENTS.md); check them with
 `.claude/skills/feature-architecture/scripts/feature-check.py <feature> --strict` while you develop a feature.
 
