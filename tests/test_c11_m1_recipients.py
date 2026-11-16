@@ -28,10 +28,11 @@ C2-M2, the IT Admin fallback and the retry rule for neighbour errors (README 4).
 import os
 
 import pytest
-from conftest import needs_admin_api
 
-from modules.c11_m1 import recipients, store
-from modules.c11_m1 import router as c11
+from conftest import needs_admin_api
+from features import notifications as c11
+from features.notifications.managers import company_users_standin, store
+from features.notifications.services import recipients
 from portal_common import neighbours
 from portal_common.problems import Problem
 
@@ -104,11 +105,11 @@ def test_standin_unknown_company_or_role_is_nobody(standin_c2_m2):
 def test_standin_file_is_parsed_once_and_again_after_a_change(standin_c2_m2, monkeypatch, tmp_path):
     stub = tmp_path / "stub-company-users.json"
     stub.write_text('{"%s": {"Company Admin": ["a"]}}' % COMPANY, encoding="utf-8")
-    monkeypatch.setattr(recipients, "STUB_COMPANY_USERS", stub)
-    monkeypatch.setattr(recipients, "_stub_cache", None)
+    monkeypatch.setattr(company_users_standin, "STUB_COMPANY_USERS", stub)
+    monkeypatch.setattr(company_users_standin, "_stub_cache", None)
     loads = []
-    real_loads = recipients.json.loads
-    monkeypatch.setattr(recipients.json, "loads", lambda s: loads.append(1) or real_loads(s))
+    real_loads = company_users_standin.json.loads
+    monkeypatch.setattr(company_users_standin.json, "loads", lambda s: loads.append(1) or real_loads(s))
     kind, data = "company_role:companyId:Company Admin", {"companyId": COMPANY}
     assert recipients.resolve(kind, data) == ["a"] and recipients.resolve(kind, data) == ["a"]
     assert len(loads) == 1

@@ -102,17 +102,18 @@ Module APIs never go there; they stay in `modules/<id>/router.py` (or `features/
 ## Migrated features (ADR-0003)
 
 A module that is migrated lives in `features/<name>/` under its readable name (`registration` for C1-M2,
-`technical_user` for C2-M3, `application_review` for C1-M3, `company_profile` for C3-M1, `connector` for C6-M1) instead of `modules/<id>/`; for its team that folder replaces `modules/<id>/` in
+`technical_user` for C2-M3, `application_review` for C1-M3, `company_profile` for C3-M1, `notifications` for C11-M1, `connector` for C6-M1) instead of `modules/<id>/`; for its team that folder replaces `modules/<id>/` in
 rule 1. Every feature has the same shape: `__init__.py` (index: `NAME`, `MODULE`, `reset()`, optional
 `on_startup()` / `on_event(event)`), `router.py`, `main.py`, `interface.py` (the call convention, unchanged),
 `controllers/` (HTTP only; one folder per path segment of the API, each with a `controller.py` whose paths are
 relative to the folder, see `portal_common.routing`), `services/` (business logic, no HTTP), `managers/` (state, adapters) and `models/`.
-Its API is served under its readable name (`/api/registration`, `/api/technical-user`, `/api/application-review`, `/api/company-profile`, `/api/connector`), never under the spec id;
+Its API is served under its readable name (`/api/registration`, `/api/technical-user`, `/api/application-review`, `/api/company-profile`, `/api/notifications`, `/api/connector`), never under the spec id;
 Problem types, events, permissions and service accounts keep the spec id. Other modules import only
 `features.<name>.interface`. Runtimes in `runtimes/` import features
 (`create_runtime(registration, company_profile)`); `RUNTIME=<name> python -m runtimes` starts one.
 The binding folder rules of a feature (F1 to F17) are in [`features/AGENTS.md`](features/AGENTS.md); check them with
 `.claude/skills/feature-architecture/scripts/feature-check.py <feature> --strict` while you develop a feature.
+Also migrated: `csp_connection` for C3-M2, served under `/api/csp-connection`.
 
 ## Definition of done
 

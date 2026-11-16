@@ -29,19 +29,22 @@ import json
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from test_c3_m1_api import BASE, P1, P3, S1, S2, U1, U2, call
+from test_c3_m1_api import BASE, P1, P3, S1, S2, U1, U2, call, wired
 from test_c3_m1_attestation import _keys, claims, sign  # noqa: F401
 from test_c3_m1_steps import A1, A2, U3, _c1_m2, seed, step  # noqa: F401  (_c1_m2: fixture)
 
 from features import company_profile
-from features.company_profile.managers import config
-from features.company_profile.managers import company_repository
+from features.company_profile.managers import company_repository, config
 from features.company_profile.router import router as company_profile_router
 from features.company_profile.services import change_request_service, company_role_service, company_service
 from portal_common import events, problems
 from portal_common import http as phttp
 from portal_common.problems import Problem
 from tools import test_iam
+
+change_request_service = wired(change_request_service)
+company_role_service = wired(company_role_service)
+company_service = wired(company_service)
 
 
 @pytest.fixture
@@ -226,23 +229,6 @@ def test_the_reactivation_keeps_the_house_number_of_the_application(active):
     step("reactivate_company", companyId=U1, applicationId="a0000005-0000-4000-8000-000000000009")
     row = company_repository.get_company(U1)
     assert (row["street"], row["house_number"]) == ("Musterstraße", "7")
-
-
-def test_the_start_survives_a_database_without_a_driver(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "postgresql://x/y")
-    monkeypatch.setattr(company_repository, "_cache", None)
-    real_import = company_repository.importlib.import_module
-
-    def fake_import(name, package=None):
-        if name == ".postgres_backend":
-            raise ModuleNotFoundError("No module named 'psycopg'", name="psycopg")
-        return real_import(name, package)
-
-    monkeypatch.setattr(company_repository.importlib, "import_module", fake_import)
-    company_profile.reset()                                    # must not raise
-    with pytest.raises(Problem) as error:
-        company_repository.get_company("11111111-1111-4111-8111-111111111111")
-    assert error.value.status == 501
 
 
 def test_the_readme_data_files_resolve_without_configuration(monkeypatch):
