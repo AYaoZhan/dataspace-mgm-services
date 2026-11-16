@@ -26,14 +26,14 @@
 from __future__ import annotations
 
 from features.process_orchestration.models.errors import MODULE
-from features.process_orchestration.models.states import SUBJECT_TYPES  # noqa: F401
 from features.process_orchestration.services import queries
 from portal_common import standin
 
 
 def find_processes_of_subject(*, subjectType: str, subjectId: str) -> list:
-    """`GET /internal/processes`: the processes of one subject, newest first."""
-    return queries.find_processes_of_subject(subjectType=subjectType, subjectId=subjectId)
+    """`GET /internal/processes`: the processes of one subject, newest first, as JSON (the same as over HTTP)."""
+    return [p.model_dump(mode="json") for p in queries.find_processes_of_subject(subjectType=subjectType,
+                                                                                 subjectId=subjectId)]
 
 
 __getattr__ = standin.missing_interface(MODULE)

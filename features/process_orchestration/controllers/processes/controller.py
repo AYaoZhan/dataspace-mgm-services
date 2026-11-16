@@ -25,13 +25,14 @@
 """The processes of the installation for OSP staff (README 7.1, 7.2)."""
 from __future__ import annotations
 
+from features.process_orchestration.models.process import Process, ProcessSummaryPage
 from features.process_orchestration.services import queries
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Process Orchestration: Processes")
 
 
-@controller.get("", summary="List the processes")
+@controller.get("", response_model=ProcessSummaryPage, summary="List the processes")
 def list_processes(flowKey: str | None = None, status: str | None = None, subjectType: str | None = None,
                    subjectId: str | None = None, updatedSince: str | None = None, page: int = 0, size: int = 20,
                    _: dict = Permission):
@@ -39,6 +40,6 @@ def list_processes(flowKey: str | None = None, status: str | None = None, subjec
                                   updatedSince=updatedSince, page=page, size=size)
 
 
-@controller.get("/{processId}", summary="A process with its variables and step runs")
+@controller.get("/{processId}", response_model=Process, summary="A process with its variables and step runs")
 def get_process(processId: str, _: dict = Permission):
     return queries.get_process(processId)

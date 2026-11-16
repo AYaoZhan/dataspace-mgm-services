@@ -54,6 +54,3 @@ def start_worker() -> None:
     _worker = threading.Thread(target=loop, name="c12-worker", daemon=True)
     _worker.start()
 
-
-def stop_worker() -> None:
-    _stop.set()

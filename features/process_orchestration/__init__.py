@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from features.process_orchestration.models.errors import MODULE
 from features.process_orchestration.services import engine, worker
+from portal_common import database
 
 NAME = "process_orchestration"
 
@@ -40,10 +41,12 @@ __all__ = ["MODULE", "NAME", "on_event", "on_startup", "reset"]
 
 
 def reset() -> None:
+    """Empty tables (`database.reset_tables`, through the engine's repository) and a new engine."""
     engine.reset()
 
 
 def on_startup() -> None:
+    database.create_tables(MODULE)
     worker.start_worker()
 
 

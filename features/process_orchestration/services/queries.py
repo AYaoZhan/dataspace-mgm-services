@@ -22,80 +22,87 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""The operations of the API (README 7, 9): processes, step runs, retrigger and flows."""
+"""The operations of the API (README 7, 9): processes, step runs, retrigger and flows, answered as models."""
 from __future__ import annotations
 
+from pydantic import ValidationError
+
 from features.process_orchestration.models.errors import MODULE
+from features.process_orchestration.models.process import (Flow, FlowList, Process, ProcessSummary,
+                                                           ProcessSummaryPage, RetriggerRequest, StepRun,
+                                                           StepRunDetail)
 from features.process_orchestration.models.states import STATUSES, SUBJECT_TYPES
-from features.process_orchestration.services import engine
-from features.process_orchestration.services.projections import iso, step_run, summary
+from features.process_orchestration.services import engine, projections
 from portal_common.problems import Problem
 
 
-def process(process_id: str) -> dict:
+def process_dict(process_id: str) -> dict:
+    """The engine's process, or 404."""
     proc = engine.get_engine().store.get(process_id)
     if not proc:
         raise Problem(MODULE, 404, "not-found", detail="process unknown")
     return proc
 
 
+def _step_dict(proc: dict, step_key: str) -> dict:
+    sr = next((s for s in proc["steps"] if s["stepKey"] == step_key), None)
+    if not sr:
+        raise Problem(MODULE, 404, "not-found", detail="step unknown")
+    return sr
+
+
 def list_processes(*, flowKey: str | None, status: str | None, subjectType: str | None, subjectId: str | None,
-                   updatedSince: str | None, page: int, size: int) -> dict:
+                   updatedSince: str | None, page: int, size: int) -> ProcessSummaryPage:
     """README 7.1: the processes, newest change first, filtered and paged."""
     if page < 0 or not 1 <= size <= 100 or (status and status not in STATUSES) or \
             (subjectType and subjectType not in SUBJECT_TYPES):
         raise Problem(MODULE, 400, "validation")
-    items = [summary(p) for p in engine.get_engine().store.all()
+    items = [projections.summary(p) for p in engine.get_engine().store.all()
              if (not flowKey or p["flowKey"] == flowKey) and (not status or p["status"] == status)
              and (not subjectType or p["subjectType"] == subjectType) and (not subjectId or p["subjectId"] == subjectId)
-             and (not updatedSince or iso(p["updatedAt"]) >= updatedSince)]
-    items.sort(key=lambda x: x["updatedAt"], reverse=True)
-    return {"items": items[page * size:(page + 1) * size], "page": page, "size": size, "total": len(items)}
+             and (not updatedSince or projections.iso(p["updatedAt"]) >= updatedSince)]
+    items.sort(key=lambda x: x.updated_at, reverse=True)
+    return ProcessSummaryPage.of(items, page, size)
 
 
-def get_process(process_id: str) -> dict:
-    proc = process(process_id)
-    return summary(proc) | {"variables": proc["variables"], "steps": [step_run(s) for s in proc["steps"]]}
+def get_process(process_id: str) -> Process:
+    return projections.process(process_dict(process_id))
 
 
-def get_step_run(process_id: str, step_key: str) -> dict:
-    sr = next((s for s in process(process_id)["steps"] if s["stepKey"] == step_key), None)
-    if not sr:
-        raise Problem(MODULE, 404, "not-found", detail="step unknown")
-    return step_run(sr, detail=True)
+def get_step_run(process_id: str, step_key: str) -> StepRunDetail:
+    return projections.step_run_detail(_step_dict(process_dict(process_id), step_key))
 
 
-def retrigger_step(process_id: str, step_key: str, sub: str, body: dict | None) -> dict:
+def retrigger_step(process_id: str, step_key: str, sub: str, body: dict | None) -> StepRun:
     """README 7.4: a FAILED step runs again; 409 for any other state."""
-    comment = (body or {}).get("comment")
-    if comment is not None and (not isinstance(comment, str) or len(comment) > 500):
-        raise Problem(MODULE, 400, "validation", detail="comment up to 500 characters")
-    proc = process(process_id)
-    if not any(s["stepKey"] == step_key for s in proc["steps"]):
-        raise Problem(MODULE, 404, "not-found", detail="step unknown")
-    sr = engine.get_engine().retrigger(proc, step_key, sub, comment)
+    try:
+        request = RetriggerRequest.model_validate(body or {})
+    except ValidationError:
+        raise Problem(MODULE, 400, "validation", detail="comment up to 500 characters") from None
+    proc = process_dict(process_id)
+    _step_dict(proc, step_key)
+    sr = engine.get_engine().retrigger(proc, step_key, sub, request.comment)
     if sr is None:
         raise Problem(MODULE, 409, "invalid-state", detail="step is not FAILED")
-    return step_run(sr)
+    return projections.step_run(sr)
 
 
-def list_flows() -> dict:
+def list_flows() -> FlowList:
     e = engine.get_engine()
-    return {"items": [f | {"version": e.version} for f in e.flows.values()]}
+    return FlowList(items=[Flow.model_validate(f | {"version": e.version}) for f in e.flows.values()])
 
 
-def get_flow(flow_key: str) -> dict:
+def get_flow(flow_key: str) -> Flow:
     e = engine.get_engine()
     fl = e.flows.get(flow_key)
     if not fl:
         raise Problem(MODULE, 404, "not-found", detail="flow unknown")
-    return fl | {"version": e.version}
+    return Flow.model_validate(fl | {"version": e.version})
 
 
-def find_processes_of_subject(*, subjectType: str, subjectId: str) -> list:
+def find_processes_of_subject(*, subjectType: str, subjectId: str) -> list[ProcessSummary]:
     """`GET /internal/processes`: the processes of one subject, newest first."""
     if subjectType not in SUBJECT_TYPES:
         raise Problem(MODULE, 400, "validation", detail="subjectType")
-    items = [summary(p) for p in engine.get_engine().store.all()
-             if p["subjectType"] == subjectType and p["subjectId"] == subjectId]
-    return sorted(items, key=lambda x: x["createdAt"], reverse=True)
+    items = [projections.summary(p) for p in engine.get_engine().store.of_subject(subjectType, subjectId)]
+    return sorted(items, key=lambda x: x.created_at, reverse=True)

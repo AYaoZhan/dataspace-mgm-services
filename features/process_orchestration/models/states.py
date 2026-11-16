@@ -22,10 +22,45 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets of Process Orchestration (README 5, 7.1): process states, step states and subject types."""
+"""Value sets of Process Orchestration (openapi.yaml, README 5, 6.3, 6.4): process states, step states and subject
+types, and the groups of states the engine works with."""
 from __future__ import annotations
 
-STATUSES = {"RUNNING", "WAITING", "FAILED", "COMPLETED", "ENDED"}
-OPEN = {"RUNNING", "WAITING", "FAILED"}          # a process that a trigger with the same correlation value joins
-FINAL_STEP = {"DONE", "SKIPPED"}                  # step states after which the next step runs
-SUBJECT_TYPES = {"APPLICATION", "COMPANY", "TECHNICAL_USER", "OFFER", "SUBSCRIPTION", "CONNECTOR"}
+from enum import StrEnum
+
+
+class SubjectType(StrEnum):
+    APPLICATION = "APPLICATION"
+    COMPANY = "COMPANY"
+    TECHNICAL_USER = "TECHNICAL_USER"
+    OFFER = "OFFER"
+    SUBSCRIPTION = "SUBSCRIPTION"
+    CONNECTOR = "CONNECTOR"
+
+
+class ProcessStatus(StrEnum):
+    """README 6.4."""
+
+    RUNNING = "RUNNING"
+    WAITING = "WAITING"
+    FAILED = "FAILED"
+    COMPLETED = "COMPLETED"
+    ENDED = "ENDED"
+
+
+class StepState(StrEnum):
+    """README 6.3."""
+
+    WAITING = "WAITING"
+    READY = "READY"
+    IN_PROGRESS = "IN_PROGRESS"
+    AWAITING_EVENT = "AWAITING_EVENT"
+    DONE = "DONE"
+    SKIPPED = "SKIPPED"
+    FAILED = "FAILED"
+
+
+STATUSES = frozenset(ProcessStatus)
+SUBJECT_TYPES = frozenset(SubjectType)
+OPEN = frozenset({ProcessStatus.RUNNING, ProcessStatus.WAITING, ProcessStatus.FAILED})   # a trigger joins these
+FINAL_STEP = frozenset({StepState.DONE, StepState.SKIPPED})                             # the next step runs after these

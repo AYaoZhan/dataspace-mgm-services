@@ -25,12 +25,13 @@
 """The processes of one subject for other modules (README 9)."""
 from __future__ import annotations
 
-from features.process_orchestration import interface
+from features.process_orchestration.models.process import ProcessSummary
+from features.process_orchestration.services import queries
 from portal_common.routing import Controller, Permission
 
 controller = Controller("Process Orchestration: Queries")
 
 
-@controller.get("", summary="The processes of one subject")
+@controller.get("", response_model=list[ProcessSummary], summary="The processes of one subject")
 def find_processes_of_subject(subjectType: str, subjectId: str, _: dict = Permission):
-    return interface.find_processes_of_subject(subjectType=subjectType, subjectId=subjectId)
+    return queries.find_processes_of_subject(subjectType=subjectType, subjectId=subjectId)

@@ -50,13 +50,13 @@ import threading
 import uuid
 from pathlib import Path
 
-from features.process_orchestration.managers import config, flow_catalogue, standin_data, stream
-from features.process_orchestration.managers.flow_catalogue import completion_types, known_events  # noqa: F401
+from features.process_orchestration.managers import config, flow_catalogue, process_repository, standin_data, stream
+from features.process_orchestration.managers.flow_catalogue import completion_types, known_events  # noqa: F401 (API)
 from features.process_orchestration.managers.process_store import ProcessStore
-from features.process_orchestration.models.errors import MODULE, FlowError, LookupFailed  # noqa: F401
+from features.process_orchestration.models.errors import MODULE, FlowError, LookupFailed  # noqa: F401 (API)
 from features.process_orchestration.models.states import FINAL_STEP, OPEN
 from features.process_orchestration.services import dispatch, sources
-from features.process_orchestration.services.projections import iso, process_changed, stream_meta, summary  # noqa: F401
+from features.process_orchestration.services.projections import iso, process_changed, stream_meta
 from portal_common import events
 
 
@@ -93,20 +93,8 @@ class Engine:
         return self.store.processes
 
     @property
-    def processed_events(self) -> set[str]:
-        return self.store.processed_events
-
-    @property
-    def audit(self) -> list[dict]:
-        return self.store.audit
-
-    @property
     def call_log(self) -> list[tuple[str, dict]]:
         return self.store.call_log
-
-    @property
-    def streamed(self) -> dict[str, tuple]:
-        return self.store.streamed
 
     # ---------------------------------------------------------------- events (README 6.5)
     def on_event(self, event: dict) -> None:
@@ -235,12 +223,14 @@ class Engine:
         self._changed(proc)
 
     def _changed(self, proc: dict) -> None:
-        """README 7.6: `process-changed` after every stored change of the process status or of a
-        step state; states passed within one call are combined. `meta` decides who sees it."""
-        data = process_changed(proc)
-        state = (data["status"], data["endReason"], tuple((s["stepKey"], s["state"]) for s in data["steps"]))
+        """Stores the process (every operation ends here for each process it touched), then README 7.6:
+        `process-changed` after every stored change of the process status or of a step state; states passed
+        within one call are combined. `meta` decides who sees it."""
+        self.store.save(proc)
+        changed = process_changed(proc)
+        state = (changed.status, changed.end_reason, tuple((s.step_key, s.state) for s in changed.steps))
         if self.store.stream_changed(proc["id"], state):
-            stream.BROKER.publish("process-changed", data, stream_meta(proc))
+            stream.BROKER.publish("process-changed", changed.model_dump(mode="json"), stream_meta(proc))
 
     def _take_event(self, proc: dict, types: set[str]) -> dict | None:
         for e in proc["inbox"]:
@@ -250,9 +240,6 @@ class Engine:
         return None
 
     # ---------------------------------------------------------------- sources and lookups
-    def resolve(self, proc: dict, src):
-        return sources.resolve(proc, src)
-
     def _prepare(self, proc: dict, st: dict) -> bool:
         """Runs the lookups the step needs; returns whether `when` is met."""
         names = [st["lookup"]] if st.get("lookup") else []
@@ -261,9 +248,6 @@ class Engine:
             if name not in proc["lookups"]:
                 proc["lookups"][name] = dispatch.run_lookup(proc, name, self.lookups[name], self.standin, self.timeout)
         return all(sources.resolve(proc, src) == want for src, want in (st.get("when") or {}).items())
-
-    def build_input(self, proc: dict, st: dict, sr: dict) -> dict:
-        return sources.build_input(proc, st, sr)
 
     # ---------------------------------------------------------------- calling a step
     def _call(self, proc: dict, st: dict, sr: dict, trigger: str = "WORKER", by: str | None = None) -> None:
@@ -365,8 +349,10 @@ def get_engine() -> Engine:
 
 
 def reset() -> Engine:
+    """Empty state: no stream events, empty tables and a new engine."""
     global _engine
     stream.reset()
+    process_repository.reset()
     _engine = Engine()
     return _engine
 

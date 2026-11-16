@@ -37,6 +37,6 @@ controller = Controller("Process Orchestration: Live State")
 @controller.get("", summary="Live changes of one process")
 def stream_process_events(processId: str, request: Request, claims: dict = Permission,
                           last_event_id: str | None = Header(None, alias="Last-Event-ID")):
-    queries.process(processId)
+    queries.process_dict(processId)   # 404 for an unknown process
     return sse.response(streams.BROKER, request, claims, last_event_id,
                         visible=streams.process_visible(processId), initial=streams.process_current(processId))

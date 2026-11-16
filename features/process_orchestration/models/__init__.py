@@ -22,4 +22,5 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Value sets and errors of Process Orchestration; importable from every layer."""
+"""Models of Process Orchestration, importable from every layer: value sets (`states`), the pydantic models of the
+API (`process`), the SQLModel tables (`tables`) and the errors (`errors`)."""

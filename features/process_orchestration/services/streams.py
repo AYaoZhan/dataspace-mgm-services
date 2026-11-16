@@ -48,7 +48,7 @@ def process_current(process_id: str) -> Callable[[], list]:
         e = engine.get_engine()
         with e.lock:
             proc = e.store.get(process_id)   # gone after a reset of the installation
-            return [("process-changed", process_changed(proc))] if proc else []
+            return [("process-changed", process_changed(proc).model_dump(mode="json"))] if proc else []
     return current
 
 
@@ -73,5 +73,6 @@ def application_current(visible: Callable[[dict], bool]) -> Callable[[], list]:
         e = engine.get_engine()
         with e.lock:
             procs = sorted(e.store.all(), key=lambda p: p["createdAt"])
-            return [("process-changed", process_changed(p)) for p in procs if visible(stream_meta(p))]
+            return [("process-changed", process_changed(p).model_dump(mode="json"))
+                    for p in procs if visible(stream_meta(p))]
     return current
