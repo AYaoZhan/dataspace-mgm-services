@@ -30,19 +30,28 @@ another's (acceptance 13.9). Every function takes a stored notification of the c
 """
 from __future__ import annotations
 
-from modules.c11_m1 import store
-from modules.c11_m1.interface import MODULE
-from portal_common.problems import Problem
+from features.notifications.managers import store
+from features.notifications.models import errors
 
 
 def is_read(n: dict, sub: str | None) -> bool:
     """README 7.3: `read` for this person."""
-    return _row(n, sub).get("readAt") is not None
+    return read_in(_row(n, sub))
 
 
 def is_hidden(n: dict, sub: str | None) -> bool:
     """README 7.5: hidden for this person."""
-    return _row(n, sub).get("hiddenAt") is not None
+    return hidden_in(_row(n, sub))
+
+
+def read_in(state: dict) -> bool:
+    """`read` from a `notification_state` row (`store.states`); an empty row is unread."""
+    return state.get("readAt") is not None
+
+
+def hidden_in(state: dict) -> bool:
+    """Hidden from a `notification_state` row; an empty row is visible."""
+    return state.get("hiddenAt") is not None
 
 
 def is_open_task(n: dict) -> bool:
@@ -66,17 +75,17 @@ def mark_unread(n: dict, sub: str | None) -> None:
 def hide(n: dict, sub: str | None) -> None:
     """README 7.5: hide for this person; an open task gives 409 `task-open`; idempotent."""
     with store.LOCK:
-        if is_open_task(n):
-            raise Problem(MODULE, 409, "task-open")
+        if is_open_task(store.find(n["notificationId"]) or n):   # the current `done`, not the caller's copy
+            raise errors.task_open()
         if not is_hidden(n, sub):
             _set(n, sub, hiddenAt=store.now())
 
 
 def _row(n: dict, sub: str | None) -> dict:
     """The `notification_state` row of one person; empty if they never read or hid the notification."""
-    return store.state.get((n["notificationId"], sub), {})
+    return store.state_of(n["notificationId"], sub)
 
 
 def _set(n: dict, sub: str | None, **fields: str | None) -> None:
     """Set fields of the person's row; the caller holds `store.LOCK`."""
-    store.state.setdefault((n["notificationId"], sub), {"readAt": None, "hiddenAt": None}).update(fields)
+    store.set_state(n["notificationId"], sub, **fields)

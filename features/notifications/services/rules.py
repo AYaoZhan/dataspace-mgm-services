@@ -33,20 +33,9 @@ R14 has two entries (two events, two types) under one rule id, so `DISABLED_RULE
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from features.notifications.models.rule import Rule
 
-
-@dataclass(frozen=True)
-class Rule:
-    id: str
-    event: str
-    ntype: str
-    topic: str
-    recipients: str
-    subject_type: str | None = None
-    subject_field: str | None = None
-    company_field: str | None = None
-    closers: tuple[tuple[str, tuple[str, ...]], ...] = ()
+__all__ = ["RULES", "Rule", "for_event"]
 
 
 _APPLICATION_CLOSERS = tuple((e, ("applicationId",)) for e in

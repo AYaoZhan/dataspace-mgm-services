@@ -33,6 +33,8 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
+from portal_common.models import Page
+
 
 @dataclass(frozen=True)
 class Filters:
@@ -56,12 +58,12 @@ class Filters:
                 and (self.created_since is None or (created or _utc(v["createdAt"])) >= self.created_since))
 
 
-def list_page(views: list[dict], filters: Filters, *, newest_first: bool, page: int, size: int) -> dict:
-    """README 7.1: schema `NotificationPage` of the views that match `filters`; each `createdAt` is parsed once."""
+def list_page(views: list[dict], filters: Filters, *, newest_first: bool, page: int, size: int) -> Page[dict]:
+    """README 7.1: the page (schema `NotificationPage`) of the views that match `filters`; each `createdAt` is
+    parsed once."""
     timed = [(created, v) for v in views if filters.matches(v, created := _utc(v["createdAt"]))]
     timed.sort(key=lambda cv: cv[0], reverse=newest_first)
-    items = [v for _, v in timed]
-    return {"items": items[page * size:(page + 1) * size], "page": page, "size": size, "total": len(items)}
+    return Page.of([v for _, v in timed], page, size)
 
 
 def _utc(value: str | dt.datetime) -> dt.datetime:

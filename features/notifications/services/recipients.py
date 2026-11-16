@@ -34,30 +34,25 @@ Kinds of `Rule.recipients` (the kinds `applicant` and `staff:` are handled by `e
 - `subscription_customer:<field>`: C10-M1 `get_subscription_internal` (9.2), then the `Company Admin`
   of its customer company.
 
-Neighbours are called through `portal_common.neighbours` (FRAMEWORK 4.7). An empty address means
-the built-in stand-in of README 11.2: C2-M2 from `stub-company-users.json` (the data of README 14),
-C10-M1 an empty list. A neighbour that cannot be reached (`retryable` problem) raises
-`store.Unavailable`, so the worker repeats the job (README 4); a neighbour that rejects the call
-raises its `Problem` at once, since repeating cannot help. Not found or an empty list is nobody.
+Neighbours are called through `managers.neighbour_client` (`portal_common.neighbours`, FRAMEWORK 4.7).
+An empty address means the built-in stand-in of README 11.2: C2-M2 from `managers.company_users_standin`
+(`managers/data/stub-company-users.json`, the data of README 14), C10-M1 an empty list. A neighbour that
+cannot be reached (`retryable` problem) raises `store.Unavailable`, so the worker repeats the job
+(README 4); a neighbour that rejects the call raises its `Problem` at once, since repeating cannot help.
+Not found or an empty list is nobody.
 """
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Iterable
-from pathlib import Path
+from typing import cast
 
-from modules.c11_m1 import store
-from modules.c11_m1.interface import MODULE
-from portal_common import neighbours
-from portal_common.problems import Problem
+from features.notifications.managers import company_users_standin, neighbour_client
 
 log = logging.getLogger("portal.c11-m1")
 
 COMPANY_ADMIN = "Company Admin"
 IT_ADMIN = "IT Admin"
-STUB_COMPANY_USERS = Path(__file__).with_name("stub-company-users.json")   # README 11.2, 14
-_stub_cache: tuple[int, dict] | None = None   # (file version, parsed table); replaced whole, so no lock
 
 
 def resolve(kind: str, data: dict) -> list[str]:
@@ -80,25 +75,26 @@ def company_users(company_id: str | None, portal_role: str) -> list[str]:
     """README 6.1: the `sub` of the active people of the company with the portal role (C2-M2 9.4)."""
     if not company_id:
         return []
-    if neighbours.is_standin("c2-m2"):
-        return _stub_company_users(company_id, portal_role)
-    refs = _query("c2-m2", "list_company_user_refs", companyId=company_id, portalRole=portal_role) or []
-    return [r["userId"] for r in refs]
+    if neighbour_client.is_standin("c2-m2"):
+        return company_users_standin.company_users(company_id, portal_role)
+    refs = neighbour_client.query("c2-m2", "list_company_user_refs", companyId=company_id, portalRole=portal_role)
+    return [r["userId"] for r in cast(list[dict], refs or [])]
 
 
 def _app_customers(app_id: str | None) -> list[str]:
     """README 6.1 "customers of the app": `appId` is the `offerId` of C10-M1 (C12-M1 flow `app-approval`)."""
-    if not app_id or neighbours.is_standin("c10-m1"):
+    if not app_id or neighbour_client.is_standin("c10-m1"):
         return []
-    subscriptions = _query("c10-m1", "find_subscriptions", offerId=app_id, status="ACTIVE") or []
+    subscriptions = neighbour_client.query("c10-m1", "find_subscriptions", offerId=app_id, status="ACTIVE") or []
     return _company_admins(s["customerCompanyId"] for s in subscriptions)
 
 
 def _subscription_customer(subscription_id: str | None) -> list[str]:
     """README 6.2 R12: the `Company Admin` of the customer of the subscription (C10-M1 9.2)."""
-    if not subscription_id or neighbours.is_standin("c10-m1"):
+    if not subscription_id or neighbour_client.is_standin("c10-m1"):
         return []
-    subscription = _query("c10-m1", "get_subscription_internal", offerSubscriptionId=subscription_id)
+    subscription = cast(dict | None, neighbour_client.query("c10-m1", "get_subscription_internal",
+                                                           offerSubscriptionId=subscription_id))
     return _company_admins([subscription["customerCompanyId"]] if subscription else [])
 
 
@@ -114,27 +110,3 @@ def _value(data: dict, field: str) -> str | None:
     log.info("recipients: field %s missing or not an ID in the event", field)
     return None
 
-
-def _query(target: str, function: str, **params) -> list | dict | None:
-    """`neighbours.query` with the retry rule of README 4: unreachable -> `store.Unavailable`."""
-    try:
-        return neighbours.query(MODULE, target, function, **params)
-    except Problem as e:
-        if e.ext.get("retryable"):
-            raise store.Unavailable(f"{target} {function}: {e.name}") from e
-        raise
-
-
-def _stub_company_users(company_id: str, portal_role: str) -> list[str]:
-    """Built-in stand-in of C2-M2 (README 11.2): `companyId` -> portal role -> `sub` values."""
-    return list(_stub_table().get(company_id, {}).get(portal_role, []))
-
-
-def _stub_table() -> dict:
-    """The stand-in file, parsed once and again only when it changes on disk."""
-    global _stub_cache
-    version = STUB_COMPANY_USERS.stat().st_mtime_ns
-    cached = _stub_cache
-    if cached is None or cached[0] != version:
-        cached = _stub_cache = (version, json.loads(STUB_COMPANY_USERS.read_text(encoding="utf-8")))
-    return cached[1]

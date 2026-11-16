@@ -1,5 +1,4 @@
 #################################################################################
-#  Copyright (c) 2026 Technovative Solutions
 #  Copyright (c) 2026 Contributors to the Eclipse Foundation
 #
 #  See the NOTICE file(s) distributed with this work for additional
@@ -23,31 +22,12 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""C11-M1 Notifications: the module contract of the scaffold (`router`, `reset`, `on_event`).
-
-The work happens in the other files of the folder: `rules` (R1 to R17), `engine` (one event in),
-`closing` (tasks done), `recipients` (who gets a personal notification), `worker` and `retry`
-(background delivery and its retries), `store` (the data), `inbox`, `listing` and `marks` (what a
-person sees, the list query, read and hidden state) and `api` (README 7).
-"""
+"""Configuration of README section 4, read from the environment at call time."""
 from __future__ import annotations
 
-from modules.c11_m1 import closing, engine, store, worker
-from modules.c11_m1.api import router
-
-notifications = store.notifications   # the same list object; store.reset() clears it in place
-
-__all__ = ["router", "reset", "on_event", "notifications"]
+import os
 
 
-def reset() -> None:
-    """Fresh state for tests and `/scaffold/reset`. The worker stops first, so a job that is still
-    running cannot write into the cleared inbox."""
-    worker.reset()
-    store.reset()
-    closing.reset()
-
-
-def on_event(event: dict) -> None:
-    """Subscriber of the event relay (FRAMEWORK 6); C11-M1 runs before C12-M1 (scaffold registry)."""
-    engine.handle(event)
+def disabled_rules() -> set[str]:
+    """`DISABLED_RULES` (README 4), read at every event so a test can change it."""
+    return {r.strip().upper() for r in os.environ.get("DISABLED_RULES", "").split(",") if r.strip()}

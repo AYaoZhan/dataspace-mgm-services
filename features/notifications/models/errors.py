@@ -22,11 +22,18 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
-"""Public interface of C11-M1. The spec has no steps or queries for C11-M1 (README 8 and 9)."""
+"""Problem Details of C11-M1 (README 12): `urn:c11-m1:problem:<name>`."""
 from __future__ import annotations
 
-from portal_common import standin
+from features.notifications.models import MODULE
+from portal_common.problems import Problem
 
-MODULE = "c11-m1"
 
-__getattr__ = standin.missing_interface(MODULE)   # README 8 and 9: none; any call gets the scaffold fallback
+def not_found() -> Problem:
+    """404: the notification is not in the caller's own inbox (README 7)."""
+    return Problem(MODULE, 404, "not-found")
+
+
+def task_open() -> Problem:
+    """409: an open task cannot be hidden (README 7.5)."""
+    return Problem(MODULE, 409, "task-open")

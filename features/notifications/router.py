@@ -22,3 +22,11 @@
 #  SPDX-License-Identifier: Apache-2.0 AND CC0-1.0
 #  Assisted-By: Claude Code (claude-opus-5-5)
 #################################################################################
+"""HTTP API of the notifications: the controller tree of `controllers/` under the base path of the feature."""
+from __future__ import annotations
+
+from features.notifications import controllers
+from features.notifications.models import MODULE
+from portal_common.routing import mount
+
+router = mount(controllers, MODULE)

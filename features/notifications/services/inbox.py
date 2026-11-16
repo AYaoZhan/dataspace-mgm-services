@@ -31,42 +31,44 @@ the token; hidden ones are left out. Notifications are shown as the schema `Noti
 """
 from __future__ import annotations
 
-from modules.c11_m1 import marks, store
-from modules.c11_m1.interface import MODULE
-from portal_common.problems import Problem
+from collections.abc import Callable
 
-FIELDS = ("notificationId", "type", "topic", "companyId", "subjectType", "subjectId", "content", "forStaff",
-          "done", "createdAt", "doneAt")   # openapi `Notification`, apart from `read`, which is per person
+from features.notifications.managers import store
+from features.notifications.models import errors
+from features.notifications.models.notification import Notification
+from features.notifications.services import marks
+from portal_common import sse
+
+# openapi `Notification`, apart from `read`, which is per person
+FIELDS = tuple(f.alias for name, f in Notification.model_fields.items() if name != "read")
 
 
-def view(n: dict, sub: str | None) -> dict:
-    """Schema `Notification` with `read` for the calling person (README 7.3)."""
-    # `content` is copied: a view leaves the lock, and a caller that changes it must not change the inbox.
-    return {f: n[f] for f in FIELDS} | {"content": dict(n["content"]), "read": marks.is_read(n, sub)}
+def view(n: dict, state: dict) -> dict:
+    """Schema `Notification` with `read` from the person's `notification_state` row (README 7.3)."""
+    return {f: n[f] for f in FIELDS} | {"read": marks.read_in(state)}
 
 
 def own(claims: dict) -> list[dict]:
-    """README 4 and 7.1: the caller's notifications as `Notification` views, hidden ones left out."""
-    sub = claims.get("sub")
+    """README 4 and 7.1: the caller's notifications as `Notification` views, hidden ones left out; two queries,
+    however large the inbox."""
     with store.LOCK:
-        return [view(n, sub) for n in store.notifications
-                if store.visible_to(n, claims) and not marks.is_hidden(n, sub)]
+        states = store.states(claims.get("sub"))
+        return [view(n, state) for n in store.inbox(claims)
+                if not marks.hidden_in(state := states.get(n["notificationId"], {}))]
 
 
 def find(notification_id: str, claims: dict) -> dict:
     """The stored notification if it is in the caller's inbox, else Problem 404 `not-found` (README 7)."""
-    with store.LOCK:
-        for n in store.notifications:
-            if n["notificationId"] == notification_id and store.visible_to(n, claims):
-                return n
-    raise Problem(MODULE, 404, "not-found")
+    n = store.find(notification_id)
+    if n is not None and store.visible_to(n, claims):
+        return n
+    raise errors.not_found()
 
 
 def get(notification_id: str, claims: dict) -> dict:
     """README 7.3: one notification of the own inbox with `read` for the caller."""
     n = find(notification_id, claims)
-    with store.LOCK:
-        return view(n, claims.get("sub"))
+    return view(n, store.state_of(notification_id, claims.get("sub")))
 
 
 def count(claims: dict) -> dict:
@@ -76,3 +78,13 @@ def count(claims: dict) -> dict:
             "unread": sum(not v["read"] for v in items),
             "openTasks": sum(marks.is_open_task(v) for v in items),
             "unreadInfo": sum(v["topic"] == "INFO" and not v["read"] for v in items)}
+
+
+def events() -> sse.Broker:
+    """README 7.6: the broker of the stream events of every inbox (`managers.store.BROKER`)."""
+    return store.BROKER
+
+
+def stream_filter(claims: dict) -> Callable[[dict], bool]:
+    """README 7.6: which stream events the caller sees, by the `meta` of the event (as `visible_to`)."""
+    return lambda meta: store.stream_visible(meta, claims)

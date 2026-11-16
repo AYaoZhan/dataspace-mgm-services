@@ -33,20 +33,17 @@ notifications are stored at once. Logs carry rule ids and event ids only, never 
 """
 from __future__ import annotations
 
+import functools
 import logging
-import os
+from collections.abc import Callable
 
-from modules.c11_m1 import closing, recipients, rules, store, worker
-from modules.c11_m1.rules import Rule
+from features.notifications.managers import config, store, worker
+from features.notifications.models.rule import Rule
+from features.notifications.services import closing, recipients, rules
 
 log = logging.getLogger("portal.c11-m1")
 
 _APPLICATION_ENDED = ("ApplicationCompleted", "ApplicationDeclined", "ApplicationWithdrawn")
-
-
-def disabled_rules() -> set[str]:
-    """`DISABLED_RULES` (README 4), read at every event so a test can change it."""
-    return {r.strip().upper() for r in os.environ.get("DISABLED_RULES", "").split(",") if r.strip()}
 
 
 def handle(event: dict) -> None:
@@ -65,14 +62,14 @@ def handle(event: dict) -> None:
     _guarded(event, "closing", lambda: closing.handle(event))
     _guarded(event, "applicant", lambda: _remember_applicant(event_type, data))
 
-    off = disabled_rules()
+    off = config.disabled_rules()
     for rule in rules.for_event(event_type):
         if rule.id not in off:
-            _guarded(event, f"rule {rule.id}", lambda rule=rule: _apply(rule, event))
+            _guarded(event, f"rule {rule.id}", functools.partial(_apply, rule, event))
     _guarded(event, "applicant", lambda: _forget_applicant(event_type, data))
 
 
-def _guarded(event: dict, part: str, run) -> None:
+def _guarded(event: dict, part: str, run: Callable[[], None]) -> None:
     """Run one part of the event handling; on an error log it and mark the event FAILED (README 6.4)."""
     try:
         run()
@@ -84,22 +81,19 @@ def _guarded(event: dict, part: str, run) -> None:
 def _remember_applicant(event_type: str, data: dict) -> None:
     """README 5 table `applicant`: the `sub` of the person who submitted the application."""
     if event_type == "ApplicationSubmitted" and data.get("applicationId") and data.get("applicantSub"):
-        with store.LOCK:
-            store.applicants[data["applicationId"]] = data["applicantSub"]
+        store.remember_applicant(data["applicationId"], data["applicantSub"])
 
 
 def _forget_applicant(event_type: str, data: dict) -> None:
     """README 5 table `applicant`: the row goes when the application has ended."""
     if event_type in _APPLICATION_ENDED:
-        with store.LOCK:
-            store.applicants.pop(data.get("applicationId"), None)
+        store.forget_applicant(data.get("applicationId"))
 
 
 def _applicant(data: dict) -> str | None:
     """README 6.1 "applicant": from the table `applicant`, else `applicantSub` of the event."""
     application_id = data.get("applicationId")
-    with store.LOCK:
-        known = store.applicants.get(application_id) if isinstance(application_id, str) else None
+    known = store.applicant(application_id) if isinstance(application_id, str) else None
     return known or data.get("applicantSub")
 
 

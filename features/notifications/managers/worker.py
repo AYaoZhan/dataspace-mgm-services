@@ -36,10 +36,10 @@ import heapq
 import itertools
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
-from modules.c11_m1 import retry
+from features.notifications.managers import retry
 
 
 @dataclass(order=True)
