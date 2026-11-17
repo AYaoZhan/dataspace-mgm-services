@@ -13,21 +13,16 @@
       "file-size": 1,
       "function-size": 3,
       "layers": 13,
-      "mypy": 72,
+      "mypy": 37,
       "neighbours": 2,
-      "problems": 77,
-      "ruff": 22
+      "problems": 75,
+      "ruff": 5
     },
     "features/registration": {
       "layers": 12,
       "mypy": 45,
       "problems": 44,
       "ruff": 47
-    },
-    "features/technical_user": {
-      "layers": 2,
-      "mypy": 35,
-      "ruff": 21
     },
     "iam": {
       "mypy": 52,
@@ -131,7 +126,7 @@
       "ruff": 2
     },
     "tests": {
-      "ruff": 273
+      "ruff": 258
     },
     "tools": {
       "function-size": 1,
