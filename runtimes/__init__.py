@@ -28,7 +28,11 @@ neighbour, reached in-process when it runs in the same pod, otherwise over HTTP 
 FRAMEWORK 4.7). The same image runs every runtime:
 
     runtimes/installation.py         every module, the modular monolith (default; `ENABLED_FEATURES` narrows it)
-    runtimes/onboarding.py           hybrid: registration + company profile in one pod
+    runtimes/onboarding.py           domain cluster: registration + company profile
+    runtimes/security.py             domain cluster: technical users + credentials + app access + wallet
+    runtimes/marketplace.py          domain cluster: offers + subscriptions
+    runtimes/connectivity.py         domain cluster: csp connection + connectors
+    runtimes/operations.py           domain cluster: notifications + process orchestration
     features/<feature>/main.py       one feature alone
 
     RUNTIME=onboarding python -m runtimes          # what the container runs (Dockerfile CMD)

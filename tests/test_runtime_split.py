@@ -130,8 +130,21 @@ def test_runtime_name_selects_a_runtime_or_a_feature():
     assert runtime_main.factory("onboarding") == "runtimes.onboarding:create_app"
     assert runtime_main.factory("installation") == "runtimes.installation:create_app"
     assert runtime_main.factory("company-profile") == "features.company_profile.main:create_app"
+    assert runtime_main.factory("marketplace") == "runtimes.marketplace:create_app"
+    assert runtime_main.factory("connectivity") == "runtimes.connectivity:create_app"
+    assert runtime_main.factory("security") == "runtimes.security:create_app"
+    assert runtime_main.factory("operations") == "runtimes.operations:create_app"
     with pytest.raises(SystemExit, match="unknown runtime"):
         runtime_main.factory("onboardng")
+
+
+def test_domain_runtimes_serve_their_respective_clusters():
+    from runtimes import connectivity, marketplace, operations, security
+
+    assert {e["module"] for e in _served(marketplace.create_app())} == {"c8-m1", "c10-m1"}
+    assert {e["module"] for e in _served(connectivity.create_app())} == {"c3-m2", "c6-m1"}
+    assert {"c2-m3", "c4-m1"} <= {e["module"] for e in _served(security.create_app())}
+    assert {"c11-m1", "c12-m1"} <= {e["module"] for e in _served(operations.create_app())}
 
 
 def test_module_urls_take_readable_feature_names(monkeypatch):
