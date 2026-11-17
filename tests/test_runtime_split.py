@@ -25,14 +25,16 @@
 delivery between pods."""
 from __future__ import annotations
 
+import json
 import os
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from conftest import BASE
+from conftest import BASE, bearer
 from features import company_profile, registration
+from features.process_orchestration.services import event_hub
 from portal_common import event_forwarder, events, layout, neighbours, tokens
 from runtimes import __main__ as runtime_main
 from runtimes import create_runtime, onboarding
@@ -219,3 +221,85 @@ def test_received_events_are_not_forwarded_again(monkeypatch):
     assert sent == []
     ev = events.publish("c3-m1", "CompanyCreated", {"companyId": "c"})
     assert sent == [ev]
+
+
+# ---------------------------------------------------------------- event hub (ADR-0006)
+def test_without_event_sinks_published_events_go_to_the_hub_by_its_neighbour_address(forwarder, monkeypatch):
+    monkeypatch.delenv("EVENT_SINKS")
+    monkeypatch.setenv("C12_M1_URL", "http://operations:8000/")
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((str(request.url), request.headers["authorization"], json.loads(request.content)["id"]))
+        return httpx.Response(202)
+
+    _use(forwarder, handler)
+    ev = events.cloudevent("c1-m2", "ApplicationSubmitted", {"applicationId": "a"})
+    forwarder.submit(ev)
+    assert forwarder.wait_idle()
+    assert seen == [("http://operations:8000/api/v1/events/inbox", "Bearer token-of-c1-m2", ev["id"])]
+
+
+def test_hub_and_event_sinks_are_posted_once_each_and_never_to_the_own_runtime(monkeypatch):
+    monkeypatch.setenv("MODULE_URLS", '{"process_orchestration": "http://operations:8000"}')
+    monkeypatch.setenv("EVENT_SINKS", f"http://operations:8000, {BASE}, http://security:8000")
+    assert event_forwarder.targets() == ["http://operations:8000", "http://security:8000"]
+    monkeypatch.setenv("C12_M1_URL", "in-process")   # the hub's own runtime, or the monolith
+    monkeypatch.delenv("EVENT_SINKS")
+    assert event_forwarder.targets() == []
+
+
+def test_an_event_that_comes_back_to_its_publishing_runtime_is_delivered_once(monkeypatch):
+    monkeypatch.setattr(event_forwarder.FORWARDER, "submit", lambda ev: None)
+    ev = events.publish("c3-m1", "CompanyCreated", {"companyId": "c"})
+    assert events.RELAY.receive(dict(ev)) == (ev, False)   # e.g. routed back by a misconfigured hub: no loop
+    assert [e["id"] for e in events.RELAY.log].count(ev["id"]) == 1
+
+
+def _split(monkeypatch, urls: dict) -> None:
+    monkeypatch.setenv("MODULE_URLS_DEFAULT", "")    # modules not named: built-in stand-ins
+    monkeypatch.setenv("MODULE_URLS", json.dumps(urls))
+    for name in ("C11_M1_URL", "C12_M1_URL"):
+        monkeypatch.setenv(name, "in-process")       # the runtime `operations` serves both
+
+
+def test_hub_routes_to_subscriber_runtimes_but_not_back_to_the_publisher_or_locally(monkeypatch):
+    _split(monkeypatch, {"registration": "http://onboarding:8000", "technical_user": "http://security:8000",
+                         "credentials": "http://security:8000"})
+    submitted = events.cloudevent("c1-m2", "ApplicationSubmitted", {"applicationId": "a"})
+    assert event_hub.destinations(submitted) == ["http://security:8000"]   # C2-M3; C11-M1 is local
+    issued = events.cloudevent("c4-m1", "CredentialsIssued", {"companyId": "c"})
+    assert event_hub.destinations(issued) == []   # C2-M3 runs with the publisher C4-M1: already delivered there
+    monkeypatch.setenv("C2_M3_URL", "")   # stand-in: nothing to deliver
+    assert event_hub.destinations(submitted) == []
+
+
+def test_in_the_monolith_the_hub_routes_nothing(monkeypatch):
+    sent = []
+    monkeypatch.setattr(event_forwarder.FORWARDER, "dispatch", lambda ev, to: sent.append(to))
+    assert event_hub.route(events.cloudevent("c1-m2", "ApplicationSubmitted", {"applicationId": "a"})) == []
+    assert sent == []   # every subscriber is in-process: the relay delivers, nothing leaves the process
+
+
+def test_the_hub_runs_its_flows_on_inbox_events_and_routes_them_on_once(monkeypatch):
+    """Runtime `operations` (ADR-0005) as the hub: an event of the onboarding runtime arrives at the inbox,
+    starts the onboarding flow and goes on to the runtime of C2-M3; a repeated delivery goes nowhere."""
+    from runtimes import operations
+
+    _split(monkeypatch, {"technical_user": "http://security:8000"})
+    routed: list[tuple[str, str, list[str]]] = []
+    monkeypatch.setattr(event_forwarder.FORWARDER, "dispatch",
+                        lambda ev, to: routed.append((ev["type"], ev["id"], to)) if to else None)
+    application = "0f8e2d4c-6b1a-4c3e-8f7d-2a9b1c0d3e4f"   # FRAMEWORK 7a
+    ev = events.cloudevent("c1-m2", "ApplicationSubmitted", {
+        "applicationId": application, "companyId": "c0000001-0000-4000-8000-000000000001", "kind": "ONBOARDING",
+        "existingCompany": False, "applicantSub": "5a1c0001-0000-4000-8000-000000000001"})
+    with TestClient(operations.create_app(), base_url=BASE) as client:   # relay and worker run
+        headers = bearer(tokens.service_token("c1-m2")) | {"Content-Type": "application/cloudevents+json"}
+        for _ in range(2):
+            assert client.post("/api/v1/events/inbox", headers=headers, content=json.dumps(ev)).status_code == 202
+        assert events.RELAY.wait_idle(10)
+        started = [e for e in events.RELAY.log if e["type"] == "ProcessStarted"]
+    assert [(e["data"]["flowKey"], e["data"]["subjectId"]) for e in started] == [("onboarding", application)]
+    assert [r for r in routed if r[1] == ev["id"]] == [("ApplicationSubmitted", ev["id"], ["http://security:8000"])]
+    assert ("ProcessStarted", started[0]["id"], ["http://security:8000"]) in routed   # the hub's own events too

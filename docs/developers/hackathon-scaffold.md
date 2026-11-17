@@ -120,6 +120,9 @@ The user interface lives in [dataspace-mgm-ui](https://github.com/eclipse-tractu
   accepted).
   A split-out module delivers its events over HTTP to the event inbox `POST /api/v1/events/inbox`
   (`application/cloudevents+json`, or binary mode with `ce-` headers; its own service token).
+  Without further settings a runtime forwards to the runtime of Process Orchestration (`C12_M1_URL` /
+  `MODULE_URLS`), the event hub, which routes each event on to the runtimes with subscribers (ADR-0006);
+  `EVENT_SINKS` adds further inboxes.
 - **Live updates for the UI** (Server-Sent Events, C11-M1 7.6, C12-M1 7.6): `sse.Broker` per
   module with a replay buffer in memory (`SSE_REPLAY_SIZE`), `sse.response(...)` for the
   `text/event-stream` answer: `Last-Event-ID`, heartbeat (`SSE_HEARTBEAT_SECONDS`), end at token

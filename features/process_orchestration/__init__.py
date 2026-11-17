@@ -26,13 +26,14 @@
 another module, addressed by its spec id (README 4).
 
 Index of the feature (layout in `features/__init__.py`): `NAME`, `MODULE` and the lifecycle hooks a runtime
-calls, `reset()`, `on_startup()` (the worker) and `on_event()` (the event relay). The HTTP API is
-`features.process_orchestration.router.router`.
+calls, `reset()`, `on_startup()` (the worker) and `on_event()` (the event relay). `on_event()` makes the feature
+the event hub of the installation (ADR-0006): it routes every event on to the runtimes of the subscribing modules
+and runs the engine on it. The HTTP API is `features.process_orchestration.router.router`.
 """
 from __future__ import annotations
 
 from features.process_orchestration.models.errors import MODULE
-from features.process_orchestration.services import engine, worker
+from features.process_orchestration.services import engine, event_hub, worker
 from portal_common import database
 
 NAME = "process_orchestration"
@@ -51,5 +52,10 @@ def on_startup() -> None:
 
 
 def on_event(event: dict) -> None:
-    """Every CloudEvent of the installation: starts, continues or ends processes (README 6.5)."""
-    engine.on_event(event)
+    """Every CloudEvent of the installation (published here or received through the event inbox): routed on to
+    the runtimes of the subscribing modules (event hub, ADR-0006), then starts, continues or ends processes
+    (README 6.5). Routing comes first and only enqueues; the engine runs even if routing fails."""
+    try:
+        event_hub.route(event)
+    finally:
+        engine.on_event(event)

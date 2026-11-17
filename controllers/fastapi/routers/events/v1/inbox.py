@@ -24,7 +24,13 @@
 #################################################################################
 """Event inbox of the installation: `POST /api/v1/events/inbox` (FRAMEWORK 6, proposal OP-54).
 
-A split-out module (or a broker in front of it) delivers its events over HTTP with the CloudEvents
+The transport ingress of the event bus in every runtime (ADR-0006). In the runtime of Process Orchestration
+(C12-M1) it is the inbox of the event hub: the other runtimes post every event they publish here, and the hub
+(`features.process_orchestration`, subscriber of the relay) runs its flows on it and routes it on to the runtimes
+of the subscribing modules, whose inbox is this same endpoint. The path is the base skeleton of FRAMEWORK 6, not
+an operation of C12-M1, so it stays here and is served by every runtime; routing decisions are not taken here.
+
+A split-out module, the event hub (or a broker in front of them) delivers events over HTTP with the CloudEvents
 HTTP protocol binding:
 
 - structured content mode: `Content-Type: application/cloudevents+json`, the whole CloudEvent as body;
@@ -33,9 +39,10 @@ HTTP protocol binding:
 
 The token is that of the service account of the publishing module (`svc-<module>`, FRAMEWORK 4.2),
 `source` must be `urn:<module>` of that account, and `type` must be an event of that module in the
-spec (FRAMEWORK 6, section 10 of its README): a module only publishes its own events. 202: the
-event goes to the event bus unchanged (same `id` and `time`) and is delivered like an event published
-in the process; the same `source` and `id` a second time is answered with 202 and delivered once.
+spec (FRAMEWORK 6, section 10 of its README): a module only publishes its own events; the hub routes an
+event on with the token of its publisher. 202: the event goes to the event bus unchanged (same `id` and
+`time`) and is delivered like an event published in the process; the same `source` and `id` a second time
+(also an event this runtime published itself) is answered with 202 and delivered once.
 Errors as Problem Details `urn:events:problem:<name>`: `validation` 400, `unauthorized` 401,
 `forbidden` 403, `payload-too-large` 413 (more than `EVENT_INBOX_MAX_BYTES`, default 64 KiB),
 `unsupported-media-type` 415 (any other content type, also batched content mode).

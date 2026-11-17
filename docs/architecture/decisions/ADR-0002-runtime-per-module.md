@@ -5,6 +5,8 @@
 **Builds on:** [ADR-0001](ADR-0001-events-as-cloudevents.md) (event inbox), FRAMEWORK 1 and 4.7.
 **Extended by:** [ADR-0003](ADR-0003-feature-first-layout-and-runtimes.md): runtimes are made of features in code
 (`runtimes/`, `RUNTIME`); the selection by environment is `ENABLED_FEATURES`.
+**Extended by:** [ADR-0006](ADR-0006-process-orchestration-as-event-hub.md): Process Orchestration (C12-M1) is the
+event hub; every runtime forwards its events to it by default (neighbour rule), `EVENT_SINKS` becomes optional.
 
 ## Context
 
@@ -24,7 +26,7 @@ Operators also want to scale, release and isolate modules (for example Notificat
    Kubernetes service of each module; `portal_common.neighbours` calls it with the service token `svc-<module>`.
    An empty address keeps the built-in stand-in. Module code does not change.
 3. **Events** published in a runtime are delivered locally as before and forwarded to the other runtimes
-   (`EVENT_SINKS`, `portal_common.event_forwarder`) at `POST /api/v1/events/inbox` in CloudEvents structured mode
+   (`EVENT_SINKS`, `portal_common.event_forwarder`; since ADR-0006 the runtime of C12-M1 by default) at `POST /api/v1/events/inbox` in CloudEvents structured mode
    with the token of the publishing module. Delivery runs on worker threads off the request path, retries with
    backoff (at least once), is bounded (oldest dropped and counted), and is idempotent because the inbox
    deduplicates by `source` and `id`. Events that arrive through the inbox are not forwarded again.
@@ -53,9 +55,10 @@ Operators also want to scale, release and isolate modules (for example Notificat
 - **Event delivery is at least once, not durable.** A pod crash loses queued events. The transactional outbox with
   a broker or database is the follow-up; consumers already handle repeats by `id`.
 - **Fan-out is to all sinks.** Every runtime posts every event to every sink; with many modules, subscriptions per
-  event type (or a broker) reduce traffic.
+  event type (or a broker) reduce traffic. Superseded by [ADR-0006](ADR-0006-process-orchestration-as-event-hub.md):
+  events go to the hub (C12-M1), which routes them on to the runtimes with subscribers.
 - **Process Orchestration (C12-M1)** must run where it can reach every module by URL; as a runtime it is a normal
-  module with `MODULE_URLS` for all others.
+  module with `MODULE_URLS` for all others. Since ADR-0006 it is also the event hub of a split installation.
 - Latency of a neighbour call changes from a function call to an HTTP call; the pooled client and keep-alive keep it
   low, and modules that call each other on every request are better kept in one runtime (a hybrid runtime,
   ADR-0003, such as `runtimes/onboarding.py`).

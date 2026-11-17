@@ -56,12 +56,8 @@ x-runtime: &runtime
         "notifications": "http://operations:8000",
         "process_orchestration": "http://operations:8000"
       }
-    EVENT_SINKS: >-
-      http://onboarding:8000,
-      http://security:8000,
-      http://marketplace:8000,
-      http://connectivity:8000,
-      http://operations:8000
+    # Events: every runtime forwards to Process Orchestration (`process_orchestration` above), the event hub, which
+    # routes them on to the runtimes with subscribers (ADR-0006); no EVENT_SINKS mesh needed.
     REGISTRATION_DATABASE_URL: postgresql://registration:registration_test_pass@postgres:5432/registration
     APPLICATION_REVIEW_DATABASE_URL: postgresql://application_review:application_review_test_pass@postgres:5432/application_review
     COMPANY_PROFILE_DATABASE_URL: postgresql://company_profile:company_profile_test_pass@postgres:5432/company_profile

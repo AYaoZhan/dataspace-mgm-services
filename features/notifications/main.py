@@ -27,7 +27,8 @@
     uv run uvicorn --factory features.notifications.main:create_app --port 8000
     RUNTIME=notifications python -m runtimes
 
-The events of the other modules reach it through the event inbox (`EVENT_SINKS` of the publishing runtime).
+The events of the other modules reach it through the event inbox, routed on by Process Orchestration, the event hub
+(ADR-0006), or sent directly by the publishing runtime (`EVENT_SINKS`).
 """
 from __future__ import annotations
 
