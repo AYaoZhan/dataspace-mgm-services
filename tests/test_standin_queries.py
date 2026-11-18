@@ -158,3 +158,11 @@ def test_standin_queries_answer_with_the_field_names_of_the_spec(tmp_path, monke
     assert not errors, "\n".join(errors)
     # The more teams replace their stand-in, the fewer queries are left to check here.
     assert checked == sum(1 for q in QUERIES if params[q] is not None and kit_owned(q[0]))
+
+
+def test_standin_router_custom_tags():
+    r_default = standin.router("c1-m2")
+    assert r_default.tags == ["c1-m2 (stand-in)"]
+    r_custom = standin.router("c1-m2", tags=["c1-m2 Registration"])
+    assert r_custom.tags == ["c1-m2 Registration"]
+

@@ -48,6 +48,7 @@ import importlib
 import re
 import uuid
 from collections.abc import Callable
+from enum import Enum
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.routing import APIRoute
@@ -205,7 +206,8 @@ def company_scope(module: str, claims: dict, company_id: str | None) -> None:
         raise Problem(module, 404, "not-found")
 
 
-def router(module: str) -> APIRouter:
+def router(module: str, tags: list[str | Enum] | None = None) -> APIRouter:
     """Router of a module with the base path of the spec and Problem Details."""
+    resolved_tags: list[str | Enum] = [f"{module} (stand-in)"] if tags is None else tags
     return APIRouter(prefix=spec.module(module).base_path, route_class=route_class(module),
-                     tags=[f"{module} (stand-in)"])
+                     tags=resolved_tags)

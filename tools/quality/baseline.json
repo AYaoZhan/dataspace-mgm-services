@@ -18,12 +18,6 @@
       "problems": 75,
       "ruff": 5
     },
-    "features/registration": {
-      "layers": 12,
-      "mypy": 45,
-      "problems": 44,
-      "ruff": 47
-    },
     "iam": {
       "mypy": 52,
       "ruff": 56
@@ -126,7 +120,7 @@
       "ruff": 2
     },
     "tests": {
-      "ruff": 258
+      "ruff": 242
     },
     "tools": {
       "function-size": 1,
