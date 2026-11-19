@@ -36,7 +36,14 @@ from scaffold import registry
 from conftest import needs_admin_api
 from test_demo_scenarios import installation
 
-CALL = re.compile(r"`(GET|POST|PUT|PATCH|DELETE) (?:/api/(c\d+-m\d+))?(/internal/[^`?\s]*)")
+CALL = re.compile(r"`(GET|POST|PUT|PATCH|DELETE) (?:/api/([a-z0-9-]+))?(/internal/[^`?\s]*)")
+
+
+def _module_of(base: str) -> str | None:
+    """Module id for the base in a README path: `/api/c3-m1` (old) or `/api/company-profile` (FRAMEWORK 4.1, OP-55)."""
+    if base in spec.modules():
+        return base
+    return next((m for m, ms in spec.modules().items() if ms.spec_path == f"/api/{base}"), None)
 
 
 def neighbour_queries() -> dict[tuple[str, str], set[str]]:
@@ -45,7 +52,8 @@ def neighbour_queries() -> dict[tuple[str, str], set[str]]:
     for caller, ms in spec.modules().items():
         sec = re.search(r"^## 11\..*?(?=^## 12\.|\Z)", spec.readme(ms.folder), re.S | re.M)
         for row in (sec.group(0) if sec else "").splitlines():
-            for method, target, path in CALL.findall(row):
+            for method, base, path in CALL.findall(row):
+                target = _module_of(base) if base else None
                 if not target:   # path without /api/<module>: the module whose spec has it, named in the row
                     found = [m for m in spec.modules() if spec.module(m).find(method, path)]
                     named = [m for m in found if m in row.lower()]
