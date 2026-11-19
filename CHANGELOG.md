@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Update `DEPENDENCIES` with newly approved Eclipse Dash reviews for `click` (#32995), `fastapi` (#32978), and `uvicorn` (#32984) (TRG 7.04).
+
 - **Breaking:** the migrated features are served under readable paths instead of their spec ids: `/api/registration`
   (was `/api/c1-m2`), `/api/company-profile` (was `/api/c3-m1`) and `/api/technical-user` (was `/api/c2-m3`); the old
   paths answer 404. Problem types, event
