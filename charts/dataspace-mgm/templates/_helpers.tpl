@@ -187,3 +187,34 @@ names or spec ids, ADR-0003).
 {{- end }}
 {{- join "," $sinks }}
 {{- end }}
+
+{{/*
+Database environment variables for backend or runtime container (ADR-0003, ADR-0005, TRG 3.02, TRG 5.06).
+*/}}
+{{- define "dataspace-mgm.database.env" -}}
+{{- if .Values.database.enabled }}
+{{- if .Values.database.existingSecret }}
+- name: DATABASE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.database.existingSecret | quote }}
+      key: {{ default "password" .Values.database.secretKeys.password | quote }}
+- name: DATABASE_URL
+  value: {{ printf "postgresql://%s:$(DATABASE_PASSWORD)@%s:%v/%s" .Values.database.user .Values.database.host .Values.database.port .Values.database.database | quote }}
+{{- else if .Values.database.host }}
+- name: DATABASE_URL
+  value: {{ printf "postgresql://%s:%s@%s:%v/%s" .Values.database.user .Values.database.password .Values.database.host .Values.database.port .Values.database.database | quote }}
+{{- end }}
+{{- range $feature, $url := .Values.database.featureUrls }}
+- name: {{ printf "%s_DATABASE_URL" ($feature | replace "-" "_" | upper) }}
+  value: {{ $url | quote }}
+{{- end }}
+{{- range $feature, $secret := .Values.database.featureSecrets }}
+- name: {{ printf "%s_DATABASE_URL" ($feature | replace "-" "_" | upper) }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ $secret.name | quote }}
+      key: {{ default "url" $secret.key | quote }}
+{{- end }}
+{{- end }}
+{{- end }}

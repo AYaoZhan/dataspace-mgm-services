@@ -108,6 +108,7 @@ spec:
                   name: {{ $secretName }}
                   key: SERVICE_CLIENT_SECRET
             {{- end }}
+            {{- include "dataspace-mgm.database.env" $ | nindent 12 }}
             {{- range $key, $value := $.Values.backend.env }}
             - name: {{ $key }}
               value: {{ $value | toString | quote }}
@@ -115,6 +116,12 @@ spec:
             {{- range $key, $value := $rt.env }}
             - name: {{ $key }}
               value: {{ $value | toString | quote }}
+            {{- end }}
+            {{- with $.Values.backend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with $rt.extraEnv }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           livenessProbe:
             {{- toYaml $.Values.backend.livenessProbe | nindent 12 }}
@@ -125,9 +132,21 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- with $.Values.backend.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with $rt.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- with $.Values.backend.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with $rt.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
