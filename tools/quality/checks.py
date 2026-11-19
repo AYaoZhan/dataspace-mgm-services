@@ -88,7 +88,7 @@ def area_paths(area: str) -> list[str]:
 def all_areas() -> list[str]:
     modules = sorted(f"modules/{p.name}" for p in (ROOT / "modules").iterdir()
                      if p.is_dir() and not p.name.startswith(("_", "."))
-                     and any(f for f in p.iterdir() if f.suffix == ".py"))
+                     and any(f for f in p.iterdir() if f.suffix == ".py")) if (ROOT / "modules").is_dir() else []
     features = sorted(f"features/{p.name}" for p in (ROOT / "features").iterdir()
                       if p.is_dir() and not p.name.startswith(("_", "."))
                       and any(f for f in p.iterdir() if f.suffix == ".py")) if (ROOT / "features").is_dir() else []
