@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The spec loader takes the module id from the spec folder (`C3-M1-CompanyProfile` -> `c3-m1`) instead of the `servers` URL, so the spec's readable base paths (`/api/company-profile`, FRAMEWORK 4.1, OP-55 of portal-backend-spec) load as well as the old `/api/c3-m1`.
 - Align the Docker build and runtime images with the project's required Python 3.12 version.
 - Every module of an installation reads its own database variable (`C2_M2_DATABASE_URL`, `C3_M1_DATABASE_URL`); `DATABASE_URL` stays the fallback for a module that runs alone. Before, one `DATABASE_URL` switched C2-M2 and C3-M1 to the same database ([#54](https://github.com/eclipse-tractusx/dataspace-mgm-services/issues/54)).
 - standin.router(): accept custom tags via optional `tags` parameter ([#51](https://github.com/eclipse-tractusx/dataspace-mgm-services/issues/51)).
