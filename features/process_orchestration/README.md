@@ -37,8 +37,14 @@ flow, waits for decisions and for the completing events of long-running steps, r
 errors and marks a step `FAILED` when it fails for good. The other modules do not know Process Orchestration; they
 offer steps under `/steps/...` and publish events.
 
-Callers: the event relay of the installation (every published CloudEvent, and events of split-out modules through
-the event inbox), OSP staff in the UI (view processes, retrigger a failed step, follow a process live), applicants
+Process Orchestration is also the **event hub** of a split installation
+([ADR-0006](../../docs/architecture/decisions/ADR-0006-process-orchestration-as-event-hub.md)): every runtime
+forwards the CloudEvents it publishes to the event inbox of the runtime of this feature, and the feature routes each
+event on to the runtimes of the other subscribing features before it runs its flows. In the monolith every
+subscriber is in-process and nothing leaves the process.
+
+Callers: the event relay of the installation (every published CloudEvent, and the events of the other runtimes
+through the event inbox `POST /api/v1/events/inbox` of the base skeleton), OSP staff in the UI (view processes, retrigger a failed step, follow a process live), applicants
 in the UI (follow the processes of their own application live), other modules (Subscriptions asks for the
 processes of a subscription) and Notifications (reacts to `ProcessStepFailed`).
 
@@ -72,6 +78,8 @@ or is a feature), over HTTP with the service token of `svc-c12-m1`, or the built
 | `services/sources.py` | input sources, field paths, object mappings and `join` (README 6.1, 6.8) |
 | `services/projections.py`, `queries.py`, `streams.py` | the views of the API and of the live stream |
 | `services/worker.py` | background worker for due repetitions and await deadlines |
+| `services/event_hub.py` | the event hub: the runtimes each event is routed on to (ADR-0006) |
+| `managers/event_routes.py` | subscribing features, their addresses and the delivery to their event inbox |
 | `managers/flow_catalogue.py` | loads `flows.yaml` and checks it against the spec |
 | `managers/process_repository.py`, `process_store.py` | the tables of the processes and the live processes of the engine |
 | `managers/neighbour_client.py` | the calls to the other modules, in-process and over HTTP |
@@ -86,7 +94,11 @@ or is a feature), over HTTP with the service token of `svc-c12-m1`, or the built
 **Interface.** `interface.py` has the one query of README 9, `find_processes_of_subject(subjectType, subjectId)`.
 Process Orchestration has no steps.
 
-**Events.** Consumed: every event of the installation (`on_event`). Published (source `urn:c12-m1`):
+**Events.** Consumed: every event of the installation (`on_event`: first routed on by the hub, then given to the
+engine). Routing: the hub sends an event to the event inbox of each runtime that serves a subscribing feature
+(a feature index with `on_event`, addressed by `<MODULE>_URL` / `MODULE_URLS`), except its own runtime, the
+publisher's runtime and stand-ins, with the token of the publishing module's service account, once per runtime;
+the relay delivers each `source` and `id` once, so a copy that comes back is not delivered again. Published (source `urn:c12-m1`):
 `ProcessStarted`, `ProcessStepFailed`, `ProcessStepRetriggered`, `ProcessCompleted`, `ProcessEnded`. The UI
 stream event `process-changed` carries the state of a process (IDs, keys and states only).
 
@@ -111,3 +123,4 @@ columns. The installation resets every feature when it starts, so processes do n
 - Spec: [README](../../spec/C12-M1-ProcessOrchestration/README.md), [openapi.yaml](../../spec/C12-M1-ProcessOrchestration/openapi.yaml), [flows.yaml](../../spec/C12-M1-ProcessOrchestration/flows.yaml)
 - [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md)
 - [ADR-0003](../../docs/architecture/decisions/ADR-0003-feature-first-layout-and-runtimes.md)
+- [ADR-0006](../../docs/architecture/decisions/ADR-0006-process-orchestration-as-event-hub.md) (event hub)

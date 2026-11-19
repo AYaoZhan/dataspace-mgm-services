@@ -73,6 +73,12 @@ def index(module: str) -> ModuleType:
     return importlib.import_module(f"features.{name}")
 
 
+def subscribers() -> list[str]:
+    """Spec ids of the features that subscribe to the event bus (`on_event(event)` in their index); the
+    event hub of a split installation routes events to the runtimes that serve them (ADR-0006)."""
+    return [mid for mid in features() if hasattr(index(mid), "on_event")]
+
+
 def router(module: str):
     """The HTTP API of a feature (`features/<name>/router.py`)."""
     index(module)

@@ -41,7 +41,8 @@ Callers:
   notifications as a Server-Sent Events stream;
 - OSP staff (UI): the same, including the staff tasks of their permissions (for example `review_application`);
 - the event relay of the installation (in-process, or the event inbox `POST /api/v1/events/inbox` when the
-  feature runs in its own pod): delivers the CloudEvents of the other modules to `on_event()`.
+  feature runs in its own pod, routed on by Process Orchestration as the event hub, ADR-0006): delivers the
+  CloudEvents of the other modules to `on_event()`.
 
 It has no steps or queries for Process Orchestration and no other feature calls it.
 

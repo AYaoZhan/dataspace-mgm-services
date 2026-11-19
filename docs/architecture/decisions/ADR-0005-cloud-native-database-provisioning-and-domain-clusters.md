@@ -40,7 +40,7 @@ We establish five standard domain clusters in `runtimes/` alongside the standalo
 ### 2. Intra-Cluster vs. Inter-Cluster Communication
 - **Intra-cluster:** Features within the same domain runtime invoke each other in-process via `features.<name>.interface` with zero network overhead.
 - **Inter-cluster:** Cross-domain calls transit via HTTP using `MODULE_URLS` and authenticated service tokens (`svc-<module>`).
-- **Asynchronous Events:** Delivered via HTTP POST to peer event inboxes specified in `EVENT_SINKS` using CloudEvents (ADR-0001).
+- **Asynchronous Events:** Delivered via HTTP POST to the event inbox of the `operations` runtime, where Process Orchestration (C12-M1) routes them on as the event hub ([ADR-0006](ADR-0006-process-orchestration-as-event-hub.md)); further peer inboxes in `EVENT_SINKS` are optional, all using CloudEvents (ADR-0001).
 
 ### 3. Automated Database Provisioning Lifecycle
 We provide idempotent database provisioning scripts for PostgreSQL in `deploy/postgres/`:
