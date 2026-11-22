@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enforce database isolation in multi-feature runtimes: refuse startup when plain `DATABASE_URL` is set without dedicated variables for each served feature, preventing table collisions across features (ADR-0003 decision 6, FRAMEWORK 4.9, [#102](https://github.com/eclipse-tractusx/dataspace-mgm-services/issues/102)). Updated Helm chart to automatically derive dedicated feature database URLs when persistence is enabled.
 - Quality gate: guard `modules/` directory discovery in `checks.py` when all legacy modules are fully migrated to `features/`.
 
 - The spec loader takes the module id from the spec folder (`C3-M1-CompanyProfile` -> `c3-m1`) instead of the `servers` URL, so the spec's readable base paths (`/api/company-profile`, FRAMEWORK 4.1, OP-55 of portal-backend-spec) load as well as the old `/api/c3-m1`.
