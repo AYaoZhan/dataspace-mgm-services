@@ -27,6 +27,8 @@
 A runtime serving more than one feature refuses to start when DATABASE_URL is set without
 dedicated database variables (<FEATURE>_DATABASE_URL, <SPEC_ID>_DATABASE_URL) for each feature.
 """
+import os
+
 import pytest
 
 from portal_common import database
@@ -50,13 +52,18 @@ CLEAN_ENV = (
 
 @pytest.fixture(autouse=True)
 def _clean_database_env(monkeypatch):
+    """Clean database environment variables and restore full process environment afterwards.
+
+    A split runtime sets `<MODULE>_URL=in-process` for its features; keep that out of other tests.
+    """
+    saved_env = dict(os.environ)
     for var in CLEAN_ENV:
         monkeypatch.delenv(var, raising=False)
     database.dispose()
     yield
-    for var in CLEAN_ENV:
-        monkeypatch.delenv(var, raising=False)
     database.dispose()
+    os.environ.clear()
+    os.environ.update(saved_env)
 
 
 def test_multi_feature_runtime_refuses_shared_database_url(monkeypatch):
