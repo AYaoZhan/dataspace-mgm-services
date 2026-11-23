@@ -64,7 +64,7 @@ def _defaults() -> None:
                 os.environ.setdefault(k, str(v).replace("{BASE_URL}", base))
 
 
-def reset_all(entries) -> None:
+def reset_all(entries, *, reset_modules: bool = True) -> None:
     """Fresh state in every module and test tool (IAM first, C11/C12 last)."""
     from tools import ebw_signer, provider_double, test_iam
     events.RELAY.reset()
@@ -75,9 +75,10 @@ def reset_all(entries) -> None:
         from tools import keycloak_admin
         keycloak_admin.reset_realm()
     provider_double.reset()
-    for e in entries:
-        if e.module and hasattr(e.module, "reset"):
-            e.module.reset()
+    if reset_modules:
+        for e in entries:
+            if e.module and hasattr(e.module, "reset"):
+                e.module.reset()
     _ = ebw_signer  # the signing key stays, so attestations issued before a reset stay valid
 
 
@@ -118,7 +119,7 @@ def create_app(features: Iterable[str] | None = None) -> FastAPI:
             events.subscribe(e.id, e.module.on_event)
     include_controllers(app)   # APIs of the installation outside the modules, /api/v1/<category>/...
     app.state.entries = entries
-    reset_all(entries)
+    reset_all(entries, reset_modules=False)
 
     @app.get("/scaffold/modules", tags=["Scaffold"])
     def modules():
