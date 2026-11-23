@@ -38,7 +38,6 @@ from fastapi.testclient import TestClient
 from features import notifications as n
 from portal_common import database
 from runtimes import create_runtime
-from scaffold import app
 
 
 @pytest.fixture(autouse=True)
