@@ -44,7 +44,7 @@ from typing import Annotated
 from fastapi import FastAPI, Query
 
 from controllers.fastapi import include as include_controllers
-from portal_common import csp, events, http, problems, runtime, settings, standin, tokens
+from portal_common import csp, database, events, http, problems, runtime, settings, standin, tokens
 from tools import iam_backend
 
 from . import registry
@@ -90,6 +90,7 @@ def create_app(features: Iterable[str] | None = None) -> FastAPI:
     for mid in enabled or ():   # a split runtime calls its own features in-process, whatever MODULE_URLS says
         os.environ.setdefault(mid.upper().replace("-", "_") + "_URL", "in-process")
     entries = registry.load(enabled)
+    database.check_isolation(entries)
     events.RELAY.clear_subscribers()
 
     @contextlib.asynccontextmanager

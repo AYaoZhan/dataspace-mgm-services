@@ -65,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Enforce database isolation in multi-feature runtimes: refuse startup when plain `DATABASE_URL` is set without dedicated variables for each served feature, preventing table collisions across features (ADR-0003 decision 6, FRAMEWORK 4.9, [#102](https://github.com/eclipse-tractusx/dataspace-mgm-services/issues/102)). Updated Helm chart to automatically derive dedicated feature database URLs when persistence is enabled.
 - C11-M1 Notifications serves its operations with the `operationId` of its spec (`listNotifications`, `getNotification`, …) instead of names FastAPI generated from the paths; `docs/api/openAPI.yaml` is exported again (#106).
 - Quality gate: guard `modules/` directory discovery in `checks.py` when all legacy modules are fully migrated to `features/`.
 
