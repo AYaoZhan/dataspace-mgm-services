@@ -477,6 +477,39 @@ def run() -> None:
     check("16 LPID revoked: the power of attorney that carries it is ISSUER_NOT_TRUSTED",
           claims.get("representation_reasons") == ["ISSUER_NOT_TRUSTED"], json.dumps(claims))
 
+    # 6.8 The transaction page takes the look of the client that asked
+    def asked_by(client: OidcClient, browser: Browser | None = None) -> tuple[str, str]:
+        response = (browser or Browser()).go(client.start(signin)[0])
+        return response.text, str(response.request.url)
+
+    osp_page, osp_tx = asked_by(osp)
+    bw_page, _ = asked_by(bw_client)
+    check("17 Page in the look of the client: demo portal and Business Wallet, each naming the EBW-Connector",
+          ">OSP 2.0<small>Demo portal</small></a>" in osp_page and "--bar-line: #6d28d9" in osp_page and ">Business Wallet</a>" in bw_page
+          and "--bar: #16213e" in bw_page and all('id="checked-by"' in p and "EBW-Connector checks" in p for p in (osp_page, bw_page)),
+          osp_page[-400:])  # fmt: skip
+    check("17 Page opened without the cookie stays neutral", ">EBW-Connector<small>" in Browser().go(osp_tx).text and "OSP 2.0" not in Browser().go(osp_tx).text)
+    # A clients file: the two clients of the stack without `page` keep their look, others get theirs or the neutral one.
+    listed = [
+        {"clientId": "demo-osp", "name": "Listed demo portal", "jwksUri": f"{URL['test_tools']}/osp/jwks", "redirectUris": [osp.redirect_uri]},
+        {"clientId": "business-wallet", "name": "Business Wallet", "jwksUri": f"{URL['business_wallet']}/jwks", "redirectUris": [bw_client.redirect_uri],
+         "page": {"theme": "tractusx", "brand": "Eclipse Tractus-X", "tagline": "Dataspace <Management>"}},
+        {"clientId": "plain", "name": "Plain client", "jwksUri": f"{URL['test_tools']}/osp/jwks", "redirectUris": [osp.redirect_uri]},
+        {"clientId": "odd", "name": "Odd client", "jwksUri": f"{URL['test_tools']}/osp/jwks", "redirectUris": [osp.redirect_uri], "page": {"theme": "nope", "brand": "Odd"}},
+    ]  # fmt: skip
+    (TMP / "no-clients.json").write_text(json.dumps(listed))
+    try:
+        named = {name: asked_by(OidcClient(URL["connector"], name, osp.redirect_uri, osp_key))[0] for name in ("plain", "odd")}
+        listed_osp, own_look = asked_by(osp)[0], asked_by(bw_client)[0]
+    finally:
+        (TMP / "no-clients.json").unlink()
+    check("17 Clients file: the clients of the stack keep their look, a client sets its own, brand and tagline escaped",
+          ">OSP 2.0<small>" in listed_osp and "Listed demo portal wants to check" in listed_osp
+          and ">Eclipse Tractus-X<small>Dataspace &lt;Management&gt;</small></a>" in own_look and "--primary: #faa023" in own_look,
+          own_look[:600])  # fmt: skip
+    check("17 Client without a look, or with a theme the stack does not have: the look of the EBW-Connector",
+          all(">EBW-Connector<small>" in p and 'id="checked-by"' not in p and "--bar: #374151" in p for p in named.values()), named["odd"][:600])
+
     # 15 Audit log without personal data
     audit = (TMP / "audit.log").read_text()
     check("15 Audit log without personal data",

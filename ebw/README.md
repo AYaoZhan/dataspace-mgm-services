@@ -85,7 +85,7 @@ Starts the three services on test ports with empty folders and checks the accept
 | `test_tools/` | test issuer, trust list, OSP 2.0 demo portal (`osp.py`) |
 | `tools/` | `start.py`, `run_tests.py` |
 
-Keys are in `.keys/` of each service, data in `data/`; git ignores both. The settings of the EBW-Connector are in C5-M1 section 4; without `CLIENTS_FILE`, the demo portal (`demo-osp`) and the Business Wallet are registered as clients. The services reload changed code by themselves.
+Keys are in `.keys/` of each service, data in `data/`; git ignores both. The settings of the EBW-Connector are in C5-M1 section 4; without `CLIENTS_FILE`, the demo portal (`demo-osp`) and the Business Wallet are registered as clients. An entry may carry `page` (`theme`, `brand`, `tagline`): the page of the EBW-Connector then looks like that client, so a person sees where they sign in, and a line at its end names the EBW-Connector. The themes are `wallet` (Business Wallet), `portal` (demo portal) and `tractusx` (the Dataspace Management UI, dark); without `page` the page keeps the look of the EBW-Connector, and the page shown without the cookie of the transaction always does. `demo-osp` and `business-wallet` keep their look when a clients file lists them without `page`. The services reload changed code by themselves.
 
 ## Left out on purpose
 

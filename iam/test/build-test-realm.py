@@ -219,12 +219,14 @@ def stand_in_realm(installations, stand_ins, env, extras):
 
 
 def connector_client(values: dict[str, str]) -> dict[str, object]:
-    """The Portal IAM of one installation as a client of the EBW-Connector (C5-M1 6.8, entry of its CLIENTS_FILE)."""
+    """The Portal IAM of one installation as a client of the EBW-Connector (C5-M1 6.8, entry of its CLIENTS_FILE).
+    `page` gives the page of the EBW-Connector the look of the portal UI, so a person sees where they sign in."""
     realm = f"{IAM_URL}/realms/{values['IAM_REALM']}"
     return {
         "clientId": values["EBW_CONNECTOR_CLIENT_ID"], "name": f"Portal IAM of {values['IAM_REALM']}",
         "jwksUri": f"{realm}/protocol/openid-connect/certs", "redirectUris": [f"{realm}/broker/ebw-connector/endpoint"],
         "scopes": ["openid", "profile"],
+        "page": {"theme": "tractusx", "brand": "Eclipse Tractus-X", "tagline": "Dataspace Management"},
     }
 
 
