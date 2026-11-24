@@ -38,10 +38,11 @@ Das ganze Portal mit einem Befehl auf einem Laptop: Datenbank, Anmeldung (Keyclo
 
   ```text
   <beliebiger Ordner>/
-    dataspace-mgm-services/          Branch feat/community-days-compose
+    dataspace-mgm-services/          Branch 7th-cmd
       spec/                          git clone https://github.com/tx-arena-events/portal-backend-spec.git spec
                                      (Stand der Tests: Commit 76587a6)
-    dataspace-mgm-ui/                Branch feat/readable-api-paths
+    dataspace-mgm-ui/                Branch 7th-cmd (ab dem Fix fix/review-api-live-in-image; ohne ihn zeigt
+                                     die Antragsprüfung nur Beispieldaten)
   ```
 
 - Windows: die Befehle in PowerShell gehen; `check.sh` braucht Git Bash oder WSL.
