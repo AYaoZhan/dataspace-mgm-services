@@ -153,10 +153,11 @@ def home(request: Request):
     if "request_uri" in request.query_params:  # wallet address entered without /present
         return RedirectResponse(f"/present?{request.url.query}", status_code=303)
     lpid = store.lpid()
+    offer = offer_from(request)
     if lpid is None:
         body = (
             '<div class="hero"><h1>Set up the Business Wallet</h1><p>This Business Wallet does not hold a '
-            "company credential yet. First fetch the LPID from the register.</p></div>" + receive_form()
+            "company credential yet. First fetch the LPID from the register.</p></div>" + receive_form(offer=offer)
         )
         return bw_page("Set up the Business Wallet", body, request, show_title=False)
     current = user(request)
@@ -183,17 +184,24 @@ def home(request: Request):
         + paste_form()
         + "</div>"
         + address_box()
-        + (receive_form("Fetch a new company credential") + reset_form() if admin else "")
+        + (receive_form("Fetch a new company credential", offer) + reset_form() if admin else "")
         + COPY
     )
     return bw_page("Business Wallet", body, request, show_title=False)
 
 
-def receive_form(title: str = "Fetch the company credential (LPID)") -> str:
+def offer_from(request: Request) -> str:
+    """The link of an offer that the test tools pass in the address (`/?offer=…`), to fill in the form.
+    Only fills the field: fetching still needs a click on Fetch."""
+    offer = request.query_params.get("offer", "")
+    return offer if offer.startswith("openid-credential-offer://") and len(offer) <= 4096 else ""
+
+
+def receive_form(title: str = "Fetch the company credential (LPID)", offer: str = "") -> str:
     return (
         f'<div class="box"><h2>{escape(title)}</h2><form method="post" action="/receive">'
         '<label for="offer">Link of the offer from the register (openid-credential-offer://…)</label>'
-        '<textarea id="offer" name="offer" rows="3" required></textarea>'
+        f'<textarea id="offer" name="offer" rows="3" required>{escape(offer)}</textarea>'
         "<button>Fetch</button></form></div>"
     )
 

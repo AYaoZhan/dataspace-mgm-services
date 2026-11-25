@@ -224,7 +224,15 @@ def run() -> None:
     erika = Wallet()
     erika.receive(tools_offer({"pid": {}, "mandate": {}}, "Erika"))
     admin = Browser()
-    response = admin.go(f"{URL['business_wallet']}/receive", method="POST", data={"offer": tools_offer({"lpid": {}}, "LPID")})
+    # The test tools open the LPID offer in the Business Wallet, which fills it into the form (no copy and paste)
+    tools_page = html.unescape(httpx.get(URL["test_tools"] + "/").text)
+    check("Test tools link the LPID offer to the Business Wallet", f"{URL['business_wallet']}/?offer=openid-credential-offer" in tools_page)
+    link = tools_offer({"lpid": {}}, "LPID")
+    form = httpx.get(f"{URL['business_wallet']}/?{urlencode({'offer': link})}").text
+    check("Business Wallet fills in the offer from its address", f">{html.escape(link)}</textarea>" in form)
+    other = httpx.get(f"{URL['business_wallet']}/?{urlencode({'offer': 'https://evil.example/x'})}").text
+    check("Business Wallet ignores an address that is no credential offer", "evil.example" not in other)
+    response = admin.go(f"{URL['business_wallet']}/receive", method="POST", data={"offer": link})
     check("Business Wallet holds the LPID", httpx.get(f"{URL['business_wallet']}/api/state").json()["lpid"] is not None)
 
     # 2, 3 Sign-in with the register mandate
