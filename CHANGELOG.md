@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `deploy/community-days`: the whole portal on one machine with one command (`docker compose up -d --build`) for the Community Days: PostgreSQL, the test Portal IAM, the CSP stand-in, the service and the portal with its BFF; data survive restarts, `check.sh` checks the stack, README in German.
 - Combined OpenAPI 3.1.0 document of the installation in `docs/api/openAPI.yaml` and `.tractusx` metadata configuration for the Tractus-X API hub (TRG 1.08, TRG 2.05).
 - Repository set-up according to the [Tractus-X Release Guidelines](https://eclipse-tractusx.github.io/docs/release): legal documentation, `.tractusx` metadata file, contribution templates, Dependabot and security scans (CodeQL, KICS, Trivy, TruffleHog), container build and documentation structure ([dataspace-mgm-ui#1](https://github.com/eclipse-tractusx/dataspace-mgm-ui/issues/1))
 - Eclipse Dash IP check aligned with tractusx-testlab: `dependencies.yml` only checks, the new `dependencies-update.yml` regenerates `DEPENDENCIES` daily, requests IP reviews (secret `DASH_GITLAB_API_TOKEN`) and opens a pull request.
